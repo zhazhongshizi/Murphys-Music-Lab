@@ -15,3 +15,9 @@
 *.png binary
 *.webp binary
 *.zip binary
+
+# Locked upstream sources and license notices are verified byte-for-byte.
+providers/node/netease/upstream/** -text
+providers/node/bilibili/reference/** -text
+providers/node/*/licenses/** -text
+licenses/provider-g/notices/** -text
