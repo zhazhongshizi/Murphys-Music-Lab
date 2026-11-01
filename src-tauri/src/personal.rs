@@ -90,6 +90,17 @@ pub struct StoredQueue {
     #[serde(default)]
     pub saved_at_ms: u64,
 }
+impl StoredQueue {
+    pub(crate) fn persisted_json(&self) -> Result<String, serde_json::Error> {
+        let mut value = serde_json::to_value(self)?;
+        for item in value["items"].as_array_mut().unwrap() {
+            if matches!(item["providerId"].as_str(), Some("qqmusic" | "local")) {
+                item.as_object_mut().unwrap().remove("providerId");
+            }
+        }
+        serde_json::to_string(&value)
+    }
+}
 
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -185,7 +196,7 @@ impl PersistenceService {
             return Err(PersistenceError::InvalidData);
         }
         crate::queue::validate_items(&queue.items).map_err(|_| PersistenceError::InvalidData)?;
-        let payload = serde_json::to_string(queue).map_err(unavailable)?;
+        let payload = queue.persisted_json().map_err(unavailable)?;
         let mut connection = self.connection()?;
         let tx = connection.transaction().map_err(unavailable)?;
         tx.execute("INSERT INTO personal_items(kind,id,title,payload) SELECT 'queue',?1,?1,?2 WHERE (SELECT count(*) FROM personal_items WHERE kind='queue') < 100 OR EXISTS(SELECT 1 FROM personal_items WHERE kind='queue' AND id=?1) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload", params![name,payload]).map_err(unavailable).and_then(|n| if n == 0 {Err(PersistenceError::LimitExceeded)} else {Ok(())})?;
@@ -497,6 +508,7 @@ mod tests {
     use crate::queue::QueueService;
     fn track(id: &str) -> QueueTrack {
         QueueTrack {
+            video: None,
             id: id.into(),
             title: id.into(),
             artist: "Artist".into(),

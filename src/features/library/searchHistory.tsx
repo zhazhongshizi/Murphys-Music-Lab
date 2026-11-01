@@ -33,6 +33,13 @@ export function useSearchHistory() {
 export function SearchHistory({onSelect}: {onSelect:(entry:SearchEntry)=>void}) {
   const entries=useSearchHistory();
   const labels={songs:"歌曲",artists:"歌手",albums:"专辑",playlists:"歌单"};
-  return <section className="search-history" aria-label="搜索历史"><div><strong>搜索历史</strong>{entries.length>0&&<button type="button" onClick={()=>writeSearchHistory([])}>清空搜索历史</button>}</div>
+  return <SearchHistoryList entries={entries} labels={labels} onSelect={onSelect} onClear={()=>writeSearchHistory([])} />;
+}
+
+export function SearchHistoryList<T extends string>({entries, labels, onSelect, onClear}: {
+  entries: readonly {query: string; type: T}[]; labels: Record<T, string>;
+  onSelect: (entry: {query: string; type: T}) => void; onClear: () => void;
+}) {
+  return <section className="search-history" aria-label="搜索历史"><div><strong>搜索历史</strong>{entries.length>0&&<button type="button" onClick={onClear}>清空搜索历史</button>}</div>
     {entries.length?entries.map(entry=><button type="button" key={`${entry.type}:${entry.query}`} onClick={()=>onSelect(entry)}>{entry.query} <small>{labels[entry.type]}</small></button>):<p>最近搜索会显示在这里</p>}</section>;
 }

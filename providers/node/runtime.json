@@ -1,0 +1,10 @@
+{
+  "version": "24.22.2",
+  "platform": "win32",
+  "architecture": "x64",
+  "archiveUrl": "https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip",
+  "archiveSha256": "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2",
+  "executableSha256": "1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9",
+  "securityBaseline": "24.22.1",
+  "releaseNotes": "https://nodejs.org/en/blog/release/v24.22.2"
+}

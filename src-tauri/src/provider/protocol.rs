@@ -373,7 +373,7 @@ fn validate_name(value: &str) -> Result<(), ()> {
     }
 }
 
-fn parse_json_value(payload: &[u8]) -> Result<Value, ProtocolError> {
+pub(crate) fn parse_json_value(payload: &[u8]) -> Result<Value, ProtocolError> {
     let decoded = std::str::from_utf8(payload).map_err(|_| ProtocolError::InvalidUtf8)?;
     if decoded.starts_with('\u{feff}') {
         return Err(ProtocolError::Utf8BomNotAllowed);

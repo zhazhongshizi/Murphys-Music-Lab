@@ -29,6 +29,12 @@ provider/.tmp/
 provider/.cache/
 src-tauri/resources/provider/
 src-tauri/resources/provider.staging/
+src-tauri/resources/multi-provider.staging-*/
+src-tauri/resources/node/
+src-tauri/resources/providers/
+src-tauri/resources/contracts/
+src-tauri/resources/licenses/
+src-tauri/resources/provider-manifest.json
 
 # Runtime data and secrets
 diagnostic-logging.enabled

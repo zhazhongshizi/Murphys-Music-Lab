@@ -14,6 +14,7 @@ export interface CatalogAvailability {
 }
 
 export interface CatalogSong {
+  readonly providerId?: import("./providers").ProviderId;
   readonly id: string;
   readonly mediaMid?: string;
   readonly coverCacheKey?: string;

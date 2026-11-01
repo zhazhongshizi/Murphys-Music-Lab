@@ -1,0 +1,110 @@
+Fixed api-enhanced 4.41.1 / 984cc021b8598cf94c22134f32a8426887fb2de7
+Source: public/docs/home.md. Selected complete sections; original line numbers below.
+License: ../upstream/LICENSE (MIT).
+
+Original lines 632-647
+### 获取用户歌单
+
+说明 : 登录后调用此接口 , 传入用户 id, 可以获取用户歌单
+
+**必选参数 :** `uid` : 用户 id
+
+**可选参数 :**
+
+`limit` : 返回数量 , 默认为 30
+
+`offset` : 偏移数量，用于分页 , 如 :( 页数 -1)\*30, 其中 30 为 limit 的值 , 默认为 0
+
+**接口地址 :** `/user/playlist`
+
+**调用例子 :** `/user/playlist?uid=32953014`
+
+
+Original lines 1232-1244
+### 获取歌单详情
+
+说明 : 歌单能看到歌单名字, 但看不到具体歌单内容 , 调用此接口 , 传入歌单 id, 可
+以获取对应歌单内的所有的音乐(未登录状态只能获取不完整的歌单,登录后是完整的)，但是返回的 trackIds 是完整的，tracks 则是不完整的，可拿全部 trackIds 请求一次 `song/detail` 接口获取所有歌曲的详情 ([https://github.com/Binaryify/NeteaseCloudMusicApi/issues/452](https://github.com/Binaryify/NeteaseCloudMusicApi/issues/452))
+
+**必选参数 :** `id` : 歌单 id
+
+**可选参数 :** `s` : 歌单最近的 s 个收藏者,默认为 8
+
+**接口地址 :** `/playlist/detail`
+
+**调用例子 :** `/playlist/detail?id=24381616`
+
+
+Original lines 1267-1276
+### 歌单详情动态
+
+说明 : 调用后可获取歌单详情动态部分,如评论数,是否收藏,播放数
+
+**必选参数 :** `id` : 歌单 id
+
+**接口地址 :** `/playlist/detail/dynamic`
+
+**调用例子 :** `/playlist/detail/dynamic?id=24381616`
+
+
+Original lines 1444-1457
+### 收藏/取消收藏歌单
+
+说明 : 调用此接口 , 传入类型和歌单 id 可收藏歌单或者取消收藏歌单
+
+**必选参数 :**
+
+`t` : 类型,1:收藏,2:取消收藏
+
+`id` : 歌单 id
+
+**接口地址 :** `/playlist/subscribe`
+
+**调用例子 :** `/playlist/subscribe?t=1&id=106697785` `/playlist/subscribe?t=2&id=106697785`
+
+
+Original lines 1473-1489
+### 对歌单添加或删除歌曲
+
+说明 : 调用此接口 , 可以添加歌曲到歌单或者从歌单删除某首歌曲 ( 需要登录 )
+
+!> 警告: 在`v4.29.7`版本后, 在网易云登陆后请求要带上`timestamp`字段, 否则会导致请求不合法
+
+**必选参数 :**
+
+`op`: 从歌单增加单曲为 add, 删除为 del
+
+`pid`: 歌单 id
+`tracks`: 歌曲 id,可多个,用逗号隔开
+
+**接口地址 :** `/playlist/tracks`
+
+**调用例子 :** `/playlist/tracks?op=add&pid=24381616&tracks=347231` ( 对应把歌曲添加到 ' 我 ' 的歌单 , 测试的时候请把这里的 pid 换成你自己的, id 和 tracks 不对可能会报 502 错误)
+
+
+Original lines 2472-2485
+### 喜欢音乐
+
+说明 : 调用此接口 , 传入音乐 id, 可喜欢该音乐
+
+**必选参数 :** `id`: 歌曲 id
+
+**可选参数 :** `like`: 布尔值 , 默认为 true 即喜欢 , 若传 false, 则取消喜欢
+
+**接口地址 :** `/like`
+
+**调用例子 :** `/like?id=347230`
+
+喜欢成功则返回数据的 code 为 200, 其余为失败
+
+
+Original lines 2498-2507
+### 喜欢音乐列表
+
+说明 : 调用此接口 , 传入用户 id, 可获取已喜欢音乐 id 列表(id 数组)
+
+**必选参数 :** `uid`: 用户 id
+
+**接口地址 :** `/likelist`
+
+**调用例子 :** `/likelist?uid=32953014`

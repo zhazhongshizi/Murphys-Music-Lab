@@ -3,7 +3,8 @@ param(
     [switch]$SkipProviderBuild,
     [switch]$AllowFixtureProviderForSpike,
     [switch]$Installer,
-    [string]$Target = 'x86_64-pc-windows-msvc'
+    [string]$Target = 'x86_64-pc-windows-msvc',
+    [string]$CargoTargetDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,13 +12,16 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $repositoryRoot 'src-tauri'
 & (Join-Path $PSScriptRoot 'assert-version-sources.ps1') -RepositoryRoot $repositoryRoot
 $tauriCli = Join-Path $repositoryRoot 'node_modules\.bin\tauri.CMD'
-$tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot 'tauri.conf.json') -Raw |
+$tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot 'tauri.conf.json') -Raw -Encoding UTF8 |
     ConvertFrom-Json
 $version = [string]$tauriConfig.version
 if ($version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw 'Tauri configuration contains an invalid application version.'
 }
-$targetReleaseRoot = Join-Path $tauriRoot "target\$Target\release"
+$cargoRoot = Join-Path $tauriRoot 'target'
+if ($CargoTargetDir) { $cargoRoot = [IO.Path]::GetFullPath($CargoTargetDir) }
+elseif ($env:CARGO_TARGET_DIR) { $cargoRoot = [IO.Path]::GetFullPath($env:CARGO_TARGET_DIR) }
+$targetReleaseRoot = Join-Path $cargoRoot "$Target/release"
 $releaseProviderRoot = Join-Path $targetReleaseRoot 'provider'
 $stagedProviderRoot = Join-Path $tauriRoot 'resources\provider'
 
@@ -46,19 +50,18 @@ else {
 }
 
 $resolvedTargetRelease = [System.IO.Path]::GetFullPath($targetReleaseRoot)
-$resolvedReleaseProvider = [System.IO.Path]::GetFullPath($releaseProviderRoot)
-if (-not $resolvedReleaseProvider.StartsWith(
-    $resolvedTargetRelease + [System.IO.Path]::DirectorySeparatorChar,
-    [System.StringComparison]::OrdinalIgnoreCase
-)) {
-    throw "Refusing to clean a provider directory outside the target release root: '$resolvedReleaseProvider'."
-}
-if (Test-Path -LiteralPath $releaseProviderRoot) {
-    Remove-Item -LiteralPath $releaseProviderRoot -Recurse -Force
+foreach ($name in @('provider', 'node', 'providers', 'contracts', 'licenses', 'provider-manifest.json')) {
+    $candidate = [IO.Path]::GetFullPath((Join-Path $targetReleaseRoot $name))
+    if (-not $candidate.StartsWith($resolvedTargetRelease + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean outside the target release root: '$candidate'."
+    }
+    if (Test-Path -LiteralPath $candidate) { Remove-Item -LiteralPath $candidate -Recurse -Force }
 }
 
 Push-Location $repositoryRoot
+$previousCargoTargetDir = $env:CARGO_TARGET_DIR
 try {
+    $env:CARGO_TARGET_DIR = $cargoRoot
     $tauriArguments = @('build', '--target', $Target, '--config', 'src-tauri/tauri.release.conf.json')
     if ($Installer) {
         $tauriArguments += @('--bundles', 'nsis')
@@ -74,12 +77,13 @@ try {
     }
 }
 finally {
+    $env:CARGO_TARGET_DIR = $previousCargoTargetDir
     Pop-Location
 }
 
 & (Join-Path $PSScriptRoot 'verify-provider-manifest.ps1') -BundleRoot $releaseProviderRoot
 
-$applicationPath = Join-Path $targetReleaseRoot 'qqmusic-gui.exe'
+$applicationPath = Join-Path $targetReleaseRoot 'Music-Lab.exe'
 
 function Get-PeMachine {
     param([Parameter(Mandatory)][string]$Path)
@@ -117,7 +121,8 @@ Write-Host "Release application x64 PE: $applicationPath"
 
 Write-Host "Release application: $applicationPath"
 if ($Installer) {
-    $installerPath = Join-Path $targetReleaseRoot "bundle\nsis\QQ Music GUI_${version}_x64-setup.exe"
+    $productName = [string]$tauriConfig.productName
+    $installerPath = Join-Path $targetReleaseRoot "bundle\nsis\${productName}_${version}_x64-setup.exe"
     if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
         throw 'NSIS installer is missing.'
     }

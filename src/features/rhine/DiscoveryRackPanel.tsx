@@ -12,11 +12,11 @@ import "./discovery-rack.css";
 
 export const DISCOVERY_DOSSIER_EXIT_MS = 480;
 export type DiscoveryHandle = { frame: (frame: DiscoveryFrame) => void };
-type Props = { active: boolean; visible?: boolean; accountKey: string; onClose: () => void; onDeck?: () => void; motionDisabled?: boolean;
+type Props = { active: boolean; visible?: boolean; accountKey: string; accessMessage?: string; onClose: () => void; onDeck?: () => void; motionDisabled?: boolean;
   onSceneChange?: (state: DiscoveryState) => void; ref?: Ref<DiscoveryHandle> };
 export function ArchiveDiscovery(props: Props) { return <DiscoveryContent key={props.accountKey} {...props} />; }
 
-function DiscoveryContent({ active, visible = active, accountKey, onClose, onDeck, motionDisabled = false, onSceneChange, ref }: Props) {
+function DiscoveryContent({ active, visible = active, accountKey, accessMessage, onClose, onDeck, motionDisabled = false, onSceneChange, ref }: Props) {
   const [kind,setKind]=useState<RecommendationKind>("guess"),[visited,setVisited]=useState<RecommendationKind[]>(["guess"]);
   const [entity,setEntity]=useState<CatalogEntity|null>(null),[top,setTop]=useState(166);
   const root=useRef<HTMLElement>(null),header=useRef<HTMLDivElement>(null),origin=useRef<HTMLElement|null>(null);
@@ -50,11 +50,12 @@ function DiscoveryContent({ active, visible = active, accountKey, onClose, onDec
     <div className="discovery-rack-heading" ref={header}>
       <header className="discovery-header"><div><p className="rhine-eyebrow">DISCOVERY / MUSIC ARCHIVE</p><h1>发现音乐</h1></div>
         <nav aria-label="发现页面导航"><button type="button" onClick={onClose}>← 返回档案</button>{onDeck&&<button type="button" onClick={onDeck}>进入磁带机 ↗</button>}</nav></header>
-      <div hidden={!!entity}><DiscoveryTabs value={kind} includeNewSongs={false} onChange={value=>{const next=value as RecommendationKind;setKind(next);setVisited(v=>v.includes(next)?v:[...v,next]);}} /></div>
+      <div hidden={!!entity || !!accessMessage}><DiscoveryTabs value={kind} includeNewSongs={false} onChange={value=>{const next=value as RecommendationKind;setKind(next);setVisited(v=>v.includes(next)?v:[...v,next]);}} /></div>
     </div>
-    {visited.map(tab=><RecommendationRack key={tab} kind={tab} accountKey={accountKey} active={active&&!entity&&tab===kind}
+    {accessMessage && <div className="discovery-rack-state"><p role="status">{accessMessage}</p></div>}
+    {!accessMessage && visited.map(tab=><RecommendationRack key={tab} kind={tab} accountKey={accountKey} active={active&&!entity&&tab===kind}
       hidden={tab!==kind||!!entity} top={top} reduced={motionDisabled} onOpen={open} onDeck={onDeck} onSceneChange={onSceneChange} />)}
-    {entity&&<div className="discovery-details"><CatalogDetails key={`${entity.kind}:${entity.id}`} entity={entity} onBack={back} onPlayback={onDeck} active={active} /></div>}
+    {!accessMessage&&entity&&<div className="discovery-details"><CatalogDetails key={`${entity.kind}:${entity.id}`} entity={entity} onBack={back} onPlayback={onDeck} active={active} /></div>}
   </section>;
 }
 

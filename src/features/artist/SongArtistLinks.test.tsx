@@ -16,6 +16,13 @@ vi.mock("../catalog/CatalogDetails", () => ({ CatalogDetails: ({ entity, onBack 
   <><h1>{entity.name}详情</h1><button onClick={onBack}>返回上一页</button></> }));
 const artists = [{ id: "same-name-correct-id", name: "歌手甲" }, { id: "guest-artist-id", name: "歌手乙" }];
 const track = { id: "song-one", title: "合作歌曲", artist: "歌手甲 / 歌手乙", album: "专辑", durationMs: 100_000 };
+
+it("shows a Bilibili uploader as plain text without a QQ artist request", () => {
+  render(<SongArtistLinks track={{ id: "bilibili:video:BV17x411w7KC:124", artist: "UP 主原名" }} onOpenArtist={vi.fn()} />);
+  expect(screen.getByText("UP 主原名")).toBeInTheDocument();
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(mocks.artists).not.toHaveBeenCalled();
+});
 beforeEach(() => { resetPlayerFixture(); mocks.artists.mockReset().mockResolvedValue(artists); });
 afterEach(() => { cleanup(); resetPlayerFixture(); vi.restoreAllMocks(); });
 
@@ -96,7 +103,7 @@ it("shows authoritative choices instead of guessing an artist when old names no 
   expect(open).toHaveBeenCalledWith(artists[1]);
 });
 
-it.each(["local_test", "fixture-test"])("keeps %s as text without an online artist ID", id => {
+it.each(["local_test", "fixture-test", "netease:track:1", "bilibili:video:BV17x411w7KC:123"])("keeps %s as text without an online artist ID", id => {
   render(<SongArtistLinks track={{ ...track, id }} onOpenArtist={vi.fn()} />);
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(screen.getByText(track.artist)).toBeInTheDocument();

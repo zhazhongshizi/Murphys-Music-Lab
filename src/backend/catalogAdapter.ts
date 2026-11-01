@@ -1,4 +1,5 @@
 import { createSchemaGuards } from "./schemaGuards";
+import { trackSource } from "./trackSource";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type {
   CatalogAvailability,
@@ -76,6 +77,7 @@ function parseSong(value: unknown): CatalogSong {
   const hasCoverCacheKey = typeof value === "object" && value !== null && "coverCacheKey" in value;
   const record = exactRecord(value, [
     ...SONG_KEYS,
+    ...(typeof value === "object" && value !== null && "providerId" in value ? ["providerId"] : []),
     ...(hasMediaMid ? ["mediaMid"] : []),
     ...(hasCoverCacheKey ? ["coverCacheKey"] : []),
     ...(typeof value === "object" && value !== null && "albumId" in value ? ["albumId"] : []),
@@ -100,6 +102,7 @@ function parseSong(value: unknown): CatalogSong {
   if (artists.map((entry) => entry.name).join(" / ") !== artist) return invalid();
   const result: CatalogSong = {
     id,
+    ...trackSource(record),
     title: text(record.title, 512),
     subtitle: text(record.subtitle, 512, true),
     artists,

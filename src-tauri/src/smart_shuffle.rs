@@ -29,6 +29,7 @@ pub struct SmartShuffle {
     enabled: bool,
     likes: HashSet<String>,
     likes_loaded: bool,
+    netease_likes_loaded: bool,
     last_played: HashMap<String, u64>,
     recent: VecDeque<String>,
     listening: Option<Listening>,
@@ -54,6 +55,7 @@ impl SmartShuffle {
             enabled: false,
             likes: HashSet::new(),
             likes_loaded: false,
+            netease_likes_loaded: false,
             last_played: HashMap::new(),
             recent: VecDeque::new(),
             listening: None,
@@ -80,7 +82,7 @@ impl SmartShuffle {
     pub fn status(&self) -> SmartShuffleStatus {
         SmartShuffleStatus {
             enabled: self.enabled,
-            likes_loaded: self.likes_loaded,
+            likes_loaded: self.likes_loaded || self.netease_likes_loaded,
         }
     }
 
@@ -164,11 +166,17 @@ impl SmartShuffle {
 
     pub fn replace_likes(&mut self, likes: Option<HashSet<String>>) {
         self.likes_loaded = likes.is_some();
-        self.likes = likes.unwrap_or_default();
+        self.likes.retain(|id|id.starts_with("netease:track:"));
+        self.likes.extend(likes.unwrap_or_default().into_iter().filter(|id|crate::multi_provider::identity::track_provider(id)==Ok(crate::multi_provider::ProviderId::Qqmusic)));
+    }
+    pub fn replace_netease_likes(&mut self, likes: Option<HashSet<String>>) {
+        self.netease_likes_loaded=likes.is_some();
+        self.likes.retain(|id|!id.starts_with("netease:track:"));
+        self.likes.extend(likes.unwrap_or_default().into_iter().filter(|id|id.starts_with("netease:track:")));
     }
 
     pub(crate) fn analytics_likes(&self) -> Option<HashSet<String>> {
-        self.likes_loaded.then(|| self.likes.clone())
+        (self.likes_loaded || self.netease_likes_loaded).then(|| self.likes.clone())
     }
 
     pub fn update_likes(&mut self, ids: &[String], liked: bool) {
@@ -247,7 +255,7 @@ impl SmartShuffle {
             "liked":self.likes.contains(&track.id),"recent":self.recent.contains(&track.id),"weight":weight,
             "probability":if total>0.0 {weight/total} else {0.0}
         })).collect();
-        serde_json::json!({"enabled":self.enabled,"active":self.enabled && shuffle_mode,"likesLoaded":self.likes_loaded,"items":rows})
+        serde_json::json!({"enabled":self.enabled,"active":self.enabled && shuffle_mode,"likesLoaded":self.likes_loaded || self.netease_likes_loaded,"items":rows})
     }
 
     /// Fresh position samples are needed even when the renderer is hidden. Stop sampling after qualification.
@@ -463,6 +471,17 @@ mod tests {
         let smart = SmartShuffle::new(root.join("smart-shuffle.sqlite3"));
         (root, smart)
     }
+    #[test]
+    fn qq_and_netease_weights_are_independent_and_video_never_gets_like_weight() {
+        let (root,mut smart)=fixture();
+        smart.replace_likes(Some(HashSet::from(["qqA".into()])));
+        smart.replace_netease_likes(Some(HashSet::from(["netease:track:1".into(),"bilibili:video:BV17x411w7KC:123".into()])));
+        assert_eq!(smart.analytics_likes().unwrap(),HashSet::from(["qqA".into(),"netease:track:1".into()]));
+        smart.replace_likes(None);assert!(smart.status().likes_loaded);assert_eq!(smart.analytics_likes().unwrap(),HashSet::from(["netease:track:1".into()]));
+        smart.replace_likes(Some(HashSet::from(["qqB".into()])));smart.replace_netease_likes(None);
+        assert_eq!(smart.analytics_likes().unwrap(),HashSet::from(["qqB".into()]));
+        drop(smart);let _=std::fs::remove_dir(root);
+    }
 
     #[test]
     fn explanation_uses_selection_weights_without_consuming_randomness() {
@@ -473,6 +492,7 @@ mod tests {
         let items: Vec<_> = ["current", "liked", "other"]
             .into_iter()
             .map(|id| QueueTrack {
+                video: None,
                 id: id.into(),
                 title: id.into(),
                 artist: "Artist".into(),
@@ -602,6 +622,7 @@ mod tests {
         let (root, mut smart) = fixture();
         let items: Vec<_> = (0..10)
             .map(|i| QueueTrack {
+                video: None,
                 id: i.to_string(),
                 media_mid: None,
                 title: i.to_string(),

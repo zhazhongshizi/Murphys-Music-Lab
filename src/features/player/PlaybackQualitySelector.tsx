@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { PLAYBACK_QUALITY_OPTIONS, type PlaybackQuality } from "../../contracts/settings";
-import { playerActions } from "./playerStore";
+import { getCurrentTrack, playerActions, usePlayerSelector } from "./playerStore";
+import { trackProvider } from "../../contracts/providerIdentity";
+import { useDesktopProviders } from "../providers/DesktopProviders";
 
 export function PlaybackQualitySelector({ quality, variant = "stage" }: { quality: PlaybackQuality; variant?: "stage" | "rhine" }) {
+  const track = usePlayerSelector(getCurrentTrack);
+  const { snapshots } = useDesktopProviders();
   const prefix = variant === "rhine" ? "rhine-deck-quality" : "stage__quality";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,6 +58,9 @@ export function PlaybackQualitySelector({ quality, variant = "stage" }: { qualit
   }
 
   const selectedLabel = PLAYBACK_QUALITY_OPTIONS.find((option) => option.value === quality)?.label ?? "高品质 320k";
+  const source = track ? trackProvider(track.id) : null;
+  if (source === "bilibili") return <span>最高兼容 AAC · 自动选择</span>;
+  const options = source === "netease" ? PLAYBACK_QUALITY_OPTIONS.filter(option => snapshots.netease?.capabilities.qualities.includes(option.value)) : PLAYBACK_QUALITY_OPTIONS;
 
   return (
     <div className={`${prefix}-control`} ref={rootRef}>
@@ -63,7 +70,7 @@ export function PlaybackQualitySelector({ quality, variant = "stage" }: { qualit
         aria-haspopup="menu"
         aria-label={`期望音质：${selectedLabel}`}
         className={`${prefix}-trigger`}
-        disabled={busy}
+        disabled={busy || !options.length}
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
         type="button"
@@ -82,7 +89,7 @@ export function PlaybackQualitySelector({ quality, variant = "stage" }: { qualit
           onKeyDown={onKeyDown}
           role="menu"
         >
-          {PLAYBACK_QUALITY_OPTIONS.map((option) => (
+          {options.map((option) => (
             <button
               aria-checked={quality === option.value}
               disabled={busy}

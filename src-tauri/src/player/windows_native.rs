@@ -308,6 +308,16 @@ enum DynamicLyricsDeadlineKind {
     Watchdog,
 }
 
+fn source_album(id: &str, album: &str) -> String {
+    use crate::multi_provider::{identity::track_provider, ProviderId};
+    let label = match track_provider(id) {
+        Ok(ProviderId::Netease) => "网易云",
+        Ok(ProviderId::Bilibili) => "Bilibili",
+        Ok(ProviderId::Local) => "本地音乐",
+        _ => return album.to_owned(),
+    };
+    if album.is_empty() {label.into()} else {format!("{label} · {album}")}
+}
 impl DynamicLyricsDisplayState {
     fn reset_for_track(
         &mut self,
@@ -320,7 +330,7 @@ impl DynamicLyricsDisplayState {
         self.normal = Some(NormalSmtcText {
             title: track.title.clone(),
             artist: track.artist.clone(),
-            album: metadata.album().unwrap_or_default().to_owned(),
+            album: source_album(&track.id, metadata.album().unwrap_or_default()),
         });
         self.timeline = None;
         self.published = None;
@@ -2493,6 +2503,19 @@ mod tests {
         assert_eq!(state.lyrics_epoch, 2);
     }
 
+    #[test]
+    fn smtc_source_album_preserves_qq_and_marks_other_sources_without_changing_identity() {
+        assert_eq!(source_album("qqSong", "Album"), "Album");
+        assert_eq!(source_album("netease:track:1", "Album"), "网易云 · Album");
+        assert_eq!(source_album("bilibili:video:BV17x411w7KC:123", ""), "Bilibili");
+        let local=format!("local_{}_mp3", "a".repeat(64));
+        assert_eq!(source_album(&local,"Album"),"本地音乐 · Album");
+        let track=TrackSummary{id:"bilibili:video:BV17x411w7KC:123".into(),title:"Video · P2".into(),artist:"UP".into(),source:None};
+        let mut display=DynamicLyricsDisplayState::default();
+        display.reset_for_track(7,&track,&SmtcMetadata::from_queue_track("Video".into(),1000));
+        let text=display.normal.unwrap();
+        assert_eq!(text.title,"Video · P2");assert_eq!(text.artist,"UP");assert_eq!(text.album,"Bilibili · Video");
+    }
     #[test]
     fn dynamic_lyrics_writer_commits_published_state_only_after_success() {
         let track = crate::player::TrackSummary {

@@ -5,9 +5,10 @@ export interface LyricLine {
   romanized?: string;
 }
 
-export type ActualQuality = "FLAC" | "MP3" | "MP3 320k" | "MP3 128k" | "OGG" | "QQ MV 音轨" | "未知音质";
+export type ActualQuality = "FLAC" | "MP3" | "MP3 320k" | "MP3 128k" | "OGG" | "QQ MV 音轨" | "未知音质" | "AAC" | `AAC ${number} kbps`;
 
 export interface Track {
+  video?: import("../../contracts/providers").VideoPartMetadata;
   id: string;
   title: string;
   artist: string;

@@ -73,6 +73,8 @@ pub struct PlaybackSessionSnapshot {
     pub lyric_offset_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual_quality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_bitrate: Option<u64>,
     pub mode: PlaybackMode,
     pub queue: QueueSnapshot,
     pub player: PlayerSnapshot,
@@ -88,6 +90,8 @@ pub struct PlaybackSessionUpdate {
     pub lyric_offset_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual_quality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_bitrate: Option<u64>,
     pub mode: PlaybackMode,
     /// Null means unchanged from the generation supplied by this request.
     pub queue: Option<QueueSnapshot>,
@@ -137,6 +141,9 @@ pub struct PlaybackSession {
     mode: RwLock<PlaybackMode>,
     handled_ended_generation: Mutex<Option<u64>>,
     handled_failed_generation: Mutex<Option<u64>>,
+    refreshed_provider_intent: Mutex<Option<u64>>,
+    invalidated_provider_intents:
+        Mutex<std::collections::HashMap<crate::multi_provider::ProviderId, u64>>,
     auto_advance_retry: Mutex<Option<AutoAdvanceRetry>>,
     failed_tracks: Mutex<FailedTracks>,
     active_source: Mutex<Option<ActiveSource>>,
@@ -234,6 +241,8 @@ impl PlaybackSession {
             mode: RwLock::new(PlaybackMode::parse(&mode).unwrap_or(PlaybackMode::Sequence)),
             handled_ended_generation: Mutex::new(None),
             handled_failed_generation: Mutex::new(None),
+            refreshed_provider_intent: Mutex::new(None),
+            invalidated_provider_intents: Mutex::new(std::collections::HashMap::new()),
             auto_advance_retry: Mutex::new(None),
             failed_tracks: Mutex::new(FailedTracks::default()),
             active_source: Mutex::new(None),
@@ -362,10 +371,15 @@ impl PlaybackSession {
     }
 
     pub fn smart_shuffle_status(&self) -> crate::smart_shuffle::SmartShuffleStatus {
+        self.refresh_provider_shuffle_likes();
         self.smart_shuffle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .status()
+    }
+    fn refresh_provider_shuffle_likes(&self) {
+        let likes=self.playback.cached_netease_likes();
+        self.smart_shuffle.lock().unwrap_or_else(std::sync::PoisonError::into_inner).replace_netease_likes(likes);
     }
 
     pub fn shuffle_likes_epoch(&self) -> u64 {
@@ -378,6 +392,7 @@ impl PlaybackSession {
         likes: Option<std::collections::HashSet<String>>,
         epoch: u64,
     ) -> Result<crate::smart_shuffle::SmartShuffleStatus, PlaybackSessionError> {
+        self.refresh_provider_shuffle_likes();
         let history = if enabled {
             self.queue
                 .last_history_plays()
@@ -455,10 +470,11 @@ impl PlaybackSession {
             }
         }
         if snapshot.mode == PlaybackMode::Shuffle {
-            let smart = self
+            let mut smart = self
                 .smart_shuffle
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            smart.replace_netease_likes(self.playback.cached_netease_likes());
             if smart.status().enabled {
                 return smart.index(
                     &snapshot.queue.items,
@@ -570,6 +586,7 @@ impl PlaybackSession {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .storage_available;
+                self.refresh_provider_shuffle_likes();
                 let likes = self
                     .smart_shuffle
                     .lock()
@@ -608,6 +625,7 @@ impl PlaybackSession {
                     }
                 }
                 report["forgotten"]=serde_json::json!(snapshot.queue.items.iter().filter_map(|track| last_plays.get(&track.id).map(|time| serde_json::json!({"id":track.id,"title":track.title,"artist":track.artist,"lastPlayedMs":time}))).collect::<Vec<_>>());
+                self.refresh_provider_shuffle_likes();
                 let smart = self
                     .smart_shuffle
                     .lock()
@@ -676,11 +694,7 @@ impl PlaybackSession {
             } else {
                 "unavailable"
             }
-        } else if !id.is_empty()
-            && id.len() <= 128
-            && id
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        } else if matches!(crate::multi_provider::identity::track_provider(id),Ok(crate::multi_provider::ProviderId::Qqmusic|crate::multi_provider::ProviderId::Netease|crate::multi_provider::ProviderId::Bilibili))
         {
             "online"
         } else {
@@ -723,6 +737,7 @@ impl PlaybackSession {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             actual_quality: self.playback.actual_quality(player.generation),
+            actual_bitrate: self.playback.actual_bitrate(player.generation),
             mode: *self
                 .mode
                 .read()
@@ -749,6 +764,7 @@ impl PlaybackSession {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             actual_quality: self.playback.actual_quality(player.generation),
+            actual_bitrate: self.playback.actual_bitrate(player.generation),
             mode: *self
                 .mode
                 .read()
@@ -1138,6 +1154,52 @@ impl PlaybackSession {
     }
 
     fn play_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        if self.playback.source_account_invalid() {
+            self.stop_player_locked()?;
+            return Err(PlaybackSessionError::Playback(
+                PlaybackError::AuthenticationRequired,
+            ));
+        }
+        if self.playback.media_expired() {
+            let snapshot = self.playback.snapshot();
+            let intent = self.play_intent.load(Ordering::SeqCst);
+            let current = snapshot
+                .current_track
+                .ok_or(PlaybackSessionError::Playback(PlaybackError::Unavailable))?;
+            let track = self
+                .queue
+                .snapshot()
+                .items
+                .into_iter()
+                .find(|t| t.id == current.id)
+                .ok_or(PlaybackSessionError::Playback(PlaybackError::Unavailable))?;
+            let quality = self.requested_quality().unwrap_or(PlaybackQuality::Auto);
+            let mut refreshed = self
+                .refreshed_provider_intent
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if *refreshed == Some(intent) {
+                drop(refreshed);
+                self.schedule_failed_track(intent, &track);
+                return Err(PlaybackSessionError::Playback(PlaybackError::Unavailable));
+            }
+            *refreshed = Some(intent);
+            drop(refreshed);
+            let result = self.play_selected_with_resume_locked(
+                intent,
+                track.clone(),
+                quality,
+                Some(snapshot.position_ms),
+                false,
+                true,
+            );
+            if let Err(err) = &result {
+                if !song_cannot_play(err) && *err != PlaybackSessionError::Superseded {
+                    self.schedule_failed_track(intent, &track);
+                }
+            }
+            return Ok(result?.playback.player);
+        }
         let snapshot = self
             .playback
             .play()
@@ -1202,6 +1264,38 @@ impl PlaybackSession {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.stop_locked()
     }
+    pub(crate) fn play_intent_token(&self) -> u64 {
+        self.play_intent.load(Ordering::SeqCst)
+    }
+    pub(crate) fn invalidate_provider_at(
+        &self,
+        provider: crate::multi_provider::ProviderId,
+        intent: u64,
+    ) -> Result<(), PlaybackSessionError> {
+        let _operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.invalidated_provider_intents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry(provider)
+            .and_modify(|prev| *prev = (*prev).max(intent))
+            .or_insert(intent);
+        if self.play_intent_token() != intent {
+            return Ok(());
+        }
+        let player = self.playback.snapshot();
+        if player
+            .current_track
+            .as_ref()
+            .is_some_and(|t| crate::multi_provider::identity::track_provider(&t.id) == Ok(provider))
+        {
+            self.new_play_intent();
+            self.stop_locked()?;
+        }
+        Ok(())
+    }
 
     fn stop_locked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
         self.cancel_radar_locked();
@@ -1216,6 +1310,10 @@ impl PlaybackSession {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         *self
             .pending_resume
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        *self
+            .refreshed_provider_intent
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         *self
@@ -1556,7 +1654,16 @@ impl PlaybackSession {
         resume_play: bool,
         operation_already_held: bool,
     ) -> Result<SessionPlayResult, PlaybackSessionError> {
-        let requested_quality = self.resolve_quality(quality);
+        let requested_quality = if matches!(crate::multi_provider::identity::track_provider(&track.id), Ok(crate::multi_provider::ProviderId::Netease | crate::multi_provider::ProviderId::Bilibili))
+        {
+            if quality == PlaybackQuality::Auto {
+                *self.default_quality.read().unwrap()
+            } else {
+                quality
+            }
+        } else {
+            self.resolve_quality(quality)
+        };
         let summary = TrackSummary {
             source: None,
             id: track.id.clone(),
@@ -1643,6 +1750,19 @@ impl PlaybackSession {
     ) -> Result<PlaybackLoadResult, PlaybackSessionError> {
         if self.play_intent.load(Ordering::SeqCst) != intent {
             return Err(PlaybackSessionError::Superseded);
+        }
+        if let Ok(provider) = crate::multi_provider::identity::track_provider(&track.id) {
+            if self
+                .invalidated_provider_intents
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(&provider)
+                .is_some_and(|invalidated| intent <= *invalidated)
+            {
+                return Err(PlaybackSessionError::Playback(
+                    PlaybackError::AuthenticationRequired,
+                ));
+            }
         }
         let resume_play = self
             .resume_transport
@@ -1862,6 +1982,10 @@ impl PlaybackSession {
             .fetch_add(1, Ordering::SeqCst)
             .wrapping_add(1);
         *self
+            .refreshed_provider_intent
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        *self
             .failed_tracks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = FailedTracks::default();
@@ -1939,6 +2063,7 @@ impl Drop for PlaybackSession {
 
 impl PlaybackSession {
     fn handle_native_events(&self) {
+        if self.playback.source_account_invalid() {let _=self.stop();}
         while let Some(event) = self.playback.try_native_event() {
             match event {
                 NativePlayerEvent::TransportPlay => {
@@ -2000,14 +2125,45 @@ impl PlaybackSession {
                     else {
                         continue;
                     };
-                    let _ = self.play_selected_with_resume(
+                    let is_bridged_provider = matches!(crate::multi_provider::identity::track_provider(&track.id), Ok(crate::multi_provider::ProviderId::Netease | crate::multi_provider::ProviderId::Bilibili));
+                    let quality = if is_bridged_provider {
+                        let mut refreshed = self
+                            .refreshed_provider_intent
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        if *refreshed == Some(active.intent) {
+                            drop(refreshed);
+                            let _operation = self
+                                .operation
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            self.schedule_failed_track(active.intent, &track);
+                            continue;
+                        }
+                        *refreshed = Some(active.intent);
+                        self.requested_quality().unwrap_or(PlaybackQuality::Auto)
+                    } else {
+                        PlaybackQuality::Auto
+                    };
+                    let result = self.play_selected_with_resume(
                         active.intent,
-                        track,
-                        PlaybackQuality::Auto,
+                        track.clone(),
+                        quality,
                         Some(snapshot.position_ms),
                         false,
                         true,
                     );
+                    if is_bridged_provider
+                        && result.as_ref().is_err_and(|err| {
+                            !song_cannot_play(err) && *err != PlaybackSessionError::Superseded
+                        })
+                    {
+                        let _operation = self
+                            .operation
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        self.schedule_failed_track(active.intent, &track);
+                    }
                 }
                 NativePlayerEvent::Failed {
                     generation,
@@ -2143,6 +2299,7 @@ fn song_cannot_play(error: &PlaybackSessionError) -> bool {
         error,
         PlaybackSessionError::Playback(
             PlaybackError::EntitlementDenied
+                | PlaybackError::PreviewOnly
                 | PlaybackError::Unavailable
                 | PlaybackError::LocalFileMissing
                 | PlaybackError::LocalCodecUnavailable
@@ -2288,6 +2445,32 @@ mod tests {
         denied: &[&str],
     ) -> (TestSession, Arc<Mutex<VecDeque<NativePlayerEvent>>>) {
         gated_failure_session(denied, None)
+    }
+    #[test]
+    fn provider_invalidation_preserves_queue_and_newer_play_intent() {
+        let (test, _) = failure_session(&[]);
+        test.session
+            .play_index(0, PlaybackQuality::Kbps320)
+            .unwrap();
+        let before = test.session.snapshot().queue;
+        let old = test.session.play_intent_token();
+        test.session
+            .play_index(1, PlaybackQuality::Kbps320)
+            .unwrap();
+        test.session
+            .invalidate_provider_at(crate::multi_provider::ProviderId::Qqmusic, old)
+            .unwrap();
+        assert_eq!(test.session.snapshot().player.state, PlayerState::Playing);
+        let current = test.session.play_intent_token();
+        test.session
+            .invalidate_provider_at(crate::multi_provider::ProviderId::Bilibili, current)
+            .unwrap();
+        assert_eq!(test.session.snapshot().player.state, PlayerState::Playing);
+        test.session
+            .invalidate_provider_at(crate::multi_provider::ProviderId::Qqmusic, current)
+            .unwrap();
+        assert_ne!(test.session.snapshot().player.state, PlayerState::Playing);
+        assert_eq!(test.session.snapshot().queue.items, before.items);
     }
 
     pub(super) type SourceGate = (std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>);
@@ -3133,6 +3316,7 @@ mod tests {
 
     fn queue_track(id: &str) -> QueueTrack {
         QueueTrack {
+            video: None,
             id: id.to_owned(),
             media_mid: None,
             title: format!("Track {id}"),
@@ -3146,6 +3330,7 @@ mod tests {
     fn snapshot(mode: PlaybackMode, current: usize, length: usize) -> PlaybackSessionSnapshot {
         let items = (0..length)
             .map(|index| QueueTrack {
+                video: None,
                 id: format!("track{index}"),
                 media_mid: None,
                 title: format!("Track {index}"),
@@ -3157,6 +3342,7 @@ mod tests {
             .collect::<Vec<_>>();
         PlaybackSessionSnapshot {
             skip_notice: None,
+            actual_bitrate: None,
             actual_quality: None,
             lyric_offset_ms: 0,
             mode,
@@ -4013,6 +4199,7 @@ mod tests {
         let local_id = format!("local_{HASH}_mp3");
         queue
             .replace(vec![QueueTrack {
+                video: None,
                 id: local_id.clone(),
                 media_mid: None,
                 title: "Local track".to_owned(),
@@ -4453,4 +4640,388 @@ mod tests {
         drop(session);
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn netease_bridge_preserved_across_pause_and_revoked_on_provider_logout_or_second_expiry() {
+        let root = std::env::temp_dir().join(format!("qqmusic-netease-session-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create netease session root");
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).expect("open queue"));
+        let netease_track: QueueTrack = serde_json::from_value(serde_json::json!({
+            "providerId": "netease",
+            "id": "netease:track:1",
+            "title": "Fixture song",
+            "artist": "Fixture artist",
+            "album": "Fixture album",
+            "durationMs": 120_000
+        }))
+        .expect("netease queue track");
+        let qq_track = queue_track("one");
+        queue
+            .replace(vec![netease_track.clone(), qq_track.clone()])
+            .expect("seed mixed queue");
+
+        let netease = crate::multi_provider::netease::tests::service();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seeks = Arc::new(Mutex::new(Vec::new()));
+        let events = Arc::new(Mutex::new(VecDeque::new()));
+        let playback = Arc::new(
+            PlaybackController::with_resolver(
+                Arc::new(SuccessfulProvider {
+                    track_id: "one",
+                    requests: requests.clone(),
+                }),
+                Box::new(RecoveryPlayer {
+                    snapshot: Mutex::new(PlayerSnapshot::idle()),
+                    events: events.clone(),
+                    seeks: seeks.clone(),
+                }),
+                Arc::new(FakeResolver),
+            )
+            .with_netease(netease.clone())
+            .with_bridge_fixture(),
+        );
+        let session = PlaybackSession::new(queue, playback.clone());
+
+        let played = session
+            .play_index(0, PlaybackQuality::Flac)
+            .expect("play netease track");
+        assert_eq!(played.playback.player.state, PlayerState::Playing);
+        assert_eq!(played.requested_quality, "flac");
+        assert!(playback.has_active_bridged_source());
+
+        // Pausing and resuming must preserve the active MediaBridge.
+        assert_eq!(session.pause().unwrap().state, PlayerState::Paused);
+        assert!(playback.has_active_bridged_source());
+        assert_eq!(session.play().unwrap().state, PlayerState::Playing);
+        assert!(playback.has_active_bridged_source());
+
+        // QQ logout invalidation must not stop active NetEase playback.
+        session
+            .invalidate_provider_at(
+                crate::multi_provider::ProviderId::Qqmusic,
+                session.play_intent_token(),
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert!(playback.has_active_bridged_source());
+
+        // First media expiry on resume triggers a single re-resolution and preserves requested quality.
+        assert_eq!(session.pause().unwrap().state, PlayerState::Paused);
+        playback.expire_bridged_source_for_test();
+        let resumed = session.play().expect("one-shot re-resolve on expired bridge");
+        assert_eq!(resumed.state, PlayerState::Loading);
+        assert_eq!(session.snapshot().requested_quality, "flac");
+        assert!(playback.has_active_bridged_source());
+
+        // Second media expiry on the same play intent is rejected and schedules failed track skip.
+        playback.expire_bridged_source_for_test();
+        assert_eq!(
+            session.play(),
+            Err(PlaybackSessionError::Playback(PlaybackError::Unavailable))
+        );
+        assert!(session.skip_notice().is_some());
+        assert!(!playback.has_active_bridged_source());
+
+        // Re-play NetEase track, then verify NetEase logout invalidates active playback and revokes bridge.
+        session
+            .play_index(0, PlaybackQuality::Kbps320)
+            .expect("replay netease track");
+        assert!(playback.has_active_bridged_source());
+        session
+            .invalidate_provider_at(
+                crate::multi_provider::ProviderId::Netease,
+                session.play_intent_token(),
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Idle);
+        assert!(!playback.has_active_bridged_source());
+
+        // Play QQ track, then verify NetEase logout does not stop QQ track,
+        // while an in-flight NetEase resolution from the invalidated intent is rejected.
+        session
+            .play_index(1, PlaybackQuality::Kbps320)
+            .expect("play qq track");
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        let inflight_intent = session.play_intent_token();
+        let summary = TrackSummary {
+            source: None,
+            id: netease_track.id.clone(),
+            title: netease_track.title.clone(),
+            artist: netease_track.artist.clone(),
+        };
+        let resolved = playback
+            .resolve(summary.clone(), PlaybackQuality::Kbps320)
+            .expect("resolve netease before logout");
+        session
+            .invalidate_provider_at(crate::multi_provider::ProviderId::Netease, inflight_intent)
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert_eq!(
+            session.submit_playback(
+                inflight_intent,
+                netease_track,
+                summary,
+                None,
+                Some(resolved),
+                None,
+                true,
+                PlaybackQuality::Kbps320,
+            ),
+            Err(PlaybackSessionError::Playback(
+                PlaybackError::AuthenticationRequired
+            ))
+        );
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert_eq!(
+            session.snapshot().player.current_track.unwrap().id,
+            qq_track.id
+        );
+
+        drop(session);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bilibili_unknown_expiry_keeps_valid_pause_resume_and_actual_failures_stay_bounded() {
+        // Exercise the real Node/Registry payload with a controlled monotonic
+        // clock. No wall-clock waits, account APIs or user database are used.
+        for lifetime in [0, 300] {
+            let root = std::env::temp_dir().join(format!("bilibili-expiry-review-{}", Uuid::new_v4()));
+            fs::create_dir_all(&root).unwrap();
+            let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+            let bili = crate::multi_provider::bilibili::tests::service_with_expiry(lifetime);
+            let track = crate::multi_provider::bilibili::tests::tracks(&bili)[1].clone();
+            queue.replace(vec![track.clone()]).unwrap();
+            let base = Instant::now();
+            let elapsed = Arc::new(AtomicU64::new(0)); let timer = elapsed.clone();
+            let events = Arc::new(Mutex::new(VecDeque::new()));
+            let seeks = Arc::new(Mutex::new(Vec::new()));
+            let playback = Arc::new(PlaybackController::with_resolver(
+                Arc::new(CountingProvider { requests: Arc::new(AtomicUsize::new(0)) }),
+                Box::new(RecoveryPlayer { snapshot: Mutex::new(PlayerSnapshot::idle()), events: events.clone(), seeks: seeks.clone() }), Arc::new(FakeResolver))
+                .with_bilibili(bili).with_bridge_fixture().with_bridge_clock(Arc::new(move || base + Duration::from_secs(timer.load(Ordering::SeqCst)))));
+            let session = PlaybackSession::new(queue.clone(), playback.clone());
+            let loaded = session.play_index(0, PlaybackQuality::Kbps320).unwrap();
+            assert_eq!(loaded.playback.expires_in_seconds, lifetime);
+            let original_generation = loaded.playback.player.generation;
+            let intent = session.play_intent_token();
+            let pauses = if lifetime == 0 { vec![121, 242, 1000, 7200] } else { vec![121, 242, 299] };
+            for seconds in pauses {
+                elapsed.store(seconds, Ordering::SeqCst);
+                assert!(!playback.media_expired());
+                assert_eq!(session.pause().unwrap().state, PlayerState::Paused);
+                assert_eq!(session.play().unwrap().state, PlayerState::Playing);
+                assert_eq!(session.snapshot().player.generation, original_generation);
+                assert_eq!(*session.refreshed_provider_intent.lock().unwrap(), None);
+            }
+            playback.seek(12345).unwrap();
+            if lifetime == 0 {
+                // Unknown age never consumes recovery. An actual network event
+                // does, and a second event cannot resolve this intent again.
+                events.lock().unwrap().push_back(NativePlayerEvent::Failed { generation: original_generation,
+                    failure: crate::player::PlayerFailure::new(PlayerFailureCode::Network, original_generation) });
+                session.handle_native_events();
+            } else {
+                elapsed.store(301, Ordering::SeqCst);
+                assert!(playback.media_expired());
+                session.pause().unwrap(); session.play().unwrap();
+            }
+            let refreshed = session.snapshot().player.generation;
+            assert_eq!(refreshed, original_generation + 1);
+            assert_eq!(*session.refreshed_provider_intent.lock().unwrap(), Some(intent));
+            events.lock().unwrap().push_back(NativePlayerEvent::Opened { generation: refreshed });
+            session.handle_native_events();
+            assert!(seeks.lock().unwrap().contains(&12345));
+            assert_eq!(session.snapshot().requested_quality, "320k");
+            if lifetime == 0 {
+                events.lock().unwrap().push_back(NativePlayerEvent::Failed { generation: refreshed,
+                    failure: crate::player::PlayerFailure::new(PlayerFailureCode::Network, refreshed) });
+                session.handle_native_events();
+            } else {
+                elapsed.store(602, Ordering::SeqCst);
+                session.pause().unwrap();
+                assert_eq!(session.play(), Err(PlaybackSessionError::Playback(PlaybackError::Unavailable)));
+            }
+            assert_eq!(session.snapshot().player.generation, refreshed);
+            assert!(session.skip_notice().is_some());
+            assert_eq!(queue.snapshot().items, vec![track]);
+            drop(session); drop(playback); drop(queue); let _ = fs::remove_dir_all(root);
+        }
+    }
+    #[test]
+    fn bilibili_aac_bridge_preserved_across_pause_and_revoked_on_provider_logout_or_second_expiry() {
+        let root = std::env::temp_dir().join(format!("qqmusic-bilibili-session-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create bilibili session root");
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).expect("open queue"));
+        let bilibili = crate::multi_provider::bilibili::tests::service();
+        let netease_track = crate::multi_provider::bilibili::tests::tracks(&bilibili)[1].clone();
+        let qq_track = queue_track("one");
+        queue
+            .replace(vec![netease_track.clone(), qq_track.clone()])
+            .expect("seed mixed queue");
+
+        let netease = crate::multi_provider::netease::tests::service();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seeks = Arc::new(Mutex::new(Vec::new()));
+        let events = Arc::new(Mutex::new(VecDeque::new()));
+        let playback = Arc::new(
+            PlaybackController::with_resolver(
+                Arc::new(SuccessfulProvider {
+                    track_id: "one",
+                    requests: requests.clone(),
+                }),
+                Box::new(RecoveryPlayer {
+                    snapshot: Mutex::new(PlayerSnapshot::idle()),
+                    events: events.clone(),
+                    seeks: seeks.clone(),
+                }),
+                Arc::new(FakeResolver),
+            )
+            .with_netease(netease.clone())
+            .with_bilibili(bilibili.clone())
+            .with_bridge_fixture(),
+        );
+        let session = PlaybackSession::new(queue, playback.clone());
+
+        let played = session
+            .play_index(0, PlaybackQuality::Flac)
+            .expect("play bilibili track");
+        assert_eq!(played.playback.player.state, PlayerState::Playing);
+        assert_eq!(played.requested_quality, "flac");
+        assert_eq!(played.playback.quality, "aac");
+        assert_eq!(played.playback.bitrate, Some(192000));
+        assert_eq!(session.snapshot().actual_bitrate, Some(192000));
+        assert_eq!(session.snapshot().queue.items[0].video.as_ref().unwrap().part_number, 2);
+        netease.registry.sign_out(crate::multi_provider::OnlineProviderId::Netease).unwrap();
+        assert!(!playback.source_account_invalid());
+        assert!(playback.has_active_bridged_source());
+
+        // Pausing and resuming must preserve the active MediaBridge.
+        assert_eq!(session.pause().unwrap().state, PlayerState::Paused);
+        assert!(playback.has_active_bridged_source());
+        assert_eq!(session.play().unwrap().state, PlayerState::Playing);
+        assert!(playback.has_active_bridged_source());
+
+        // QQ logout invalidation must not stop active Bilibili playback.
+        session
+            .invalidate_provider_at(
+                crate::multi_provider::ProviderId::Qqmusic,
+                session.play_intent_token(),
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert!(playback.has_active_bridged_source());
+
+        // First media expiry on resume triggers a single re-resolution and preserves requested quality.
+        assert_eq!(session.pause().unwrap().state, PlayerState::Paused);
+        playback.expire_bridged_source_for_test();
+        let resumed = session.play().expect("one-shot re-resolve on expired bridge");
+        assert_eq!(resumed.state, PlayerState::Loading);
+        assert_eq!(session.snapshot().requested_quality, "flac");
+        assert!(playback.has_active_bridged_source());
+
+        // Second media expiry on the same play intent is rejected and schedules failed track skip.
+        playback.expire_bridged_source_for_test();
+        assert_eq!(
+            session.play(),
+            Err(PlaybackSessionError::Playback(PlaybackError::Unavailable))
+        );
+        assert!(session.skip_notice().is_some());
+        assert!(!playback.has_active_bridged_source());
+
+        // Re-play Bilibili track, then verify Bilibili logout invalidates active playback and revokes bridge.
+        session
+            .play_index(0, PlaybackQuality::Kbps320)
+            .expect("replay bilibili track");
+        assert!(playback.has_active_bridged_source());
+        session
+            .invalidate_provider_at(
+                crate::multi_provider::ProviderId::Bilibili,
+                session.play_intent_token(),
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Idle);
+        assert!(!playback.has_active_bridged_source());
+
+        // Play QQ track, then verify Bilibili logout does not stop QQ track,
+        // while an in-flight Bilibili resolution from the invalidated intent is rejected.
+        session
+            .play_index(1, PlaybackQuality::Kbps320)
+            .expect("play qq track");
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        let inflight_intent = session.play_intent_token();
+        let summary = TrackSummary {
+            source: None,
+            id: netease_track.id.clone(),
+            title: netease_track.title.clone(),
+            artist: netease_track.artist.clone(),
+        };
+        let resolved = playback
+            .resolve(summary.clone(), PlaybackQuality::Kbps320)
+            .expect("resolve netease before logout");
+        session
+            .invalidate_provider_at(crate::multi_provider::ProviderId::Bilibili, inflight_intent)
+            .unwrap();
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert_eq!(
+            session.submit_playback(
+                inflight_intent,
+                netease_track,
+                summary,
+                None,
+                Some(resolved),
+                None,
+                true,
+                PlaybackQuality::Kbps320,
+            ),
+            Err(PlaybackSessionError::Playback(
+                PlaybackError::AuthenticationRequired
+            ))
+        );
+        assert_eq!(session.snapshot().player.state, PlayerState::Playing);
+        assert_eq!(
+            session.snapshot().player.current_track.unwrap().id,
+            qq_track.id
+        );
+
+        drop(session);
+        let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn four_source_queue_routes_next_previous_repeat_shuffle_and_account_exit() {
+        const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let root = std::env::temp_dir().join(format!("four-sources-{}", Uuid::new_v4()));
+        let local_root = root.join("local-music"); fs::create_dir_all(&local_root).unwrap();
+        fs::write(local_root.join(format!("{HASH}.mp3")), b"synthetic_local_fixture").unwrap();
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+        let b = crate::multi_provider::bilibili::tests::service();
+        let n = crate::multi_provider::netease::tests::service();
+        let netease: QueueTrack = serde_json::from_value(serde_json::json!({"providerId":"netease","id":"netease:track:1","title":"网易","artist":"合成","album":"","durationMs":1000})).unwrap();
+        let bili = crate::multi_provider::bilibili::tests::tracks(&b)[1].clone();
+        let local: QueueTrack = serde_json::from_value(serde_json::json!({"id":format!("local_{HASH}_mp3"),"title":"本地","artist":"合成","album":"","durationMs":1000})).unwrap();
+        let tracks = vec![queue_track("one"), netease, bili, local]; queue.replace(tracks.clone()).unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let playback = Arc::new(PlaybackController::with_resolver(Arc::new(SuccessfulProvider {track_id:"one",requests:requests.clone()}),
+            Box::new(RecoveryPlayer { snapshot: Mutex::new(PlayerSnapshot::idle()), events: Arc::new(Mutex::new(VecDeque::new())), seeks:Arc::new(Mutex::new(Vec::new())) }), Arc::new(FakeResolver))
+            .with_netease(n.clone()).with_bilibili(b.clone()).with_bridge_fixture());
+        let session = PlaybackSession::with_ports_and_local_music(queue.clone(),playback.clone(),None,None,Some(Arc::new(LocalMusicService::new(local_root))));
+        session.play_index(0,PlaybackQuality::Auto).unwrap();
+        assert_eq!(session.snapshot().player.current_track.unwrap().id,tracks[0].id);
+        for track in &tracks[1..] { session.next().unwrap(); assert_eq!(session.snapshot().player.current_track.unwrap().id,track.id); }
+        assert_eq!(session.snapshot().actual_bitrate,None);
+        session.previous().unwrap(); assert_eq!(session.snapshot().player.current_track.unwrap().id,tracks[2].id);
+        assert_eq!(session.snapshot().actual_quality,Some("aac".into()));
+        session.set_mode(PlaybackMode::RepeatAll).unwrap(); session.play_index(3,PlaybackQuality::Auto).unwrap(); session.next().unwrap();
+        assert_eq!(session.snapshot().player.current_track.unwrap().id,tracks[0].id);
+        session.set_mode(PlaybackMode::Shuffle).unwrap(); for _ in 0..8 { session.next().unwrap(); assert!(tracks.iter().any(|t|Some(&t.id)==session.snapshot().player.current_track.as_ref().map(|t|&t.id))); }
+        session.play_index(2,PlaybackQuality::Auto).unwrap();
+        n.registry.sign_out(crate::multi_provider::OnlineProviderId::Netease).unwrap();
+        session.invalidate_provider_at(crate::multi_provider::ProviderId::Netease,session.play_intent_token()).unwrap();
+        assert!(!playback.source_account_invalid()); assert_eq!(session.snapshot().player.state,PlayerState::Playing);
+        b.registry.sign_out(crate::multi_provider::OnlineProviderId::Bilibili).unwrap(); assert!(playback.source_account_invalid());
+        assert_eq!(session.play(),Err(PlaybackSessionError::Playback(PlaybackError::AuthenticationRequired)));
+        assert_eq!(session.snapshot().queue.items,tracks);
+        drop(session);drop(queue); let _ = fs::remove_dir_all(root);
+    }
+
 }

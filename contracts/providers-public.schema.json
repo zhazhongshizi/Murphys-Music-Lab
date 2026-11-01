@@ -1,0 +1,1249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qqmusic-gui.local/contracts/providers-public.schema.json",
+  "title": "Renderer-safe multi-provider DTOs",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/snapshot"
+    },
+    {
+      "$ref": "#/$defs/track"
+    },
+    {
+      "$ref": "#/$defs/container"
+    },
+    {
+      "$ref": "#/$defs/qrImage"
+    },
+    {
+      "$ref": "#/$defs/qrState"
+    },
+    {
+      "$ref": "#/$defs/writeReceipt"
+    },
+    {
+      "$ref": "#/$defs/video"
+    },
+    {
+      "$ref": "#/$defs/writeRequest"
+    }
+  ],
+  "$defs": {
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "loginMethods": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "qr",
+              "qq",
+              "wx"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "searchKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "songs",
+              "playlists",
+              "videos",
+              "artists",
+              "albums"
+            ]
+          },
+          "maxItems": 5,
+          "uniqueItems": true
+        },
+        "libraryKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "created",
+              "favorite",
+              "likes"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "writeActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "song.like",
+              "song.unlike",
+              "playlist.subscribe",
+              "playlist.unsubscribe",
+              "playlist.addTracks",
+              "playlist.removeTracks",
+              "favorite.addVideos",
+              "favorite.removeVideos",
+              "playlist.create",
+              "playlist.delete"
+            ]
+          },
+          "maxItems": 10,
+          "uniqueItems": true
+        },
+        "lyrics": {
+          "type": "boolean"
+        },
+        "qualities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "auto",
+              "flac",
+              "320k",
+              "128k",
+              "aac"
+            ]
+          },
+          "maxItems": 5,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "loginMethods",
+        "searchKinds",
+        "libraryKinds",
+        "writeActions",
+        "lyrics",
+        "qualities"
+      ],
+      "additionalProperties": false
+    },
+    "errorCode": {
+      "enum": [
+        "invalid_params",
+        "unsupported_capability",
+        "authentication_required",
+        "credential_invalid",
+        "network_unavailable",
+        "rate_limited",
+        "entitlement_denied",
+        "preview_only",
+        "media_unavailable",
+        "unsupported_media",
+        "upstream_schema_changed",
+        "provider_unavailable",
+        "outcome_unknown",
+        "verification_failed",
+        "verification_required",
+        "cancelled",
+        "internal_error"
+      ]
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "enum": [
+            "qqmusic",
+            "netease",
+            "bilibili"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 512,
+          "minLength": 0
+        }
+      },
+      "required": [
+        "providerId",
+        "id",
+        "displayName"
+      ],
+      "additionalProperties": false
+    },
+    "accountRef": {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "enum": [
+            "qqmusic",
+            "netease",
+            "bilibili"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        }
+      },
+      "required": [
+        "providerId",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "trackRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "qqmusic"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^(?!local_)[A-Za-z0-9_-]{1,128}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "providerId",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "local"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^local_[0-9a-f]{64}_(mp3|flac|ogg)(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "providerId",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "netease"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^netease:track:[1-9][0-9]{0,19}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "providerId",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "bilibili"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^bilibili:video:BV[1-9A-HJ-NP-Za-km-z]{10}:[1-9][0-9]{0,19}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "providerId",
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "qrImage": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mimeType": {
+          "const": "image/png"
+        },
+        "imageBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 524288,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "pollAfterMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 30000
+        }
+      },
+      "required": [
+        "sessionId",
+        "mimeType",
+        "imageBase64",
+        "expiresAtMs",
+        "pollAfterMs"
+      ],
+      "additionalProperties": false
+    },
+    "writeReceipt": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "applied",
+            "verificationPending"
+          ]
+        },
+        "affectedCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "affectedCount"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verificationPending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "affectedCount": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "snapshot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "enum": [
+                "qqmusic",
+                "netease",
+                "bilibili"
+              ]
+            },
+            "capabilities": {
+              "$ref": "#/$defs/capabilities"
+            },
+            "state": {
+              "const": "ready"
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            },
+            "persistence": {
+              "enum": [
+                "saved",
+                "sessionOnly"
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "capabilities",
+            "state",
+            "account",
+            "persistence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "enum": [
+                "qqmusic",
+                "netease",
+                "bilibili"
+              ]
+            },
+            "capabilities": {
+              "$ref": "#/$defs/capabilities"
+            },
+            "state": {
+              "enum": [
+                "disabled",
+                "starting",
+                "authenticating",
+                "restoring",
+                "stopping"
+              ]
+            },
+            "error": {
+              "$ref": "#/$defs/errorCode"
+            },
+            "retryAfterMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            }
+          },
+          "required": [
+            "providerId",
+            "capabilities",
+            "state"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "qqmusic"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "account": {
+                "properties": {
+                  "providerId": {
+                    "const": "qqmusic"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "netease"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "account": {
+                "properties": {
+                  "providerId": {
+                    "const": "netease"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "bilibili"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "account": {
+                "properties": {
+                  "providerId": {
+                    "const": "bilibili"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "track": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "qqmusic"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^(?!local_)[A-Za-z0-9_-]{1,128}(?![\\s\\S])"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "artist": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "creatorKind": {
+              "enum": [
+                "artist",
+                "uploader"
+              ]
+            },
+            "album": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 0
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            },
+            "coverCacheKey": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "availability": {
+              "enum": [
+                "unknown",
+                "unavailable",
+                "authenticationRequired",
+                "deleted",
+                "permissionDenied",
+                "processing",
+                "noAudio"
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "id",
+            "title",
+            "artist",
+            "creatorKind",
+            "album",
+            "durationMs",
+            "availability"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "local"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^local_[0-9a-f]{64}_(mp3|flac|ogg)(?![\\s\\S])"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "artist": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "creatorKind": {
+              "enum": [
+                "artist",
+                "uploader"
+              ]
+            },
+            "album": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 0
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            },
+            "coverCacheKey": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "availability": {
+              "enum": [
+                "unknown",
+                "unavailable",
+                "authenticationRequired",
+                "deleted",
+                "permissionDenied",
+                "processing",
+                "noAudio"
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "id",
+            "title",
+            "artist",
+            "creatorKind",
+            "album",
+            "durationMs",
+            "availability"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "netease"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^netease:track:[1-9][0-9]{0,19}(?![\\s\\S])"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "artist": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "creatorKind": {
+              "enum": [
+                "artist",
+                "uploader"
+              ]
+            },
+            "album": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 0
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            },
+            "coverCacheKey": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "availability": {
+              "enum": [
+                "unknown",
+                "unavailable",
+                "authenticationRequired",
+                "deleted",
+                "permissionDenied",
+                "processing",
+                "noAudio"
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "id",
+            "title",
+            "artist",
+            "creatorKind",
+            "album",
+            "durationMs",
+            "availability"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "bilibili"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^bilibili:video:BV[1-9A-HJ-NP-Za-km-z]{10}:[1-9][0-9]{0,19}(?![\\s\\S])"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "artist": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 1
+            },
+            "creatorKind": {
+              "const": "uploader"
+            },
+            "album": {
+              "type": "string",
+              "maxLength": 512,
+              "minLength": 0
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            },
+            "coverCacheKey": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "availability": {
+              "enum": [
+                "unknown",
+                "unavailable",
+                "authenticationRequired",
+                "deleted",
+                "permissionDenied",
+                "processing",
+                "noAudio"
+              ]
+            },
+            "video": {
+              "$ref": "#/$defs/videoPartMetadata"
+            }
+          },
+          "required": [
+            "providerId",
+            "id",
+            "title",
+            "artist",
+            "creatorKind",
+            "album",
+            "durationMs",
+            "availability",
+            "video"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "container": {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "enum": [
+            "qqmusic",
+            "netease",
+            "bilibili"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "playlist",
+            "favoriteFolder"
+          ]
+        },
+        "ownership": {
+          "enum": [
+            "created",
+            "collected"
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/accountRef"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512,
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4096,
+          "minLength": 0
+        },
+        "itemCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "song.like",
+              "song.unlike",
+              "playlist.subscribe",
+              "playlist.unsubscribe",
+              "playlist.addTracks",
+              "playlist.removeTracks",
+              "favorite.addVideos",
+              "favorite.removeVideos",
+              "playlist.create",
+              "playlist.delete"
+            ]
+          },
+          "maxItems": 10,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "providerId",
+        "id",
+        "kind",
+        "ownership",
+        "owner",
+        "title",
+        "description",
+        "itemCount",
+        "allowedActions"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "qqmusic"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "properties": {
+                  "providerId": {
+                    "const": "qqmusic"
+                  }
+                }
+              },
+              "kind": {
+                "const": "playlist"
+              },
+              "id": {
+                "pattern": "^[A-Za-z0-9_-]{1,128}(?![\\s\\S])"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "netease"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "properties": {
+                  "providerId": {
+                    "const": "netease"
+                  }
+                }
+              },
+              "kind": {
+                "const": "playlist"
+              },
+              "id": {
+                "pattern": "^netease:playlist:[1-9][0-9]{0,19}(?![\\s\\S])"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "providerId": {
+                "const": "bilibili"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "properties": {
+                  "providerId": {
+                    "const": "bilibili"
+                  }
+                }
+              },
+              "kind": {
+                "const": "favoriteFolder"
+              },
+              "id": {
+                "pattern": "^bilibili:favorite:[1-9][0-9]{0,19}(?![\\s\\S])"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "qrState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "state": {
+              "enum": [
+                "waitingScan",
+                "waitingConfirmation",
+                "expired",
+                "rejected",
+                "cancelled"
+              ]
+            }
+          },
+          "required": [
+            "sessionId",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "state": {
+              "const": "authenticated"
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            },
+            "persistence": {
+              "enum": [
+                "saved",
+                "sessionOnly"
+              ]
+            }
+          },
+          "required": [
+            "sessionId",
+            "state",
+            "account",
+            "persistence"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "videoPartMetadata": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "partTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "partNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "title",
+        "partTitle",
+        "partNumber"
+      ],
+      "additionalProperties": false
+    },
+    "video": {
+      "type": "object",
+      "properties": {
+        "bvid": {
+          "type": "string",
+          "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+        },
+        "aid": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "uploader": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 864000000000
+        },
+        "availability": {
+          "enum": [
+            "unknown",
+            "unavailable",
+            "authenticationRequired",
+            "deleted",
+            "permissionDenied",
+            "processing",
+            "noAudio"
+          ]
+        },
+        "providerId": {
+          "const": "bilibili"
+        },
+        "coverCacheKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "bvid",
+        "aid",
+        "title",
+        "uploader",
+        "durationMs",
+        "availability",
+        "providerId"
+      ],
+      "additionalProperties": false
+    },
+    "writeRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "netease"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operation": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "setLiked"
+                    },
+                    "trackId": {
+                      "type": "string",
+                      "pattern": "^netease:track:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "liked": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "trackId",
+                    "liked"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "setSubscribed"
+                    },
+                    "containerId": {
+                      "type": "string",
+                      "pattern": "^netease:playlist:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "subscribed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "containerId",
+                    "subscribed"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "addItems"
+                    },
+                    "containerId": {
+                      "type": "string",
+                      "pattern": "^netease:playlist:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "trackIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^netease:track:[1-9][0-9]{0,19}(?![\\s\\S])"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "containerId",
+                    "trackIds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "removeItems"
+                    },
+                    "containerId": {
+                      "type": "string",
+                      "pattern": "^netease:playlist:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "trackIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^netease:track:[1-9][0-9]{0,19}(?![\\s\\S])"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "containerId",
+                    "trackIds"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "accountId",
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "providerId": {
+              "const": "bilibili"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operation": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "addItems"
+                    },
+                    "containerId": {
+                      "type": "string",
+                      "pattern": "^bilibili:favorite:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "trackIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^bilibili:video:BV[1-9A-HJ-NP-Za-km-z]{10}:[1-9][0-9]{0,19}(?![\\s\\S])"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "containerId",
+                    "trackIds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "removeItems"
+                    },
+                    "containerId": {
+                      "type": "string",
+                      "pattern": "^bilibili:favorite:[1-9][0-9]{0,19}(?![\\s\\S])"
+                    },
+                    "trackIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^bilibili:video:BV[1-9A-HJ-NP-Za-km-z]{10}:[1-9][0-9]{0,19}(?![\\s\\S])"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "containerId",
+                    "trackIds"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "providerId",
+            "accountId",
+            "operation"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

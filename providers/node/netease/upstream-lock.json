@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced",
+  "commit": "984cc021b8598cf94c22134f32a8426887fb2de7",
+  "version": "4.41.1",
+  "files": {
+    "LICENSE": "e463bb821c363e6182f16ec1bf24405af3315b4adc72fc1402232fa98b9a0b12",
+    "module/cloudsearch.js": "2c831a3a86413c2747b92970041387fcdb934aba5aabf9a6c2f91816ade80657",
+    "module/likelist.js": "127011717cdf38e00d5e5ec83b191ccd73e6e7a05171fa618c33d27532b582c9",
+    "module/login_qr_check.js": "0b6ced28e872d61882955010b8ca17d0037d8df352d757ced60980893002d1e0",
+    "module/login_qr_create.js": "a804cf5e62f4ba6dded34d57c672d23106c39fde38d613c6ac76f6b059d82fbe",
+    "module/login_qr_key.js": "7065aecd94a73a73231e154b6d4086b93866d580a17bd0cddd009d9679f863aa",
+    "module/login_status.js": "9f69e7bc09e8f7db393b16741b724b72ca8dc6d480e9e76b93e4250f59eb65ff",
+    "module/logout.js": "1a7ed147663b99427afdb6f93ea6e2f2a9fd66aba01f4fad071e05ad911fda70",
+    "module/lyric_new.js": "08a3613292d69ff8cb16b5b650543fc1465464488f97f1732b7e436bfc53ffd3",
+    "module/playlist_detail.js": "24016c435f942e9debd49053cd0d74fa5117f02db8062258583a10ddfe5af6e2",
+    "module/register_xeapikey.js": "603877347b416253497a7f52433ad3c7c142b4ab05abcbfc046067126beb7cd4",
+    "module/search.js": "0272ab7a5620253eefc80708f6116876e8ae0c3745d1028a0062d71d8f689bf4",
+    "module/song_detail.js": "a85e79d888667b645301597a8c755fc468d62be0506fa94ca98e551bf4ee58a9",
+    "module/song_url_v1.js": "623d86b61967dd1f2e1a2facdf1d5cd00850a47a55a09eab74c6d749d081a24f",
+    "module/user_playlist.js": "8f67866eb8ac7306f326511bda66e8b18583d74396ffba2d16ebf52f6166bbb3",
+    "package.json": "7d38de102f9d211b8a221ab5943610473c4b23aeee36e9a9cf0e22848e04b9d4",
+    "util/config.json": "25c30bd41a877b9992e870a457dedd02ac033041adcfb3ca3f9bdc7fdc288665",
+    "util/crypto.js": "45bdb719176d66d864f876da3d7436eab5d99a37f031d1f6fd5025b4191c577c",
+    "util/zstd.js": "b1e45365cba1247bb6b2786bfef659ea5d601f771032a3d34da95a61f2639825",
+    "module/like.js": "475a4f8880ce2fac8c5521533b6e93c045657fe783be2de4bb104bb3de5043d4",
+    "module/playlist_subscribe.js": "1541d0d2ba4062bf51517c9b4a3d9e95682e701688fa2cc2a93f794858f3a089",
+    "module/playlist_tracks.js": "882688ccb3053cf93910d1ab8d80ebacb7e89309145191fcee747b4b12714a8c",
+    "module/playlist_detail_dynamic.js": "20a21bdd4f3361f45879a7be8df580d6de012c49a7f249f5eba568b7daa9a0d9"
+  }
+}

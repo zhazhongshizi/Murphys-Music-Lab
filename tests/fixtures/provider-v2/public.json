@@ -1,0 +1,142 @@
+[
+  {
+    "definition": "snapshot",
+    "value": {
+      "providerId": "bilibili",
+      "capabilities": {
+        "loginMethods": [
+          "qr"
+        ],
+        "searchKinds": [
+          "videos"
+        ],
+        "libraryKinds": [
+          "created",
+          "favorite"
+        ],
+        "writeActions": [
+          "favorite.addVideos",
+          "favorite.removeVideos"
+        ],
+        "lyrics": false,
+        "qualities": [
+          "auto",
+          "aac"
+        ]
+      },
+      "state": "disabled"
+    }
+  },
+  {
+    "definition": "snapshot",
+    "value": {
+      "providerId": "netease",
+      "capabilities": {
+        "loginMethods": [
+          "qr"
+        ],
+        "searchKinds": [
+          "songs",
+          "playlists"
+        ],
+        "libraryKinds": [
+          "created",
+          "favorite",
+          "likes"
+        ],
+        "writeActions": [
+          "song.like",
+          "song.unlike",
+          "playlist.subscribe",
+          "playlist.unsubscribe",
+          "playlist.addTracks",
+          "playlist.removeTracks"
+        ],
+        "lyrics": true,
+        "qualities": [
+          "auto",
+          "flac",
+          "320k",
+          "128k"
+        ]
+      },
+      "state": "ready",
+      "account": {
+        "providerId": "netease",
+        "id": "42",
+        "displayName": "Fixture"
+      },
+      "persistence": "sessionOnly"
+    }
+  },
+  {
+    "definition": "track",
+    "value": {
+      "providerId": "bilibili",
+      "id": "bilibili:video:BV17x411w7KC:456",
+      "title": "Fixture part one",
+      "artist": "Fixture uploader",
+      "creatorKind": "uploader",
+      "album": "",
+      "durationMs": 180000,
+      "availability": "unknown",
+      "video": {
+        "title": "Fixture video",
+        "partTitle": "Fixture part one",
+        "partNumber": 1
+      }
+    }
+  },
+  {
+    "definition": "container",
+    "value": {
+      "providerId": "bilibili",
+      "id": "bilibili:favorite:77",
+      "kind": "favoriteFolder",
+      "ownership": "created",
+      "owner": {
+        "providerId": "bilibili",
+        "id": "42"
+      },
+      "title": "Fixture favorites",
+      "description": "",
+      "itemCount": 1,
+      "allowedActions": [
+        "favorite.addVideos",
+        "favorite.removeVideos"
+      ]
+    }
+  },
+  {
+    "definition": "qrState",
+    "value": {
+      "sessionId": "fixture-qr-1",
+      "state": "authenticated",
+      "account": {
+        "providerId": "netease",
+        "id": "42",
+        "displayName": "Fixture"
+      },
+      "persistence": "saved"
+    }
+  },
+  {
+    "definition": "writeReceipt",
+    "value": {
+      "status": "verificationPending",
+      "affectedCount": null
+    }
+  },
+  {
+    "definition": "video",
+    "value": {
+      "providerId": "bilibili",
+      "bvid": "BV17x411w7KC",
+      "aid": "123",
+      "title": "Fixture video",
+      "uploader": "Fixture uploader",
+      "durationMs": 180000,
+      "availability": "unknown"
+    }
+  }
+]

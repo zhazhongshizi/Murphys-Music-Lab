@@ -76,7 +76,7 @@ describe("应用外壳键盘与状态契约", () => {
 
     await user.click(trigger);
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    await user.click(screen.getByText("QQ Music GUI"));
+    await user.click(screen.getByText("Murphy’s Music Lab"));
     expect(screen.getByRole("menu")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "关闭设置" }));
     expect(trigger).toHaveFocus();
@@ -173,7 +173,7 @@ describe("应用外壳键盘与状态契约", () => {
     await user.click(screen.getByRole("button", { name: "打开播放队列" }));
     dialog = screen.getByRole("dialog", { name: "播放队列" });
     expect(within(dialog).getByText("5 首 · 本地队列")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "纸月光" })).toHaveAttribute("aria-current", "true");
+    expect(within(dialog).getByRole("button", { name: "纸月光 曲目来源" })).toHaveAttribute("aria-current", "true");
   }, 10_000);
 
   it("让音量轨道与真实音量和静音状态同步", async () => {

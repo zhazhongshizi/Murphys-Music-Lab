@@ -1,0 +1,934 @@
+[
+  {
+    "name": "system.handshake",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-0",
+      "method": "system.handshake",
+      "params": {
+        "protocolVersion": 2,
+        "providerId": "netease"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-0",
+      "ok": true,
+      "result": {
+        "protocolVersion": 2,
+        "provider": {
+          "id": "netease",
+          "name": "netease-provider",
+          "version": "0.1.0"
+        },
+        "maxLineBytes": 1048576,
+        "capabilities": {
+          "loginMethods": [
+            "qr"
+          ],
+          "searchKinds": [
+            "songs",
+            "playlists"
+          ],
+          "libraryKinds": [
+            "created",
+            "favorite",
+            "likes"
+          ],
+          "writeActions": [
+            "song.like",
+            "song.unlike",
+            "playlist.subscribe",
+            "playlist.unsubscribe",
+            "playlist.addTracks",
+            "playlist.removeTracks"
+          ],
+          "lyrics": true,
+          "qualities": [
+            "auto",
+            "flac",
+            "320k",
+            "128k"
+          ]
+        },
+        "implementedMethods": [
+          "system.handshake",
+          "system.ping",
+          "auth.qr.start",
+          "auth.qr.poll",
+          "auth.qr.cancel",
+          "auth.credential.restore",
+          "auth.credential.check",
+          "auth.credential.refresh",
+          "auth.logout",
+          "search.songs",
+          "search.playlists",
+          "song.detail",
+          "library.containers",
+          "library.tracks",
+          "library.likes",
+          "library.setLiked",
+          "library.setSubscribed",
+          "library.addItems",
+          "library.removeItems",
+          "lyrics.get",
+          "playback.resolve"
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "system.ping",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-1",
+      "method": "system.ping",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-1",
+      "ok": true,
+      "result": {
+        "alive": true
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.qr.start",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-2",
+      "method": "auth.qr.start",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-2",
+      "ok": true,
+      "result": {
+        "sessionId": "fixture-qr-1",
+        "mimeType": "image/png",
+        "imageBase64": "AAAA",
+        "expiresAtMs": 1793200000000,
+        "pollAfterMs": 2000
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.qr.poll",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-3",
+      "method": "auth.qr.poll",
+      "params": {
+        "sessionId": "fixture-qr-1"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-3",
+      "ok": true,
+      "result": {
+        "sessionId": "fixture-qr-1",
+        "state": "authenticated",
+        "account": {
+          "id": "42",
+          "displayName": "Fixture"
+        },
+        "credential": {
+          "version": 1,
+          "providerId": "netease",
+          "payload": "{\"cookie\":\"SYNTHETIC_TEST_ONLY\"}"
+        }
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.qr.cancel",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-4",
+      "method": "auth.qr.cancel",
+      "params": {
+        "sessionId": "fixture-qr-1"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-4",
+      "ok": true,
+      "result": {
+        "sessionId": "fixture-qr-1",
+        "state": "cancelled"
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.credential.restore",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-5",
+      "method": "auth.credential.restore",
+      "params": {
+        "credential": {
+          "version": 1,
+          "providerId": "netease",
+          "payload": "{\"cookie\":\"SYNTHETIC_TEST_ONLY\"}"
+        }
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-5",
+      "ok": true,
+      "result": {
+        "account": {
+          "id": "42",
+          "displayName": "Fixture"
+        }
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.credential.check",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-6",
+      "method": "auth.credential.check",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-6",
+      "ok": true,
+      "result": {
+        "valid": true,
+        "account": {
+          "id": "42",
+          "displayName": "Fixture"
+        }
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.credential.refresh",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-7",
+      "method": "auth.credential.refresh",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-7",
+      "ok": true,
+      "result": {
+        "account": {
+          "id": "42",
+          "displayName": "Fixture"
+        },
+        "credential": {
+          "version": 1,
+          "providerId": "netease",
+          "payload": "{\"cookie\":\"SYNTHETIC_TEST_ONLY\"}"
+        }
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "auth.logout",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-8",
+      "method": "auth.logout",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-8",
+      "ok": true,
+      "result": {
+        "upstreamRevoked": false
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "search.songs",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-9",
+      "method": "search.songs",
+      "params": {
+        "keyword": "test",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-9",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "ref": {
+              "kind": "song",
+              "songId": "123"
+            },
+            "title": "Fixture song",
+            "artist": "Fixture artist",
+            "creatorKind": "artist",
+            "album": "Fixture album",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown"
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "search.playlists",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-10",
+      "method": "search.playlists",
+      "params": {
+        "keyword": "test",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-10",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "id": "77",
+            "kind": "playlist",
+            "ownership": "created",
+            "ownerId": "42",
+            "title": "Fixture playlist",
+            "description": "",
+            "itemCount": 1,
+            "allowedActions": [
+              "playlist.addTracks",
+              "playlist.removeTracks"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "search.videos",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "fixture-11",
+      "method": "search.videos",
+      "params": {
+        "keyword": "test",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-11",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "bvid": "BV17x411w7KC",
+            "aid": "170001",
+            "title": "Fixture video",
+            "uploader": "Fixture uploader",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown"
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "song.detail",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-12",
+      "method": "song.detail",
+      "params": {
+        "songId": "123"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-12",
+      "ok": true,
+      "result": {
+        "ref": {
+          "kind": "song",
+          "songId": "123"
+        },
+        "title": "Fixture song",
+        "artist": "Fixture artist",
+        "creatorKind": "artist",
+        "album": "Fixture album",
+        "durationMs": 180000,
+        "coverUrl": null,
+        "availability": "unknown"
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "video.resolve",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "fixture-13",
+      "method": "video.resolve",
+      "params": {
+        "input": "BV17x411w7KC"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-13",
+      "ok": true,
+      "result": {
+        "bvid": "BV17x411w7KC",
+        "aid": "170001",
+        "title": "Fixture video",
+        "uploader": "Fixture uploader",
+        "durationMs": 180000,
+        "coverUrl": null,
+        "availability": "unknown"
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "video.parts",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "fixture-14",
+      "method": "video.parts",
+      "params": {
+        "bvid": "BV17x411w7KC",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-14",
+      "ok": true,
+      "result": {
+        "bvid": "BV17x411w7KC",
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "ref": {
+              "kind": "videoPart",
+              "bvid": "BV17x411w7KC",
+              "cid": "456"
+            },
+            "title": "Fixture part one",
+            "artist": "Fixture uploader",
+            "creatorKind": "uploader",
+            "album": "Fixture album",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown",
+            "video": {
+              "title": "Fixture video",
+              "partTitle": "Fixture part one",
+              "partNumber": 1
+            }
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.containers",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-15",
+      "method": "library.containers",
+      "params": {
+        "kind": "created",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-15",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "id": "77",
+            "kind": "playlist",
+            "ownership": "created",
+            "ownerId": "42",
+            "title": "Fixture playlist",
+            "description": "",
+            "itemCount": 1,
+            "allowedActions": [
+              "playlist.addTracks",
+              "playlist.removeTracks"
+            ]
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.tracks",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-16",
+      "method": "library.tracks",
+      "params": {
+        "containerId": "77",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-16",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "ref": {
+              "kind": "song",
+              "songId": "123"
+            },
+            "title": "Fixture song",
+            "artist": "Fixture artist",
+            "creatorKind": "artist",
+            "album": "Fixture album",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown"
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.videos",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "fixture-17",
+      "method": "library.videos",
+      "params": {
+        "containerId": "77",
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-17",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "bvid": "BV17x411w7KC",
+            "aid": "170001",
+            "title": "Fixture video",
+            "uploader": "Fixture uploader",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown"
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.likes",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-18",
+      "method": "library.likes",
+      "params": {
+        "page": 1,
+        "pageSize": 20
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-18",
+      "ok": true,
+      "result": {
+        "page": 1,
+        "hasMore": false,
+        "total": 1,
+        "items": [
+          {
+            "ref": {
+              "kind": "song",
+              "songId": "123"
+            },
+            "title": "Fixture song",
+            "artist": "Fixture artist",
+            "creatorKind": "artist",
+            "album": "Fixture album",
+            "durationMs": 180000,
+            "coverUrl": null,
+            "availability": "unknown"
+          }
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.setLiked",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-19",
+      "method": "library.setLiked",
+      "params": {
+        "songId": "123",
+        "liked": true
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-19",
+      "ok": true,
+      "result": {
+        "status": "applied",
+        "affectedCount": 1
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.setSubscribed",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-20",
+      "method": "library.setSubscribed",
+      "params": {
+        "containerId": "77",
+        "subscribed": true
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-20",
+      "ok": true,
+      "result": {
+        "status": "applied",
+        "affectedCount": 1
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.addItems",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-21",
+      "method": "library.addItems",
+      "params": {
+        "containerId": "77",
+        "items": [
+          {
+            "kind": "song",
+            "songId": "123"
+          }
+        ]
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-21",
+      "ok": true,
+      "result": {
+        "status": "verificationPending",
+        "affectedCount": null
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "library.removeItems",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-22",
+      "method": "library.removeItems",
+      "params": {
+        "containerId": "77",
+        "items": [
+          {
+            "kind": "song",
+            "songId": "123"
+          }
+        ]
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-22",
+      "ok": true,
+      "result": {
+        "status": "verificationPending",
+        "affectedCount": null
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "lyrics.get",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-23",
+      "method": "lyrics.get",
+      "params": {
+        "songId": "123"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-23",
+      "ok": true,
+      "result": {
+        "songId": "123",
+        "original": "[00:00.00]Fixture",
+        "translation": null,
+        "romanization": null
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "playback.resolve",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "fixture-24",
+      "method": "playback.resolve",
+      "params": {
+        "track": {
+          "kind": "song",
+          "songId": "123"
+        },
+        "preferredQuality": "auto"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "fixture-24",
+      "ok": true,
+      "result": {
+        "track": {
+          "kind": "song",
+          "songId": "123"
+        },
+        "quality": "320k",
+        "codec": "mp3",
+        "bitrate": 320000,
+        "url": "https://media.example.invalid/fixture",
+        "headers": {},
+        "expiresInSeconds": 600,
+        "durationMs": 180000
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "bilibili.playback.resolve",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "bili-play",
+      "method": "playback.resolve",
+      "params": {
+        "track": {
+          "kind": "videoPart",
+          "bvid": "BV17x411w7KC",
+          "cid": "124"
+        },
+        "preferredQuality": "aac"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "bili-play",
+      "ok": true,
+      "result": {
+        "track": {
+          "kind": "videoPart",
+          "bvid": "BV17x411w7KC",
+          "cid": "124"
+        },
+        "quality": "aac",
+        "codec": "aac",
+        "bitrate": 192000,
+        "url": "https://media.example.invalid/same-aac",
+        "backupUrls": [
+          "https://backup.example.invalid/same-aac"
+        ],
+        "dash": {
+          "initialization": "0-907",
+          "indexRange": "908-1047"
+        },
+        "headers": {
+          "Referer": "https://www.bilibili.com/"
+        },
+        "expiresInSeconds": 0,
+        "durationMs": 3800000
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "netease.library.container",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "stage3d-library.container",
+      "method": "library.container",
+      "params": {
+        "containerId": "2"
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "stage3d-library.container",
+      "ok": true,
+      "result": {
+        "id": "2",
+        "kind": "playlist",
+        "ownership": "created",
+        "ownerId": "42",
+        "title": "Fixture",
+        "description": "",
+        "itemCount": 0,
+        "allowedActions": [
+          "playlist.addTracks",
+          "playlist.removeTracks"
+        ]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "netease.library.verify",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "stage3d-library.verify",
+      "method": "library.verify",
+      "params": {
+        "method": "library.setLiked",
+        "params": {
+          "songId": "1",
+          "liked": true
+        }
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "stage3d-library.verify",
+      "ok": true,
+      "result": {
+        "status": "verificationPending",
+        "affectedCount": null
+      },
+      "warnings": []
+    }
+  },
+  {
+    "name": "netease.library.likeIds",
+    "providerId": "netease",
+    "request": {
+      "v": 2,
+      "id": "stage3d-library.likeIds",
+      "method": "library.likeIds",
+      "params": {}
+    },
+    "response": {
+      "v": 2,
+      "id": "stage3d-library.likeIds",
+      "ok": true,
+      "result": [
+        "1",
+        "2"
+      ],
+      "warnings": []
+    }
+  }
+]

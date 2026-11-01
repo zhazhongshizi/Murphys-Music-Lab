@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -42,6 +42,8 @@ interface LoginDialogProps {
   auth: AuthSnapshot;
   onAuthChange: (snapshot: AuthSnapshot) => void;
   onClose: () => void;
+  accountNavigation?: ReactNode;
+  variant?: "default" | "rhine";
 }
 
 interface AuthClient {
@@ -74,6 +76,8 @@ export function LoginDialog({
   onAuthChange,
   onClose,
   client = DEFAULT_CLIENT,
+  accountNavigation,
+  variant = "default",
 }: LoginDialogProps & { client?: AuthClient }) {
   const [screen, setScreen] = useState<LoginScreen>(() => (
     auth.state === "authenticated"
@@ -320,7 +324,7 @@ export function LoginDialog({
   }
 
   return createPortal(
-    <div className="login-overlay">
+    <div className="login-overlay" data-variant={variant}>
       <section
         aria-labelledby="login-dialog-title"
         aria-modal="true"
@@ -338,6 +342,7 @@ export function LoginDialog({
             <Icon name="close" size={18} />
           </button>
         </header>
+        {accountNavigation}
 
         {screen.kind === "choose" ? (
           <div className="login-dialog__choose">

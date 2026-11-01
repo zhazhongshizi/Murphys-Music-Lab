@@ -5,6 +5,7 @@
   height: 100vh;
   min-height: 580px;
   overflow: hidden;
+  overflow: clip;
   --cover-glow-sky-mix: min(
     calc(var(--cover-blend-cap) * 100%),
     calc(var(--cover-glow-intensity, 1) * var(--cover-glow-sky-alpha) * 100%)
@@ -122,6 +123,8 @@
 
 .top-bar__brand > div {
   display: grid;
+  flex: 1;
+  container: app-brand / inline-size;
   min-width: 0;
   line-height: 1.1;
 }
@@ -141,6 +144,13 @@
   font-family: var(--font-data);
   font-size: 9px;
   letter-spacing: 0.16em;
+}
+
+.app-brand-name > b { font: inherit; }
+.app-brand-name__short { display: none; }
+@container app-brand (max-width: 210px) {
+  .app-brand-name__full { display: none; }
+  .app-brand-name__short { display: inline; }
 }
 
 .brand-mark {
@@ -427,6 +437,8 @@
   position: absolute;
   z-index: -1;
   inset: 0;
+  overflow: hidden;
+  overflow: clip;
   pointer-events: none;
 }
 

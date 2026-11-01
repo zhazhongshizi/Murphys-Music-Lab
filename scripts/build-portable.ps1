@@ -2,18 +2,22 @@
 param(
     [switch]$SkipReleaseBuild,
     [string]$ArtifactTag,
-    [string]$Target = 'x86_64-pc-windows-msvc'
+    [string]$Target = 'x86_64-pc-windows-msvc',
+    [string]$CargoTargetDir
 )
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $repositoryRoot 'src-tauri'
 & (Join-Path $PSScriptRoot 'assert-version-sources.ps1') -RepositoryRoot $repositoryRoot
-$targetReleaseRoot = Join-Path $tauriRoot "target\$Target\release"
-$applicationPath = Join-Path $targetReleaseRoot 'qqmusic-gui.exe'
+$cargoRoot = Join-Path $tauriRoot 'target'
+if ($CargoTargetDir) { $cargoRoot = [IO.Path]::GetFullPath($CargoTargetDir) }
+elseif ($env:CARGO_TARGET_DIR) { $cargoRoot = [IO.Path]::GetFullPath($env:CARGO_TARGET_DIR) }
+$targetReleaseRoot = Join-Path $cargoRoot "$Target/release"
+$applicationPath = Join-Path $targetReleaseRoot 'Music-Lab.exe'
 $releaseProviderRoot = Join-Path $targetReleaseRoot 'provider'
 $outputRoot = Join-Path $repositoryRoot 'output\releases'
-$tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot 'tauri.conf.json') -Raw |
+$tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot 'tauri.conf.json') -Raw -Encoding UTF8 |
     ConvertFrom-Json
 $version = [string]$tauriConfig.version
 if ($version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
@@ -25,7 +29,7 @@ if ([string]::IsNullOrWhiteSpace($ArtifactTag)) {
 if ($ArtifactTag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
     throw 'ArtifactTag must contain only letters, numbers, dots, underscores, or hyphens.'
 }
-$portableName = "QQ-Music-GUI_${version}_x64-portable_${ArtifactTag}"
+$portableName = "Murphys-Music-Lab_${version}_x64-portable_${ArtifactTag}"
 $portableRoot = Join-Path $outputRoot $portableName
 $archivePath = Join-Path $outputRoot "$portableName.zip"
 
@@ -34,7 +38,7 @@ if ($Target -ne 'x86_64-pc-windows-msvc') {
 }
 
 if (-not $SkipReleaseBuild) {
-    & (Join-Path $PSScriptRoot 'build-release.ps1') -Target $Target
+    & (Join-Path $PSScriptRoot 'build-release.ps1') -Target $Target -CargoTargetDir $cargoRoot
 }
 
 if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
@@ -95,6 +99,9 @@ New-Item -ItemType Directory -Path $portableRoot | Out-Null
 
 Copy-Item -LiteralPath $applicationPath -Destination $portableRoot
 Copy-Item -LiteralPath $releaseProviderRoot -Destination $portableRoot -Recurse
+foreach ($name in @('node', 'providers', 'contracts', 'licenses', 'provider-manifest.json')) {
+    Copy-Item -LiteralPath (Join-Path $targetReleaseRoot $name) -Destination $portableRoot -Recurse
+}
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $portableRoot
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'README.md') -Destination $portableRoot
@@ -104,7 +111,7 @@ $portableProviderRoot = Join-Path $portableRoot 'provider'
 & (Join-Path $PSScriptRoot 'verify-provider-manifest.ps1') -BundleRoot $portableProviderRoot
 & (Join-Path $PSScriptRoot 'assert-release-provider.ps1') -BundleRoot $portableProviderRoot
 & (Join-Path $PSScriptRoot 'test-portable-contents.ps1') -PackageRoot $portableRoot
-& (Join-Path $PSScriptRoot 'test-release-smoke.ps1') -PackageRoot $portableRoot
+& (Join-Path $PSScriptRoot 'test-provider-stage-g.ps1') -PackageRoot $portableRoot
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory(

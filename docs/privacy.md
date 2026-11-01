@@ -4,7 +4,7 @@
 
 截图使用实际前端与虚构数据，阻断外部请求，不加载 Credential Manager、真实 SQLite 或 WebView 用户存储。
 
-运行时凭据保存在 Windows Credential Manager（`QQMusicGUI/Auth/v1`）；队列、历史和资料保存在用户应用数据目录的 SQLite，部分 UI 数据在 WebView 存储。设备身份同样保存在用户数据目录，缓存图片及可选日志位于应用旁。没有自动遥测上传；认证和播放仍访问 QQ 音乐服务。
+QQ 运行时凭据保存在 Windows Credential Manager（`QQMusicGUI/Auth/v1`）；网易云与 Bilibili 登录材料由 Rust 以用户范围 DPAPI 保护并按来源独立保存。队列、历史和资料保存在用户应用数据目录的 SQLite，部分 UI 数据在 WebView 存储。设备身份同样保存在用户数据目录，缓存图片及可选日志位于应用旁。没有自动遥测上传；认证和播放会访问你选择的 QQ 音乐、网易云或 Bilibili 服务。
 
 提交或反馈前：
 

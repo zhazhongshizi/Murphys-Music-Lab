@@ -3,11 +3,11 @@ import { getSearchSuggestions } from "../../backend/catalogDiscoveryAdapter";
 import { Icon } from "../../components/Icon";
 
 export function CatalogSearchInput({ value, onChange, onSubmit, inputRef, active = true,
-  placeholder = "搜索歌曲、歌手或专辑", label = "搜索歌曲、歌手或专辑", autoFocus = false,
+  placeholder = "搜索歌曲、歌手或专辑", label = "搜索歌曲、歌手或专辑", autoFocus = false, suggestions = true,
 }: {
   value: string; onChange: (value: string) => void; onSubmit?: (value: string) => void;
   inputRef?: Ref<HTMLInputElement>; active?: boolean; placeholder?: string; label?: string;
-  autoFocus?: boolean;
+  autoFocus?: boolean; suggestions?: boolean;
 }) {
   const id = useId();
   const generation = useRef(0);
@@ -19,7 +19,7 @@ export function CatalogSearchInput({ value, onChange, onSubmit, inputRef, active
   const normalized = value.trim();
   useEffect(() => {
     const epoch = ++generation.current;
-    if (!active || !focused || composing || !normalized || [...normalized].length > 100 ||
+    if (!suggestions || !active || !focused || composing || !normalized || [...normalized].length > 100 ||
         dismissed === normalized) return;
     const timer = window.setTimeout(() => {
       void getSearchSuggestions(normalized, epoch).then(reply => {
@@ -29,8 +29,8 @@ export function CatalogSearchInput({ value, onChange, onSubmit, inputRef, active
       }).catch(() => { if (epoch === generation.current) setResult(null); });
     }, 250);
     return () => { generation.current++; window.clearTimeout(timer); };
-  }, [active, focused, composing, normalized, dismissed]);
-  const items = active && focused && !composing && dismissed !== normalized &&
+  }, [suggestions, active, focused, composing, normalized, dismissed]);
+  const items = suggestions && active && focused && !composing && dismissed !== normalized &&
     result?.keyword === normalized ? result.items : [];
   function choose(keyword: string) {
     generation.current++;

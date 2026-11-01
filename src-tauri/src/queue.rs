@@ -15,9 +15,15 @@ pub enum QueueError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(
+    rename_all = "camelCase",
+    deny_unknown_fields,
+    into = "serde_json::Value",
+    try_from = "QueueTrackWire"
+)]
 pub struct QueueTrack {
     pub id: String,
+    pub video: Option<crate::multi_provider::VideoPartMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_mid: Option<String>,
     pub title: String,
@@ -28,9 +34,64 @@ pub struct QueueTrack {
     pub cover_cache_key: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QueueTrackWire {
+    #[serde(default, deserialize_with = "optional_provider")]
+    provider_id: Option<crate::multi_provider::ProviderId>,
+    id: String,
+    #[serde(default)]
+    video: Option<crate::multi_provider::VideoPartMetadata>,
+    #[serde(default)]
+    media_mid: Option<String>,
+    title: String,
+    artist: String,
+    album: String,
+    duration_ms: u64,
+    #[serde(default)]
+    cover_cache_key: Option<String>,
+}
+fn optional_provider<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<crate::multi_provider::ProviderId>, D::Error> {
+    crate::multi_provider::ProviderId::deserialize(d).map(Some)
+}
+impl TryFrom<QueueTrackWire> for QueueTrack {
+    type Error = &'static str;
+    fn try_from(w: QueueTrackWire) -> Result<Self, Self::Error> {
+        use crate::multi_provider::{identity::TrackRef, ProviderId};
+        let id = TrackRef::from_legacy_id(w.id.clone()).map_err(|_| "invalid_track_identity")?;
+        if w.provider_id.is_some_and(|p| p != id.provider_id())
+            || (w.provider_id.is_none()
+                && !matches!(id.provider_id(), ProviderId::Qqmusic | ProviderId::Local))
+        {
+            return Err("invalid_track_source");
+        }
+        if !crate::multi_provider::VideoPartMetadata::validate_for(&w.id, w.video.as_ref()) { return Err("invalid_video_metadata"); }
+        Ok(Self {
+            video: w.video,
+            id: w.id,
+            media_mid: w.media_mid,
+            title: w.title,
+            artist: w.artist,
+            album: w.album,
+            duration_ms: w.duration_ms,
+            cover_cache_key: w.cover_cache_key,
+        })
+    }
+}
+impl From<QueueTrack> for serde_json::Value {
+    fn from(t: QueueTrack) -> Self {
+        crate::multi_provider::identity::public_track(
+            serde_json::json!({"video":t.video,"id":t.id,"mediaMid":t.media_mid,"title":t.title,"artist":t.artist,"album":t.album,"durationMs":t.duration_ms,"coverCacheKey":t.cover_cache_key}),
+        )
+    }
+}
+
 impl QueueTrack {
     fn persisted(&self) -> PersistedTrack {
         PersistedTrack {
+            video: self.video.clone(),
             track_id: self.id.clone(),
             media_mid: self.media_mid.clone(),
             title: self.title.clone(),
@@ -45,6 +106,7 @@ impl QueueTrack {
 impl From<PersistedTrack> for QueueTrack {
     fn from(track: PersistedTrack) -> Self {
         Self {
+            video: track.video,
             id: track.track_id,
             media_mid: track.media_mid,
             title: track.title,
@@ -203,11 +265,12 @@ impl QueueService {
         if generation.is_some_and(|value| value != state.generation) {
             return Ok(None);
         }
-        let previous = serde_json::to_string(&crate::personal::StoredQueue {
+        let previous = crate::personal::StoredQueue {
             saved_at_ms: crate::personal::now_ms(),
             items: state.items.clone(),
             selected_index: state.selected_index,
-        })
+        }
+        .persisted_json()
         .map_err(|_| QueueError::InvalidItem)?;
         self.persistence
             .replace_queue_checkpoint(
@@ -561,6 +624,7 @@ mod tests {
 
     fn track(id: &str) -> QueueTrack {
         QueueTrack {
+            video: None,
             id: id.to_owned(),
             media_mid: None,
             title: format!("Track {id}"),

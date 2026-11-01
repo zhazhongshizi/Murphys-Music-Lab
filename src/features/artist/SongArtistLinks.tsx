@@ -24,7 +24,7 @@ function ArtistNames({ track, onOpenArtist }: { track: ArtistTrack; onOpenArtist
   useEffect(() => { alive.current = true; return () => { alive.current = false; version.current++; }; }, []);
   const artists = track.artists?.length ? track.artists : resolved;
   const names = artists?.map(artist => artist.name) ?? track.artist.split(" / ").filter(Boolean);
-  const online = !track.id.startsWith("local_") && !track.id.startsWith("fixture-");
+  const online = !track.id.startsWith("local_") && !track.id.startsWith("fixture-") && !track.id.startsWith("bilibili:") && !track.id.startsWith("netease:");
   async function visit(index: number) {
     if (!open) return;
     const request = ++version.current;

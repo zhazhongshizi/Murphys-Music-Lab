@@ -22,6 +22,11 @@ pub(crate) async fn remote_set_enabled(
         auth: state.auth_snapshot.clone(),
         tracks: std::sync::Mutex::new(std::collections::HashMap::new()),
         covers: std::sync::Mutex::new(std::collections::HashSet::new()),
+        registry: Some(state.registry.clone()),
+        netease: state.netease.clone(),
+        bilibili: state.bilibili.clone(),
+        provider_tracks: std::sync::Mutex::new(std::collections::HashMap::new()),
+        provider_permits: remote::default_provider_permits(),
     });
     tauri::async_runtime::spawn_blocking(move || {
         remote.set_enabled(enabled, session, cover, lyrics, Some(library))

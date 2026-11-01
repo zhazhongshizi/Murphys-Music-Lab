@@ -79,7 +79,7 @@
 .app-shell.app-shell--normal .lyrics-scroll__line--active .lyrics-scroll__original { font-weight: 650; font-size: clamp(26px, 2.6vw, 40px); letter-spacing: -.025em; }
 .app-shell.app-shell--normal .lyrics-scroll__line--active::before { display: none; }
 .app-shell.app-shell--normal .lyrics-scroll__empty { opacity: .6; }
-.app-shell.app-shell--normal .stage__ambient { position: fixed; inset: 0; }
+.app-shell.app-shell--normal .stage__ambient { position: fixed; inset: 0; overflow: hidden; overflow: clip; }
 .app-shell.app-shell--normal .stage__glow--field {
   background:
     radial-gradient(ellipse at 20% 30%, color-mix(in srgb, var(--cover-primary) var(--cover-glow-core-mix), transparent), transparent 65%),
@@ -349,6 +349,8 @@ body:has(.app-shell.app-shell--normal) > .playlist-picker__menu { background: va
   position: absolute;
   inset: 0;
   z-index: -1;
+  overflow: hidden;
+  overflow: clip;
   pointer-events: none;
 }
 .app-shell.app-shell--normal .stage__glow--cached[data-cached="true"] {

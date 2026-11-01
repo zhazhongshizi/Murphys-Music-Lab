@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$BundleRoot
+    [string]$BundleRoot,
+    [switch]$QqOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,3 +77,15 @@ if (-not $expected.ContainsKey('qqmusic-provider.exe')) {
 }
 
 Write-Host "Verified provider manifest: $($expected.Count) files"
+if (-not $QqOnly) {
+    $resourceRoot = Split-Path -Parent $resolvedRoot
+    $runtime = Get-Content -Raw -LiteralPath (Join-Path $resourceRoot 'providers/node/runtime.json') | ConvertFrom-Json
+    $pin = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'providers/node/runtime.json') | ConvertFrom-Json
+    $node = Join-Path $resourceRoot 'node/node.exe'
+    if ($runtime.version -ne $pin.version -or $runtime.archiveSha256 -ne $pin.archiveSha256 -or $runtime.executableSha256 -ne $pin.executableSha256 -or
+        (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pin.executableSha256) {
+        throw 'Bundled Node executable hash mismatch.'
+    }
+    & $node (Join-Path $PSScriptRoot 'stage-node-resources.mjs') --verify $resourceRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Multi-provider resource manifest validation failed.' }
+}

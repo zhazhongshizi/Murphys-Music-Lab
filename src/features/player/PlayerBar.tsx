@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { CommitRange } from "./CommitRange";
 import { PlaybackNotice } from "./PlaybackNotice";
+import { SourceBadge } from "../providers/SourceBadge";
 
 import { Icon } from "../../components/Icon";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -81,6 +82,7 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
         <AlbumArtwork compact track={track} />
         <div>
           <strong>{track.title}</strong>
+          <SourceBadge track={track} />
           <span><SongArtistLinks track={track} />{track.actualQuality === "QQ MV 音轨" ? " · QQ MV 音轨" : ""}</span>
         </div>
       </div>

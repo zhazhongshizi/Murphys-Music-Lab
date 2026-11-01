@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError},
         Arc, RwLock,
     },
@@ -70,9 +70,10 @@ impl std::error::Error for ProviderError {}
 
 #[derive(Debug, Clone)]
 pub struct ProviderLaunch {
-    executable: PathBuf,
-    args: Vec<OsString>,
-    current_dir: Option<PathBuf>,
+    pub(crate) executable: PathBuf,
+    pub(crate) args: Vec<OsString>,
+    pub(crate) current_dir: Option<PathBuf>,
+    expected: Option<HandshakeInfo>,
 }
 
 impl ProviderLaunch {
@@ -85,11 +86,16 @@ impl ProviderLaunch {
             executable,
             args: Vec::new(),
             current_dir: None,
+            expected: None,
         })
     }
 
     pub fn args(mut self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Self {
         self.args = args.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn expect_handshake(mut self, expected: HandshakeInfo) -> Self {
+        self.expected = Some(expected);
         self
     }
 
@@ -156,6 +162,9 @@ impl Drop for ProviderRequest {
 }
 
 impl ProviderRequest {
+    pub(crate) fn method(&self) -> &str {
+        &self.method
+    }
     pub fn read_only(method: impl Into<String>, params: Map<String, Value>) -> Self {
         Self {
             method: method.into(),
@@ -215,6 +224,7 @@ impl std::fmt::Debug for ProviderReply {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderEvent {
+    pub generation: u64,
     pub name: String,
     pub payload: Map<String, Value>,
 }
@@ -293,6 +303,8 @@ pub struct ProviderSupervisor {
     snapshot: Arc<RwLock<ProviderSnapshot>>,
     next_request_id: AtomicU64,
     coordinator: Option<JoinHandle<()>>,
+    stop_requested: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl ProviderSupervisor {
@@ -335,6 +347,10 @@ impl ProviderSupervisor {
         let snapshot = Arc::new(RwLock::new(ProviderSnapshot::starting()));
         let coordinator_snapshot = Arc::clone(&snapshot);
         let coordinator_inbound = inbound.clone();
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop_requested.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let worker_stopped = stopped.clone();
         let coordinator = thread::Builder::new()
             .name("qqmusic-provider-supervisor".to_owned())
             .spawn(move || {
@@ -346,8 +362,10 @@ impl ProviderSupervisor {
                     coordinator_snapshot,
                     recovery,
                     allow_initial_recovery_failure,
+                    worker_stop,
                 )
                 .run(startup);
+                worker_stopped.store(true, Ordering::Release);
             })
             .map_err(|_| ProviderError::SpawnFailed)?;
 
@@ -357,6 +375,8 @@ impl ProviderSupervisor {
                 snapshot,
                 next_request_id: AtomicU64::new(1),
                 coordinator: Some(coordinator),
+                stop_requested,
+                stopped,
             }),
             Ok(Err(error)) => {
                 let _ = coordinator.join();
@@ -373,6 +393,9 @@ impl ProviderSupervisor {
         &self,
         request: ProviderRequest,
     ) -> Result<PendingProviderRequest, ProviderError> {
+        if self.stop_requested.load(Ordering::Acquire) {
+            return Err(ProviderError::SupervisorStopped);
+        }
         let sequence = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let id = format!("host-{sequence}");
         let (response, response_receiver) = mpsc::sync_channel(1);
@@ -409,6 +432,17 @@ impl ProviderSupervisor {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
+
+    pub fn stop(&self) {
+        self.request_stop();
+        while !self.stopped.load(Ordering::Acquire) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    pub fn request_stop(&self) {
+        self.stop_requested.store(true, Ordering::Release);
+        let _ = self.inbound.send(Inbound::Shutdown);
+    }
 }
 
 /// Direct request channel exposed only while a newly spawned Provider is behind
@@ -418,6 +452,9 @@ pub trait ProviderRecoveryPort {
 }
 
 pub trait ProviderRecoveryHook: Send + Sync {
+    fn allow_replay(&self) -> bool {
+        true
+    }
     fn recover(
         &self,
         generation: u64,
@@ -433,6 +470,7 @@ impl super::ProviderPort for ProviderSupervisor {
 
 impl Drop for ProviderSupervisor {
     fn drop(&mut self) {
+        self.stop_requested.store(true, Ordering::Release);
         let _ = self.inbound.send(Inbound::Shutdown);
         if let Some(coordinator) = self.coordinator.take() {
             let _ = coordinator.join();
@@ -513,6 +551,7 @@ struct Coordinator {
     restarts_used: u8,
     recovery: Option<Arc<dyn ProviderRecoveryHook>>,
     allow_initial_recovery_failure: bool,
+    stop_requested: Arc<AtomicBool>,
 }
 
 impl Coordinator {
@@ -524,6 +563,7 @@ impl Coordinator {
         snapshot: Arc<RwLock<ProviderSnapshot>>,
         recovery: Option<Arc<dyn ProviderRecoveryHook>>,
         allow_initial_recovery_failure: bool,
+        stop_requested: Arc<AtomicBool>,
     ) -> Self {
         Self {
             launch,
@@ -541,6 +581,7 @@ impl Coordinator {
             restarts_used: 0,
             recovery,
             allow_initial_recovery_failure,
+            stop_requested,
         }
     }
 
@@ -559,6 +600,9 @@ impl Coordinator {
         }
 
         loop {
+            if self.stop_requested.load(Ordering::Acquire) {
+                break;
+            }
             self.expire_requests();
             let message = if let Some(message) = self.deferred.pop_front() {
                 Ok(message)
@@ -666,6 +710,7 @@ impl Coordinator {
         match frame {
             ProviderFrame::Event(frame) => {
                 let event = ProviderEvent {
+                    generation: self.generation,
                     name: frame.event,
                     payload: frame.payload,
                 };
@@ -745,6 +790,11 @@ impl Coordinator {
     }
 
     fn recover_after_failure(&mut self, cause: ProviderError) {
+        if self.stop_requested.load(Ordering::Acquire) {
+            self.fail_all(ProviderError::SupervisorStopped);
+            self.child.take();
+            return;
+        }
         crate::file_logging::provider_failure(cause.code(), self.generation);
         #[cfg(debug_assertions)]
         eprintln!(
@@ -784,6 +834,10 @@ impl Coordinator {
         }
 
         while self.restarts_used < self.config.max_restarts {
+            if self.stop_requested.load(Ordering::Acquire) {
+                self.fail_all(ProviderError::SupervisorStopped);
+                return;
+            }
             self.restarts_used += 1;
             self.set_snapshot(ProviderSnapshot::starting());
             thread::sleep(self.config.restart_backoff);
@@ -791,7 +845,11 @@ impl Coordinator {
                 Ok(handshake) => {
                     self.restarts_used = 0;
                     self.set_snapshot(ProviderSnapshot::ready(&handshake));
-                    self.replay_pending();
+                    if self.recovery.as_ref().is_some_and(|r| !r.allow_replay()) {
+                        self.fail_all(ProviderError::Unavailable);
+                    } else {
+                        self.replay_pending();
+                    }
                     return;
                 }
                 Err(_) => continue,
@@ -838,6 +896,9 @@ impl Coordinator {
     }
 
     fn spawn_and_handshake(&mut self) -> Result<HandshakeInfo, ProviderError> {
+        if self.stop_requested.load(Ordering::Acquire) {
+            return Err(ProviderError::SupervisorStopped);
+        }
         self.generation += 1;
         let generation = self.generation;
         let mut process = spawn_process(&self.launch, generation, self.inbound.clone())?;
@@ -853,6 +914,9 @@ impl Coordinator {
 
         loop {
             let wait = deadline.saturating_duration_since(Instant::now());
+            if self.stop_requested.load(Ordering::Acquire) {
+                return Err(ProviderError::SupervisorStopped);
+            }
             if wait.is_zero() {
                 return Err(ProviderError::HandshakeFailed);
             }
@@ -863,6 +927,17 @@ impl Coordinator {
                 }) if frame_generation == generation => match frame {
                     Ok(Some(ProviderFrame::Success(frame))) if frame.id == handshake_id => {
                         let handshake = parse_handshake(frame.result)?;
+                        if let Some(e) = &self.launch.expected {
+                            if handshake.provider_name != e.provider_name
+                                || handshake.provider_version != e.provider_version
+                                || handshake.capabilities != e.capabilities
+                                || e.implemented_methods
+                                    .iter()
+                                    .any(|m| !handshake.implemented_methods.contains(m))
+                            {
+                                return Err(ProviderError::HandshakeFailed);
+                            }
+                        }
                         if let Some(recovery) = self.recovery.clone() {
                             let mut port = DirectRecoveryPort {
                                 process: &mut process,

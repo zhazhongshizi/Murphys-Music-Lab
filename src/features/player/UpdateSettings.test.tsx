@@ -5,7 +5,7 @@ import { installPlaybackTransport } from "../../backend/playbackTransport";
 const api = vi.hoisted(() => vi.fn());
 vi.mock("../../backend/updateAdapter", () => ({ updatesControl: api }));
 const fixture = { currentVersion: "1.0.1", buildChannel: "Debug", automatic: false, state: "available", checkedMs: 1000,
-  release: { version: "1.10.0", name: "新的稳定版", notes: "<script>text</script>", url: "https://github.com/zhazhongshizi/qqmusic-gui/releases/tag/v1.10.0", publishedAt: null },
+  release: { version: "1.10.0", name: "新的稳定版", notes: "<script>text</script>", url: "https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/tag/v1.10.0", publishedAt: null },
   applicationData: "C:\\AppData", localMusic: "D:\\播放器\\local-music", smartShuffle: "D:\\播放器\\smart-shuffle.sqlite3", migrationBackups: "C:\\AppData\\migration-backups" };
 beforeEach(() => {
   installPlaybackTransport(async () => null); api.mockReset().mockResolvedValue(fixture);

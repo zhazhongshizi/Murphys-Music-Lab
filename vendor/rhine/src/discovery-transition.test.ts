@@ -51,12 +51,13 @@ it("separates stationary retained tapes from the sink before takeoff and uses th
   expect(discoverySinkScale(.45)).toBe(1);expect(discoverySinkScale(.75)).toBeLessThan(1);expect(discoverySinkScale(1)).toBe(0);
 });
 
-it("waits with a flat, stationary array and accepts delayed entries before moving",()=>{
+it("forms the shelf while loading and fades the first late result",()=>{
   const motion=new DiscoveryMotion(),waiting={...state,ready:false};run(motion,waiting);
-  expect(motion.time).toBe(DISCOVERY_WAIT);expect(motion.flatten).toBe(1);expect(motion.spread).toBe(0);
+  expect(motion.time).toBe(DISCOVERY_DURATION);expect(motion.flatten).toBe(1);expect(motion.spread).toBe(1);
   expect(motion.phase(waiting)).toBe("waiting");
-  for(const distance of [0,.5,1])expect(discoveryRetreat(motion.retreat,distance)).toBe(0);
-  motion.step(1/60,state);expect(motion.key).toBe(state.key);expect(motion.swap).toBe(1);
+  expect(motion.retreat).toBe(1);
+  motion.step(1/60,state);expect(motion.key).toBe(state.key);expect(motion.swap).toBeGreaterThan(0);expect(motion.swap).toBeLessThan(1);
+  expect(motion.phase(state)).toBe("moving");
   run(motion,state);expect(motion.time).toBe(DISCOVERY_DURATION);expect(motion.phase(state)).toBe("ready");
 });
 

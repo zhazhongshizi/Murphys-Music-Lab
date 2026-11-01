@@ -2,6 +2,8 @@ import type { PlayerSnapshot } from "./appSnapshot";
 import type { PlaybackQuality } from "./settings";
 
 export interface QueueTrack {
+  readonly providerId?: import("./providers").ProviderId;
+  readonly video?: import("./providers").VideoPartMetadata;
   readonly id: string;
   readonly mediaMid?: string;
   readonly title: string;
@@ -21,7 +23,8 @@ export interface QueuePlayResult {
   readonly requestedQuality: PlaybackQuality;
   readonly queue: QueueSnapshot;
   readonly playback: {
-    readonly quality: "flac" | "320k" | "128k" | "local" | "qq-mv";
+    readonly quality: "flac" | "320k" | "128k" | "local" | "qq-mv" | "aac";
+    readonly bitrate?: number;
     readonly expiresInSeconds: number;
     readonly player: PlayerSnapshot;
   };
@@ -37,7 +40,8 @@ export interface PlaybackSkipNotice {
 export interface PlaybackSessionSnapshot {
   readonly skipNotice?: PlaybackSkipNotice;
   readonly lyricOffsetMs?: number;
-  readonly actualQuality?: "flac" | "320k" | "128k" | "local" | "qq-mv" | null;
+  readonly actualBitrate?: number;
+  readonly actualQuality?: "flac" | "320k" | "128k" | "local" | "qq-mv" | "aac" | null;
   readonly requestedQuality: PlaybackQuality;
   readonly mode: NativePlaybackMode;
   readonly queue: QueueSnapshot;

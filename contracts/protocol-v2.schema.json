@@ -1,0 +1,2716 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qqmusic-gui.local/contracts/protocol-v2.schema.json",
+  "title": "Private provider v2 (not a renderer contract)",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/success"
+    },
+    {
+      "$ref": "#/$defs/failure"
+    },
+    {
+      "$ref": "#/$defs/event"
+    }
+  ],
+  "$defs": {
+    "providerId": {
+      "enum": [
+        "netease",
+        "bilibili"
+      ]
+    },
+    "errorCode": {
+      "enum": [
+        "invalid_params",
+        "unsupported_capability",
+        "authentication_required",
+        "credential_invalid",
+        "network_unavailable",
+        "rate_limited",
+        "entitlement_denied",
+        "preview_only",
+        "media_unavailable",
+        "unsupported_media",
+        "upstream_schema_changed",
+        "provider_unavailable",
+        "outcome_unknown",
+        "verification_failed",
+        "verification_required",
+        "cancelled",
+        "internal_error"
+      ]
+    },
+    "empty": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "id",
+        "displayName"
+      ],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "loginMethods": {
+          "type": "array",
+          "items": {
+            "const": "qr"
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "searchKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "songs",
+              "playlists",
+              "videos"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "libraryKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "created",
+              "favorite",
+              "likes"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "writeActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "song.like",
+              "song.unlike",
+              "playlist.subscribe",
+              "playlist.unsubscribe",
+              "playlist.addTracks",
+              "playlist.removeTracks",
+              "favorite.addVideos",
+              "favorite.removeVideos"
+            ]
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "lyrics": {
+          "type": "boolean"
+        },
+        "qualities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "auto",
+              "flac",
+              "320k",
+              "128k",
+              "aac"
+            ]
+          },
+          "maxItems": 5,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "loginMethods",
+        "searchKinds",
+        "libraryKinds",
+        "writeActions",
+        "lyrics",
+        "qualities"
+      ],
+      "additionalProperties": false
+    },
+    "credential": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "providerId": {
+          "$ref": "#/$defs/providerId"
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        }
+      },
+      "required": [
+        "version",
+        "providerId",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "rawTrack": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "song"
+            },
+            "songId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "kind",
+            "songId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "videoPart"
+            },
+            "bvid": {
+              "type": "string",
+              "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+            },
+            "cid": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "kind",
+            "bvid",
+            "cid"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "rawVideo": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "video"
+        },
+        "bvid": {
+          "type": "string",
+          "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "kind",
+        "bvid"
+      ],
+      "additionalProperties": false
+    },
+    "track": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/rawTrack"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "artist": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "creatorKind": {
+          "enum": [
+            "artist",
+            "uploader"
+          ]
+        },
+        "album": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 512
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        },
+        "coverUrl": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "availability": {
+          "enum": [
+            "unknown",
+            "unavailable",
+            "authenticationRequired",
+            "deleted",
+            "permissionDenied",
+            "processing",
+            "noAudio"
+          ]
+        },
+        "video": {
+          "$ref": "#/$defs/videoPartMetadata"
+        }
+      },
+      "required": [
+        "ref",
+        "title",
+        "artist",
+        "creatorKind",
+        "album",
+        "durationMs",
+        "coverUrl",
+        "availability"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "videoPart"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "video"
+            ],
+            "properties": {
+              "creatorKind": {
+                "const": "uploader"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "video"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "video": {
+      "type": "object",
+      "properties": {
+        "bvid": {
+          "type": "string",
+          "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+        },
+        "aid": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "uploader": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 864000000000
+        },
+        "coverUrl": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "availability": {
+          "enum": [
+            "unknown",
+            "unavailable",
+            "authenticationRequired",
+            "deleted",
+            "permissionDenied",
+            "processing",
+            "noAudio"
+          ]
+        }
+      },
+      "required": [
+        "bvid",
+        "aid",
+        "title",
+        "uploader",
+        "durationMs",
+        "coverUrl",
+        "availability"
+      ],
+      "additionalProperties": false
+    },
+    "container": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "kind": {
+          "enum": [
+            "playlist",
+            "favoriteFolder"
+          ]
+        },
+        "ownership": {
+          "enum": [
+            "created",
+            "collected"
+          ]
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "description": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 4096
+        },
+        "itemCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "song.like",
+              "song.unlike",
+              "playlist.subscribe",
+              "playlist.unsubscribe",
+              "playlist.addTracks",
+              "playlist.removeTracks",
+              "favorite.addVideos",
+              "favorite.removeVideos"
+            ]
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "ownership",
+        "ownerId",
+        "title",
+        "description",
+        "itemCount",
+        "allowedActions"
+      ],
+      "additionalProperties": false
+    },
+    "writeReceipt": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "applied",
+            "verificationPending"
+          ]
+        },
+        "affectedCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "affectedCount"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verificationPending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "affectedCount": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "qrImage": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mimeType": {
+          "const": "image/png"
+        },
+        "imageBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 524288,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}(?![\\s\\S])"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "pollAfterMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 30000
+        }
+      },
+      "required": [
+        "sessionId",
+        "mimeType",
+        "imageBase64",
+        "expiresAtMs",
+        "pollAfterMs"
+      ],
+      "additionalProperties": false
+    },
+    "qrState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "state": {
+              "enum": [
+                "waitingScan",
+                "waitingConfirmation",
+                "expired",
+                "rejected",
+                "cancelled"
+              ]
+            }
+          },
+          "required": [
+            "sessionId",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "state": {
+              "const": "authenticated"
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            },
+            "credential": {
+              "$ref": "#/$defs/credential"
+            }
+          },
+          "required": [
+            "sessionId",
+            "state",
+            "account",
+            "credential"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "authResult": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "#/$defs/account"
+        }
+      },
+      "required": [
+        "account"
+      ],
+      "additionalProperties": false
+    },
+    "refreshResult": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "#/$defs/account"
+        },
+        "credential": {
+          "$ref": "#/$defs/credential"
+        }
+      },
+      "required": [
+        "account",
+        "credential"
+      ],
+      "additionalProperties": false
+    },
+    "checkResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "valid": {
+              "const": false
+            }
+          },
+          "required": [
+            "valid"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "valid": {
+              "const": true
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            }
+          },
+          "required": [
+            "valid",
+            "account"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "resolution": {
+      "type": "object",
+      "properties": {
+        "track": {
+          "$ref": "#/$defs/rawTrack"
+        },
+        "quality": {
+          "enum": [
+            "flac",
+            "320k",
+            "128k",
+            "aac"
+          ]
+        },
+        "codec": {
+          "enum": [
+            "flac",
+            "mp3",
+            "aac"
+          ]
+        },
+        "bitrate": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "pattern": "^https://"
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "Referer": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "User-Agent": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "expiresInSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "backupUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 8192,
+            "pattern": "^https://"
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "dash": {
+          "type": "object",
+          "properties": {
+            "initialization": {
+              "type": "string",
+              "maxLength": 17,
+              "pattern": "^0-[0-9]{1,7}$"
+            },
+            "indexRange": {
+              "type": "string",
+              "maxLength": 17,
+              "pattern": "^[0-9]{1,7}-[0-9]{1,7}$"
+            }
+          },
+          "required": [
+            "initialization",
+            "indexRange"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "track",
+        "quality",
+        "codec",
+        "bitrate",
+        "url",
+        "headers",
+        "expiresInSeconds",
+        "durationMs"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "backupUrls"
+            ]
+          },
+          "then": {
+            "properties": {
+              "track": {
+                "properties": {
+                  "kind": {
+                    "const": "videoPart"
+                  }
+                }
+              },
+              "quality": {
+                "const": "aac"
+              },
+              "codec": {
+                "const": "aac"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "dash"
+            ]
+          },
+          "then": {
+            "properties": {
+              "track": {
+                "properties": {
+                  "kind": {
+                    "const": "videoPart"
+                  }
+                }
+              },
+              "quality": {
+                "const": "aac"
+              },
+              "codec": {
+                "const": "aac"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lyrics": {
+      "type": "object",
+      "properties": {
+        "songId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "original": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 200000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "translation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 200000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "romanization": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 200000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "songId",
+        "original",
+        "translation",
+        "romanization"
+      ],
+      "additionalProperties": false
+    },
+    "warning": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "items_omitted",
+            "metadata_incomplete"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "code",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "trackPage": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/track"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "page",
+        "hasMore",
+        "total",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "videoPage": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/video"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "page",
+        "hasMore",
+        "total",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "containerPage": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/container"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "page",
+        "hasMore",
+        "total",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "parts": {
+      "type": "object",
+      "properties": {
+        "bvid": {
+          "type": "string",
+          "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/track"
+          },
+          "maxItems": 100
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "bvid",
+        "items",
+        "page",
+        "hasMore",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "handshake": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 2
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/providerId"
+            },
+            "name": {
+              "enum": [
+                "netease-provider",
+                "bilibili-provider"
+              ]
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "maxLineBytes": {
+          "const": 1048576
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "implementedMethods": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "system.handshake",
+              "system.ping",
+              "auth.qr.start",
+              "auth.qr.poll",
+              "auth.qr.cancel",
+              "auth.credential.restore",
+              "auth.credential.check",
+              "auth.credential.refresh",
+              "auth.logout",
+              "search.songs",
+              "search.playlists",
+              "search.videos",
+              "song.detail",
+              "video.resolve",
+              "video.parts",
+              "library.containers",
+              "library.tracks",
+              "library.videos",
+              "library.likes",
+              "library.setLiked",
+              "library.setSubscribed",
+              "library.addItems",
+              "library.removeItems",
+              "lyrics.get",
+              "playback.resolve",
+              "library.container",
+              "library.verify",
+              "library.likeIds"
+            ]
+          },
+          "maxItems": 64,
+          "uniqueItems": true,
+          "minItems": 2
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "provider",
+        "maxLineBytes",
+        "capabilities",
+        "implementedMethods"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "properties": {
+                  "id": {
+                    "const": "netease"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "properties": {
+                  "name": {
+                    "const": "netease-provider"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "properties": {
+                  "id": {
+                    "const": "bilibili"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "properties": {
+                  "name": {
+                    "const": "bilibili-provider"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "system_handshakeParams": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 2
+        },
+        "providerId": {
+          "$ref": "#/$defs/providerId"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "providerId"
+      ],
+      "additionalProperties": false
+    },
+    "ping": {
+      "type": "object",
+      "properties": {
+        "alive": {
+          "const": true
+        }
+      },
+      "required": [
+        "alive"
+      ],
+      "additionalProperties": false
+    },
+    "system_pingParams": {
+      "$ref": "#/$defs/empty"
+    },
+    "auth_qr_startParams": {
+      "$ref": "#/$defs/empty"
+    },
+    "auth_qr_pollParams": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "cancel": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "const": "cancelled"
+        }
+      },
+      "required": [
+        "sessionId",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "auth_qr_cancelParams": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "auth_credential_restoreParams": {
+      "type": "object",
+      "properties": {
+        "credential": {
+          "$ref": "#/$defs/credential"
+        }
+      },
+      "required": [
+        "credential"
+      ],
+      "additionalProperties": false
+    },
+    "auth_credential_checkParams": {
+      "$ref": "#/$defs/empty"
+    },
+    "auth_credential_refreshParams": {
+      "$ref": "#/$defs/empty"
+    },
+    "logout": {
+      "type": "object",
+      "properties": {
+        "upstreamRevoked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "upstreamRevoked"
+      ],
+      "additionalProperties": false
+    },
+    "auth_logoutParams": {
+      "$ref": "#/$defs/empty"
+    },
+    "search_songsParams": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "keyword",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "search_playlistsParams": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "keyword",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "search_videosParams": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "keyword",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "song_detailParams": {
+      "type": "object",
+      "properties": {
+        "songId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "songId"
+      ],
+      "additionalProperties": false
+    },
+    "video_resolveParams": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    "video_partsParams": {
+      "type": "object",
+      "properties": {
+        "bvid": {
+          "type": "string",
+          "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "bvid",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "library_containersParams": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "created",
+            "favorite"
+          ]
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "kind",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "library_tracksParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "containerId",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "library_videosParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "containerId",
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "library_likesParams": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "page",
+        "pageSize"
+      ],
+      "additionalProperties": false
+    },
+    "library_setLikedParams": {
+      "type": "object",
+      "properties": {
+        "songId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "liked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "songId",
+        "liked"
+      ],
+      "additionalProperties": false
+    },
+    "library_setSubscribedParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "subscribed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "containerId",
+        "subscribed"
+      ],
+      "additionalProperties": false
+    },
+    "library_addItemsParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "song"
+                  },
+                  "songId": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "songId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "$ref": "#/$defs/rawVideo"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "containerId",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "library_removeItemsParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "song"
+                  },
+                  "songId": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "songId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "$ref": "#/$defs/rawVideo"
+              }
+            ]
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "containerId",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "lyrics_getParams": {
+      "type": "object",
+      "properties": {
+        "songId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "songId"
+      ],
+      "additionalProperties": false
+    },
+    "playback_resolveParams": {
+      "type": "object",
+      "properties": {
+        "track": {
+          "$ref": "#/$defs/rawTrack"
+        },
+        "preferredQuality": {
+          "enum": [
+            "auto",
+            "flac",
+            "320k",
+            "128k",
+            "aac"
+          ]
+        }
+      },
+      "required": [
+        "track",
+        "preferredQuality"
+      ],
+      "additionalProperties": false
+    },
+    "request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "system.handshake"
+            },
+            "params": {
+              "$ref": "#/$defs/system_handshakeParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "system.ping"
+            },
+            "params": {
+              "$ref": "#/$defs/system_pingParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.qr.start"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_qr_startParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.qr.poll"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_qr_pollParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.qr.cancel"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_qr_cancelParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.credential.restore"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_credential_restoreParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.credential.check"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_credential_checkParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.credential.refresh"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_credential_refreshParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "auth.logout"
+            },
+            "params": {
+              "$ref": "#/$defs/auth_logoutParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "search.songs"
+            },
+            "params": {
+              "$ref": "#/$defs/search_songsParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "search.playlists"
+            },
+            "params": {
+              "$ref": "#/$defs/search_playlistsParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "search.videos"
+            },
+            "params": {
+              "$ref": "#/$defs/search_videosParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "song.detail"
+            },
+            "params": {
+              "$ref": "#/$defs/song_detailParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "video.resolve"
+            },
+            "params": {
+              "$ref": "#/$defs/video_resolveParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "video.parts"
+            },
+            "params": {
+              "$ref": "#/$defs/video_partsParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.containers"
+            },
+            "params": {
+              "$ref": "#/$defs/library_containersParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.tracks"
+            },
+            "params": {
+              "$ref": "#/$defs/library_tracksParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.videos"
+            },
+            "params": {
+              "$ref": "#/$defs/library_videosParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.likes"
+            },
+            "params": {
+              "$ref": "#/$defs/library_likesParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.setLiked"
+            },
+            "params": {
+              "$ref": "#/$defs/library_setLikedParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.setSubscribed"
+            },
+            "params": {
+              "$ref": "#/$defs/library_setSubscribedParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.addItems"
+            },
+            "params": {
+              "$ref": "#/$defs/library_addItemsParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.removeItems"
+            },
+            "params": {
+              "$ref": "#/$defs/library_removeItemsParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "lyrics.get"
+            },
+            "params": {
+              "$ref": "#/$defs/lyrics_getParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "playback.resolve"
+            },
+            "params": {
+              "$ref": "#/$defs/playback_resolveParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.container"
+            },
+            "params": {
+              "$ref": "#/$defs/library_containerParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.verify"
+            },
+            "params": {
+              "$ref": "#/$defs/library_verifyParams"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "method": {
+              "const": "library.likeIds"
+            },
+            "params": {
+              "$ref": "#/$defs/empty"
+            }
+          },
+          "required": [
+            "v",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "success": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 2
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/handshake"
+            },
+            {
+              "$ref": "#/$defs/ping"
+            },
+            {
+              "$ref": "#/$defs/qrImage"
+            },
+            {
+              "$ref": "#/$defs/qrState"
+            },
+            {
+              "$ref": "#/$defs/cancel"
+            },
+            {
+              "$ref": "#/$defs/authResult"
+            },
+            {
+              "$ref": "#/$defs/checkResult"
+            },
+            {
+              "$ref": "#/$defs/refreshResult"
+            },
+            {
+              "$ref": "#/$defs/logout"
+            },
+            {
+              "$ref": "#/$defs/trackPage"
+            },
+            {
+              "$ref": "#/$defs/containerPage"
+            },
+            {
+              "$ref": "#/$defs/videoPage"
+            },
+            {
+              "$ref": "#/$defs/track"
+            },
+            {
+              "$ref": "#/$defs/video"
+            },
+            {
+              "$ref": "#/$defs/parts"
+            },
+            {
+              "$ref": "#/$defs/writeReceipt"
+            },
+            {
+              "$ref": "#/$defs/lyrics"
+            },
+            {
+              "$ref": "#/$defs/resolution"
+            },
+            {
+              "$ref": "#/$defs/container"
+            },
+            {
+              "$ref": "#/$defs/likeIds"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          },
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "result",
+        "warnings"
+      ],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 2
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+        },
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/errorCode"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "retryAfterMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            }
+          },
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "event": {
+              "const": "auth.qr.progress"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "state": {
+                  "enum": [
+                    "waitingScan",
+                    "waitingConfirmation",
+                    "expired",
+                    "rejected"
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "state"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "event",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "event": {
+              "const": "provider.invalidated"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "enum": [
+                    "credential_invalid",
+                    "authentication_required"
+                  ]
+                }
+              },
+              "required": [
+                "code"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "event",
+            "payload"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "videoPartMetadata": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "partTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "partNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "title",
+        "partTitle",
+        "partNumber"
+      ],
+      "additionalProperties": false
+    },
+    "library_containerParams": {
+      "type": "object",
+      "properties": {
+        "containerId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "containerId"
+      ],
+      "additionalProperties": false
+    },
+    "library_verifyParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "library.setLiked"
+            },
+            "params": {
+              "$ref": "#/$defs/library_setLikedParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "library.setSubscribed"
+            },
+            "params": {
+              "$ref": "#/$defs/library_setSubscribedParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "library.addItems"
+            },
+            "params": {
+              "$ref": "#/$defs/library_addItemsParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "library.removeItems"
+            },
+            "params": {
+              "$ref": "#/$defs/library_removeItemsParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "likeIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+      },
+      "maxItems": 100000,
+      "uniqueItems": true
+    }
+  }
+}

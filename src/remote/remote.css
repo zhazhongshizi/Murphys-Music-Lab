@@ -96,3 +96,13 @@ body:has(.remote-shell) [hidden] { display:none!important; }
  .remote-shell.app-shell .catalog-table__title { max-width:100%; min-width:0; }
  .remote-shell.app-shell .catalog-table__title strong { white-space:normal; }
 }
+.remote-shell .remote-provider-workspace.library-workspace { grid-template-columns:220px minmax(0,1fr); }
+.remote-provider__search { display:grid; gap:10px; margin-bottom:14px; }
+.remote-provider__search-actions, .remote-provider__toolbar, .remote-provider__row-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.remote-provider__toolbar { margin-bottom:12px; }
+@media (max-width:1000px) {
+ .remote-shell.app-shell .remote-provider-workspace.library-workspace { grid-template-columns:160px minmax(0,1fr); }
+}
+@media (max-width:600px), (max-width:850px) and (orientation:portrait) {
+ .remote-shell.app-shell .remote-provider-workspace.library-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:76px minmax(0,1fr); }
+}

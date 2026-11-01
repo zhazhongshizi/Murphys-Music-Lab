@@ -94,4 +94,27 @@ describe("黑胶温室应用外壳", () => {
     await user.keyboard(" ");
     expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
   });
+
+  it("仅在歌单与搜索界面显示音乐来源切换条，播放舞台与其他曲库分区不显示", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+    const sidebar = await screen.findByRole("complementary", { name: "曲库导航" });
+    await user.click(within(sidebar).getByRole("button", { name: /歌单/ }));
+    expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+    await user.click(within(sidebar).getByRole("button", { name: "发现" }));
+    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+
+    await user.click(within(sidebar).getByRole("button", { name: "搜索" }));
+    expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "返回舞台" }));
+    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+  });
 });

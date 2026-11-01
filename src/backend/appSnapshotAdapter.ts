@@ -1,4 +1,5 @@
 import { createSchemaGuards } from "./schemaGuards";
+import { trackSource } from "./trackSource";
 import {
   APP_SNAPSHOT_COMMAND,
   APP_SNAPSHOT_SCHEMA_VERSION,
@@ -177,10 +178,11 @@ function parseProvider(value: unknown): ProviderSnapshot {
 function parseTrack(value: unknown): TrackSummary | null {
   if (value === null) return null;
   const hasSource = typeof value === "object" && value !== null && "source" in value;
-  const record = exactRecord(value, hasSource ? [...TRACK_KEYS, "source"] : TRACK_KEYS);
+  const record = exactRecord(value, [...TRACK_KEYS, ...(hasSource ? ["source"] : []), ...(typeof value === "object" && value !== null && "providerId" in value ? ["providerId"] : [])]);
   if (hasSource && record.source !== "qq-mv") return invalid();
   return {
     id: boundedString(record.id, 256),
+    ...trackSource(record),
     title: boundedString(record.title, 512),
     artist: boundedString(record.artist, 512),
     ...(hasSource ? { source: "qq-mv" as const } : {}),

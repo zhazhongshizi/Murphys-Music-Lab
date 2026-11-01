@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from "react";
 
 import type { LibrarySection } from "../../app/uiModes";
 import { getPlaylistSongs } from "../../backend/catalogAdapter";
+import { ProviderLibraryActions } from "./ProviderLibraryActions";
+import { useDesktopProviders } from "../providers/DesktopProviders";
+import { ProviderWorkspace } from "../providers/ProviderWorkspace";
+import { trackProvider } from "../../contracts/providerIdentity";
 import {
   addSongsToPlaylist,
   createPlaylist,
@@ -12,6 +16,7 @@ import {
 } from "../../backend/libraryAdapter";
 import { usePlaylistPlayback } from "./usePlaylistPlayback";
 import { useLibraryCatalog } from "./useLibraryCatalog";
+import { catalogAccessMessage } from "../catalog/catalogAccess";
 import { Icon } from "../../components/Icon";
 import type { ArtistRef } from "../../contracts/artist";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -52,6 +57,7 @@ interface LibraryWorkspaceProps {
   authRecovering: boolean;
   authSnapshot: AuthSnapshot;
   initialSection: LibrarySection;
+  onAccount?: () => void;
   onBack: () => void;
 }
 
@@ -178,19 +184,26 @@ export default function LibraryWorkspace({
   authRecovering,
   authSnapshot,
   initialSection,
+  onAccount,
   onBack,
 }: LibraryWorkspaceProps) {
+  const { source: browseSource, selectSource } = useDesktopProviders();
   const liveAccountRuntime = isTauriRuntime();
   const currentTrack = usePlayerSelector(getCurrentTrack);
   const likedIds = usePlayerSelector(selectLikedIds);
   const likesReady = usePlayerSelector(snapshot => snapshot.likesReady);
   const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
   const [section, setSection] = useState<LibrarySection>(initialSection);
+  const providerSection = section === "playlists" || section === "search";
+  const providerBrowseActive = !remote && providerSection && (browseSource === "netease" || browseSource === "bilibili");
+  const qqBrowseActive = browseSource === "qqmusic" || !providerSection;
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState<CatalogSearchType>("songs");
   const [discoveryTab, setDiscoveryTab] = useState<DiscoveryTab>("newSongs");
   const accountKey = `${authSnapshot.state}:${authSnapshot.state === "authenticated" ? authSnapshot.account?.musicId ?? "guest" : "guest"}:${authRecovering}`;
-  const recommendationsOpen = section === "discover" && !query.trim() && discoveryTab !== "newSongs";
+  const onlineAccessMessage = liveAccountRuntime && qqBrowseActive && (section === "discover" || section === "search")
+    ? catalogAccessMessage(authSnapshot, authRecovering) : undefined;
+  const recommendationsOpen = qqBrowseActive && section === "discover" && !query.trim() && discoveryTab !== "newSongs";
   const [remotePage, setRemotePage] = useState(1);
   useEffect(() => { setRemotePage(1); }, [section, query, searchType]);
   const [selectedId, setSelectedId] = useState(currentTrack?.id ?? FIXTURE_TRACKS[0]?.id ?? "");
@@ -202,7 +215,7 @@ export default function LibraryWorkspace({
   );
   const [likedRetry, setLikedRetry] = useState(0);
   const liveCatalog = useLibraryCatalog({ section, query, searchType, discoveryTab, accountKey,
-    authenticated: authSnapshot.state === "authenticated", authRecovering, retry: likedRetry,
+    authenticated: qqBrowseActive && authSnapshot.state === "authenticated", authRecovering, retry: likedRetry,
     page: remote || section !== "liked" ? remotePage : 1, onSelect: setSelectedId });
   const [createdRetry, setCreatedRetry] = useState(0);
   const [favoriteRetry, setFavoriteRetry] = useState(0);
@@ -239,14 +252,14 @@ export default function LibraryWorkspace({
     setPlaylistDetail({ state: "idle" });
     setOpenedEntity(null);
     if (initialSection === "search") searchRef.current?.focus();
-  }, [initialSection]);
+  }, [initialSection, browseSource]);
 
   useEffect(() => {
     if (section !== "playlists") setPlaylistDetail({ state: "idle" });
   }, [section]);
 
   useEffect(() => {
-    if (!isTauriRuntime() || !["playlists", "organizer"].includes(section)) return;
+    if (!isTauriRuntime() || !qqBrowseActive || !["playlists", "organizer"].includes(section)) return;
     if (authRecovering || authSnapshot.state !== "authenticated") {
       setCreatedPlaylistsState({ state: "idle" });
       return;
@@ -266,10 +279,10 @@ export default function LibraryWorkspace({
       () => { if (active) setCreatedPlaylistsState({ state: "error" }); },
     );
     return () => { active = false; };
-  }, [authRecovering, authSnapshot.state, createdRetry, section]);
+  }, [authRecovering, authSnapshot.state, createdRetry, qqBrowseActive, section]);
 
   useEffect(() => {
-    if (!isTauriRuntime() || section !== "playlists") return;
+    if (!isTauriRuntime() || !qqBrowseActive || section !== "playlists") return;
     if (authRecovering || authSnapshot.state !== "authenticated") {
       setFavoritePlaylistsState({ state: "idle" });
       return;
@@ -281,7 +294,7 @@ export default function LibraryWorkspace({
       () => { if (active) setFavoritePlaylistsState({ state: "error" }); },
     );
     return () => { active = false; };
-  }, [authRecovering, authSnapshot.state, favoriteRetry, section]);
+  }, [authRecovering, authSnapshot.state, favoriteRetry, qqBrowseActive, section]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
   let visibleTracks: CatalogDisplayTrack[];
@@ -475,6 +488,7 @@ export default function LibraryWorkspace({
                 aria-current={section === item.id ? "page" : undefined}
                 className={section === item.id ? "library-sidebar__item library-sidebar__item--active" : "library-sidebar__item"}
                 onClick={() => {
+                  if (!remote && browseSource === "local" && ["discover", "search", "liked", "playlists", "organizer"].includes(item.id)) selectSource("qqmusic");
                   setOpenedEntity(null);
                   setSection(item.id);
                   onSectionChange?.(item.id);
@@ -489,8 +503,8 @@ export default function LibraryWorkspace({
           ))}
         </nav>
         <div className="library-sidebar__foot">
-          <span>{section === "history" ? "本机播放记录" : liveCatalog.state === "preview" ? "本地预览" : "真实只读目录"}</span>
-          <strong>{section === "history" ? "LOCAL / HISTORY" : liveCatalog.state === "preview" ? "FIXTURE / 01" : "QQ / LIVE"}</strong>
+          <span>{section === "history" ? "本机播放记录" : providerBrowseActive ? "多平台只读与受控曲库" : liveCatalog.state === "preview" ? "本地预览" : "真实只读目录"}</span>
+          <strong>{section === "history" ? "LOCAL / HISTORY" : providerBrowseActive && browseSource === "netease" ? "NETEASE / CLOUD" : providerBrowseActive && browseSource === "bilibili" ? "BILIBILI / VIDEO" : liveCatalog.state === "preview" ? "FIXTURE / 01" : "QQ / LIVE"}</strong>
         </div>
       </aside>
 
@@ -504,6 +518,12 @@ export default function LibraryWorkspace({
         <PersonalLibrary />
       ) : section === "statistics" ? (
         <ListeningStatistics />
+      ) : providerBrowseActive ? (
+        <ProviderWorkspace
+          embedded
+          initialSection={section === "playlists" ? "created" : "search"}
+          onAccount={onAccount ?? (() => {})}
+        />
       ) : (
         <>
       <section className="catalog-pane">
@@ -536,7 +556,7 @@ export default function LibraryWorkspace({
 
         {section !== "playlists" && section !== "organizer" && !(remote && section === "liked") ?
           section === "discover" || section === "search" ? <CatalogSearchInput value={query}
-            onChange={setQuery} inputRef={searchRef} active={!authRecovering}
+            onChange={setQuery} inputRef={searchRef} active={!authRecovering && !onlineAccessMessage}
             onSubmit={value => { setQuery(value); setRemotePage(1); rememberSearch(value, searchType); }} /> :
           <label className="catalog-search"><Icon name="search" size={18} /><span className="sr-only">搜索歌曲、歌手或专辑</span>
             <input value={query} placeholder="搜索歌曲、歌手或专辑" type="search" maxLength={100}
@@ -550,14 +570,14 @@ export default function LibraryWorkspace({
 
         {(section === "search" || (section === "discover" && query.trim())) && <SearchTypeTabs value={searchType} onChange={setSearchType} />}
         {section === "search" && <SearchHistory onSelect={entry=>{setQuery(entry.query);setSearchType(entry.type);setRemotePage(1);rememberSearch(entry.query,entry.type);}} />}
-        {(section === "search" || (section === "discover" && query.trim())) && searchType !== "songs" ? <CatalogEntityResults kind={searchType} keyword={query} page={remotePage} onPageChange={setRemotePage} onOpen={setOpenedEntity} /> : section === "organizer" ? (
+        {!onlineAccessMessage && (section === "search" || (section === "discover" && query.trim())) && searchType !== "songs" ? <CatalogEntityResults kind={searchType} keyword={query} page={remotePage} onPageChange={setRemotePage} onOpen={setOpenedEntity} /> : section === "organizer" ? (
           <div className="organizer-note">
             <span className="organizer-note__rule" />
             <p><strong>先看变化，再决定是否执行。</strong>计划绑定当前账号与歌单快照；超时只读回核对，绝不盲目重复写入。</p>
           </div>
         ) : null}
 
-        {recommendationsOpen ? <RecommendationPanel key={`${accountKey}:${discoveryTab}`}
+        {onlineAccessMessage ? <div role="status" className="catalog-empty"><p>{onlineAccessMessage}</p><span>登录恢复完成后会自动读取在线目录；本地音乐和历史仍可浏览。</span></div> : recommendationsOpen ? <RecommendationPanel key={`${accountKey}:${discoveryTab}`}
           kind={discoveryTab as "guess" | "radar" | "playlists"} accountKey={accountKey}
           active={!authRecovering} onOpen={setOpenedEntity} /> : section === "organizer" ? (
           createdPlaylistsState.state === "preview" ? (
@@ -762,8 +782,9 @@ export default function LibraryWorkspace({
                 <button className="text-button text-button--primary catalog-inspector__play" onClick={() => void updateNativeQueue(selectedTrack.track, true)} type="button"><Icon name="play" size={17} />{remote ? "在电脑播放" : "原生播放"}</button>
               </div>
               <button className="text-button" onClick={() => void updateNativeQueue(selectedTrack.track, false)} type="button"><Icon name="queue" size={17} />{remote ? "加入电脑队列" : "加入本地队列"}</button>
-              <button className="text-button" disabled={likePendingIds?.includes(selectedTrack.track.id)} aria-pressed={section === "liked" || likedIds.includes(selectedTrack.track.id)} onClick={() => void handleLiveLike(selectedTrack.track)} type="button"><Icon name="heart" size={17} />{section === "liked" || likedIds.includes(selectedTrack.track.id) ? "取消喜欢" : "喜欢"}</button>
-              {!remote && createdPlaylists.length > 0 ? (
+              {trackProvider(selectedTrack.track.id) === "qqmusic" && <button className="text-button" disabled={likePendingIds?.includes(selectedTrack.track.id)} aria-pressed={section === "liked" || likedIds.includes(selectedTrack.track.id)} onClick={() => void handleLiveLike(selectedTrack.track)} type="button"><Icon name="heart" size={17} />{section === "liked" || likedIds.includes(selectedTrack.track.id) ? "取消喜欢" : "喜欢"}</button>}
+              <ProviderLibraryActions track={selectedTrack.track} />
+              {!remote && trackProvider(selectedTrack.track.id) === "qqmusic" && createdPlaylists.length > 0 ? (
                 <div className="catalog-inspector__playlist">
                   <span>目标歌单</span>
                   <PlaylistPicker

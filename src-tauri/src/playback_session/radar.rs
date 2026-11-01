@@ -67,6 +67,7 @@ impl RadarReader {
             for song in page.items {
                 if self.seen.insert(song.id.clone()) {
                     self.buffered.push_back(QueueTrack {
+                        video: None,
                         id: song.id,
                         media_mid: song.media_mid,
                         cover_cache_key: song.cover_cache_key,

@@ -1,3 +1,5 @@
+import { SourceBadge } from "../providers/SourceBadge";
+import { APP_NAME, APP_SHORT_NAME } from "../../app/branding";
 import {
   useCallback,
   useEffect,
@@ -57,6 +59,7 @@ function stateLabel(isPlaying: boolean, hasTrack: boolean, hasError: boolean) {
 }
 
 interface TerminalKeyButtonProps {
+  disabled?: boolean;
   shortcut: string;
   label: string;
   onClick: MouseEventHandler<HTMLButtonElement>;
@@ -70,6 +73,7 @@ function TerminalKeyButton({
   onClick,
   active = false,
   emphasis = false,
+  disabled = false,
 }: TerminalKeyButtonProps) {
   const className = [
     "terminal-key",
@@ -81,6 +85,7 @@ function TerminalKeyButton({
       aria-label={`${shortcut} ${label}`}
       aria-pressed={active}
       className={className}
+      disabled={disabled}
       data-tauri-drag-region="false"
       onClick={onClick}
       type="button"
@@ -246,6 +251,7 @@ function TerminalQueuePanel({ currentTrack, queue }: TerminalQueuePanelProps) {
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <button onClick={() => playerActions.playTrack(track.id)} type="button">
                   <strong>{track.title}</strong>
+                  <SourceBadge track={track} />
                   <small>{track.artist}</small>
                 </button>
                 {active ? <i aria-label="正在播放">●</i> : null}
@@ -295,6 +301,7 @@ function TerminalNowPlaying({
         <section aria-label="当前歌曲" className="terminal-track-info">
           <span className="terminal-eyebrow">NOW PLAYING</span>
           <h1>{currentTrack?.title ?? "Nothing playing"}</h1>
+          {currentTrack && <SourceBadge track={currentTrack} />}
           <p>{currentTrack?.artist ?? "从曲库选择一首歌"}</p>
           <small>{currentTrack?.album ?? "VINYL GREENHOUSE"}</small>
         </section>
@@ -336,7 +343,7 @@ function TerminalNowPlaying({
         <nav aria-label="次要播放控制" className="terminal-controls terminal-controls--secondary">
           <TerminalKeyButton label="LYRICS" onClick={() => onPanelChange("lyrics")} shortcut="L" />
           <TerminalKeyButton label="QUEUE" onClick={() => onPanelChange("queue")} shortcut="Q" />
-          <TerminalKeyButton label="LIKE" onClick={() => currentTrack && playerActions.toggleLike(currentTrack.id)} shortcut="F" active={liked} />
+          <TerminalKeyButton label="LIKE" disabled={!currentTrack || currentTrack.id.startsWith("bilibili:") || currentTrack.id.startsWith("local_")} onClick={() => currentTrack && playerActions.toggleLike(currentTrack.id)} shortcut="F" active={liked} />
           <TerminalKeyButton label="MUTE" onClick={() => playerActions.toggleMute()} shortcut="M" active={muted} />
           <TerminalKeyButton label="MODE" onClick={() => playerActions.cycleMode()} shortcut="O" />
           <TerminalKeyButton label="GUI" onClick={onExit} shortcut="G" />
@@ -429,7 +436,7 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
         <div className="terminal-mini__brand" data-tauri-drag-region>
           <span aria-hidden="true" className="terminal-mini__mark">◇</span>
           <div>
-            <strong>QQ MUSIC</strong>
+            <strong title={APP_NAME}>{APP_SHORT_NAME}</strong>
             <span>{stateLabel(isPlaying, Boolean(currentTrack), Boolean(playbackError))} · VINYL GREENHOUSE</span>
           </div>
         </div>

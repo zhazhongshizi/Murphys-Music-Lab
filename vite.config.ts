@@ -12,7 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: ["output/**", "node_modules/**", "dist/**", "src-tauri/**"],
+    exclude: ["output/**", "**/node_modules/**", "dist/**", "src-tauri/**", "providers/**"],
     setupFiles: ["./src/test/setup.ts"],
     css: true,
     restoreMocks: true,

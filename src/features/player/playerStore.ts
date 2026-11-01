@@ -1,4 +1,7 @@
 import { useSyncExternalStore } from "react";
+import { nativeProviderLikes, nativeProviderStatus, nativeProviderWrite } from "../../backend/providersAdapter";
+import { providerSessionRevision } from "../../backend/providerSessions";
+import { isRemotePlayback } from "../../backend/playbackTransport";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import { playbackSessionIdentity } from "../../backend/playbackTransport";
 import { newestQueue } from "../../backend/sessionSnapshots";
@@ -60,6 +63,7 @@ export interface PlayerSnapshot {
   readonly requestedQuality: PlaybackQuality;
   readonly likedIds: readonly string[];
   readonly likesReady?: boolean;
+  readonly neteaseLikesReady?: boolean;
   readonly likePendingIds?: readonly string[];
   readonly likeNotice?: string | null;
   readonly playbackError: PlaybackErrorState | null;
@@ -117,6 +121,11 @@ let playbackRetry: (() => Promise<void>) | null = null;
 let nativeFailureKey: string | null = null;
 let likesEpoch = 0;
 let likesReadVersion = 0;
+let neteaseLikes = new Set<string>();
+let neteaseAccount = "";
+let neteaseRevision = -1;
+let neteaseRead = 0;
+let neteaseAttempt = "";
 const likesEdits = new Map<string, boolean>();
 type OperationDomain = "source" | "transport" | "seek" | "volume" | "mode" | "queue" | "like" | "quality";
 const operationVersions: Record<OperationDomain, number> = {
@@ -150,6 +159,7 @@ function applyNative(
   lyricOffsetMs?: number,
   controls: ControlVersions = controlVersions(),
   skipNotice: PlaybackSkipNotice | null | undefined = undefined,
+  actualBitrate?: number,
 ) {
   if (nativeSessionIdentity !== playbackSessionIdentity()) {
     nativeSessionIdentity = playbackSessionIdentity();
@@ -186,7 +196,7 @@ function applyNative(
   const sourceChangedBack = updatedCurrent?.actualQuality === "QQ MV 音轨"
     && player.currentTrack?.id === updatedCurrent.id && player.currentTrack.source !== "qq-mv";
   const qualityLabel = effectiveQuality && updatedCurrent
-    ? actualQuality(effectiveQuality, updatedCurrent.id)
+    ? actualQuality(effectiveQuality, updatedCurrent.id, actualBitrate)
     : sourceChangedBack ? "未知音质" : undefined;
   if (qualityLabel && updatedCurrent && updatedCurrent.actualQuality !== qualityLabel) {
     const next = [...tracks];
@@ -249,8 +259,9 @@ function applyNative(
     mode: mode ?? (snapshot.nativeMode ? snapshot.mode : "sequence"),
     defaultQuality: snapshot.defaultQuality,
     requestedQuality: currentRequestedQuality,
-    likedIds: snapshot.nativeMode || snapshot.likesReady ? snapshot.likedIds : [],
+    likedIds: snapshot.nativeMode || snapshot.likesReady || snapshot.neteaseLikesReady ? snapshot.likedIds : [],
     likesReady: snapshot.likesReady,
+    neteaseLikesReady: snapshot.neteaseLikesReady,
     likePendingIds: snapshot.likePendingIds,
     likeNotice: snapshot.likeNotice,
     playbackError,
@@ -271,7 +282,7 @@ async function refreshNative(
     queue ? Promise.resolve(queue) : nativeQueueSnapshot(),
     playback ? Promise.resolve(playback.player) : nativePlayerSnapshot(),
   ]);
-  if (identity === playbackSessionIdentity() && isCurrent()) applyNative(nextQueue, player, playback?.quality, undefined, requestedQuality, undefined, controls);
+  if (identity === playbackSessionIdentity() && isCurrent()) applyNative(nextQueue, player, playback?.quality, undefined, requestedQuality, undefined, controls, undefined, playback?.bitrate);
 }
 
 function applyControl(
@@ -652,6 +663,7 @@ export const playerActions = {
     return true;
   },
   toggleLike(trackId: string) {
+    if (trackId.startsWith("bilibili:") || localMusicFormatFromId(trackId)) return;
     const liked = new Set(snapshot.likedIds);
     const nextLiked = liked.has(trackId) ? [...liked].filter((id) => id !== trackId) : [...liked, trackId];
     if (!snapshot.nativeMode) {
@@ -659,19 +671,21 @@ export const playerActions = {
       return;
     }
 
-    if (!snapshot.likesReady) return;
+    if (trackId.startsWith("netease:")) {
+      if (!snapshot.neteaseLikesReady) { emit({ ...snapshot, likeNotice: "网易喜欢状态未知，请先核对喜欢列表" }); return; }
+    } else if (!snapshot.likesReady) return;
     void playerActions.setSongLiked(trackId, !liked.has(trackId)).catch(() => {});
   },
   clearAccountLikes() {
     likesEpoch++; likesReadVersion++; likesEdits.clear();
-    emit({ ...snapshot, likedIds: [], likesReady: false, likePendingIds: [], likeNotice: null });
+    emit({ ...snapshot, likedIds: [...neteaseLikes], likesReady: false, likePendingIds: snapshot.likePendingIds?.filter(id => id.startsWith("netease:")), likeNotice: null });
   },
   async syncAccountLikes() {
     const epoch = likesEpoch;
     const readVersion = ++likesReadVersion;
     const identity = playbackSessionIdentity();
     likesEdits.clear();
-    emit({ ...snapshot, likedIds: [], likesReady: false, likeNotice: null });
+    emit({ ...snapshot, likedIds: [...neteaseLikes], likesReady: false, likeNotice: null });
     const ids = new Set<string>();
     try {
       for (let page = 1; page <= 100; page++) {
@@ -686,7 +700,7 @@ export const playerActions = {
           continue;
         }
         likesEdits.forEach((liked, id) => { if (liked) ids.add(id); else ids.delete(id); });
-        emit({ ...snapshot, likedIds: [...ids], likesReady: true });
+        emit({ ...snapshot, likedIds: [...ids, ...neteaseLikes], likesReady: true });
         return;
       }
     } catch {
@@ -696,6 +710,28 @@ export const playerActions = {
     }
   },
   async setSongLiked(trackId: string, liked: boolean) {
+    if (trackId.startsWith("bilibili:")) throw new Error("unsupported_capability");
+    if (trackId.startsWith("netease:")) {
+      if (isRemotePlayback() || snapshot.likePendingIds?.includes(trackId)) return false;
+      const status = await nativeProviderStatus("netease");
+      if (status.state !== "ready") throw new Error("authentication_required");
+      const revision = providerSessionRevision("netease");
+      if (snapshot.likePendingIds?.includes(trackId)) return false;
+      neteaseRead++;
+      emit({ ...snapshot, likePendingIds: [...(snapshot.likePendingIds ?? []), trackId], likeNotice: null });
+      try {
+        const receipt = await nativeProviderWrite({ providerId: "netease", accountId: status.account.id, operation: { kind: "setLiked", trackId, liked } });
+        if (revision !== providerSessionRevision("netease")) return false;
+        if (receipt.status !== "applied") { emit({ ...snapshot, likeNotice: "网易喜欢结果待核对；请只读刷新，未自动重复提交" }); return false; }
+        playerActions.applyVerifiedProviderLike(trackId, liked);
+        return true;
+      } catch (e) {
+        if (revision === providerSessionRevision("netease")) emit({ ...snapshot, likeNotice: "网易喜欢结果待核对；未自动重复提交" });
+        throw e;
+      } finally {
+        if (revision === providerSessionRevision("netease")) emit({ ...snapshot, likePendingIds: snapshot.likePendingIds?.filter(id => id !== trackId) });
+      }
+    }
     if (localMusicFormatFromId(trackId) || snapshot.likePendingIds?.includes(trackId)) return false;
     const epoch = likesEpoch;
     const identity = playbackSessionIdentity();
@@ -718,6 +754,39 @@ export const playerActions = {
         emit({ ...snapshot, likePendingIds: snapshot.likePendingIds?.filter(id => id !== trackId) });
       }
     }
+  },
+  applyVerifiedProviderLike(trackId: string, liked: boolean) {
+    if (!trackId.startsWith("netease:track:")) return;
+    neteaseRead++;
+    if (liked) neteaseLikes.add(trackId); else neteaseLikes.delete(trackId);
+    emit({ ...snapshot, likedIds: [...snapshot.likedIds.filter(id => !id.startsWith("netease:")), ...neteaseLikes] });
+  },
+  invalidateProviderLikes() {
+    neteaseRead++; neteaseAttempt = ""; neteaseAccount = ""; neteaseRevision = -1; neteaseLikes.clear();
+    emit({ ...snapshot, likedIds: snapshot.likedIds.filter(id => !id.startsWith("netease:")), neteaseLikesReady: false, likePendingIds: snapshot.likePendingIds?.filter(id => !id.startsWith("netease:")) });
+  },
+  async refreshProviderLikes(force = false) {
+    if (isRemotePlayback() || typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    let read = neteaseRead;
+    let revision = providerSessionRevision("netease");
+    try {
+      const status = await nativeProviderStatus("netease");
+      if (status.state !== "ready") { if (neteaseAccount || neteaseLikes.size) playerActions.invalidateProviderLikes(); return; }
+      revision = providerSessionRevision("netease");
+      const key = `${revision}:${status.account.id}`;
+      if (!force && neteaseAttempt === key) return;
+      neteaseAttempt = key;
+      if (neteaseAccount !== status.account.id || neteaseRevision !== revision) {
+        neteaseLikes.clear();
+        emit({ ...snapshot, likedIds: snapshot.likedIds.filter(id => !id.startsWith("netease:")), neteaseLikesReady: false });
+      }
+      neteaseAccount = status.account.id; neteaseRevision = revision;
+      read = ++neteaseRead;
+      const result = await nativeProviderLikes();
+      if (read !== neteaseRead || revision !== providerSessionRevision("netease") || result.accountId !== neteaseAccount) return;
+      neteaseLikes = new Set(result.ids);
+      emit({ ...snapshot, likedIds: [...snapshot.likedIds.filter(id => !id.startsWith("netease:")), ...neteaseLikes], neteaseLikesReady: true });
+    } catch { if (read === neteaseRead && revision === providerSessionRevision("netease")) emit({ ...snapshot, likeNotice: "网易喜欢状态读取失败，请手动核对；其他来源保持不变" }); }
   },
   removeTrack(trackId: string) {
     if (snapshot.nativeMode) {
@@ -782,6 +851,7 @@ export const playerActions = {
     queue?: QueueSnapshot,
     player?: NativePlayerSnapshot,
     quality?: PlaybackLoadResult["quality"],
+    bitrate?: number,
   ) {
     const identity = playbackSessionIdentity();
     const controls = controlVersions();
@@ -790,7 +860,7 @@ export const playerActions = {
       player ? Promise.resolve(player) : nativePlayerSnapshot(),
     ]);
     if (identity !== playbackSessionIdentity()) return;
-    applyNative(nextQueue, nextPlayer, quality, undefined, undefined, undefined, controls);
+    applyNative(nextQueue, nextPlayer, quality, undefined, undefined, undefined, controls, undefined, bitrate);
     clearPlaybackError();
   },
   async hydrateNativeSession(session?: PlaybackSessionSnapshot) {
@@ -798,10 +868,10 @@ export const playerActions = {
     const controls = controlVersions();
     const nextSession = session ?? await nativePlaybackSessionSnapshot(lastNativeQueue);
     if (identity !== playbackSessionIdentity()) return;
-    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0, controls, nextSession.skipNotice ?? null);
+    applyNative(nextSession.queue, nextSession.player, nextSession.actualQuality ?? undefined, nextSession.mode, nextSession.requestedQuality, nextSession.lyricOffsetMs ?? 0, controls, nextSession.skipNotice ?? null, nextSession.actualBitrate);
   },
   applyAuthoritativeSession(session: PlaybackSessionSnapshot) {
-    applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0, controlVersions(), session.skipNotice ?? null);
+    applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0, controlVersions(), session.skipNotice ?? null, session.actualBitrate);
     clearPlaybackError();
   },
   applyTimedLyrics(trackId: string, generation: number, lyrics: readonly TimedLyricLine[]) {
@@ -830,6 +900,7 @@ export const playerActions = {
 };
 
 export function resetPlayerFixture() {
+  neteaseRead++; neteaseLikes.clear(); neteaseAccount = ""; neteaseRevision = -1; neteaseAttempt = "";
   likesEpoch++; likesReadVersion++; likesEdits.clear();
   nativeSessionIdentity = playbackSessionIdentity();
   lastNativeQueue = undefined;

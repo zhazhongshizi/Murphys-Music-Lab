@@ -5,6 +5,12 @@ use crate::{
 
 #[tauri::command]
 pub(crate) fn auth_status(state: State<'_, AppState>) -> AuthSnapshot {
+    if let Some(host) = &state.provider {
+        return host
+            .account()
+            .map(|a| AuthSnapshot::authenticated(Some(a)))
+            .unwrap_or_else(AuthSnapshot::signed_out);
+    }
     state
         .auth_snapshot
         .read()
@@ -18,9 +24,16 @@ pub(crate) async fn auth_recover(state: State<'_, AppState>) -> Result<AuthSnaps
         session.clear_shuffle_likes();
     }
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;
-    let snapshot = match run_auth_blocking(move || auth.recover()).await? {
-        RecoveryState::SignedOut => AuthSnapshot::signed_out(),
-        RecoveryState::Authenticated { account } => AuthSnapshot::authenticated(Some(account)),
+    let recovered = run_auth_blocking(move || auth.recover()).await?;
+    let snapshot = if let Some(host) = &state.provider {
+        host.account()
+            .map(|a| AuthSnapshot::authenticated(Some(a)))
+            .unwrap_or_else(AuthSnapshot::signed_out)
+    } else {
+        match recovered {
+            RecoveryState::SignedOut => AuthSnapshot::signed_out(),
+            RecoveryState::Authenticated { account } => AuthSnapshot::authenticated(Some(account)),
+        }
     };
     *state
         .auth_snapshot
@@ -77,6 +90,13 @@ pub(crate) async fn auth_qr_poll(
             public_auth_error(error)
         })?;
     if let QrLoginState::Authenticated { account, .. } = &login_state {
+        if state
+            .provider
+            .as_ref()
+            .is_some_and(|h| h.account().as_ref() != Some(account))
+        {
+            return Err(provider_unavailable());
+        }
         if let Some(session) = &state.playback_session {
             session.cancel_radar();
         }
@@ -105,23 +125,43 @@ pub(crate) async fn auth_logout(
     state: State<'_, AppState>,
 ) -> Result<PublicLogoutResult, PublicError> {
     if let Some(session) = &state.playback_session {
+        let _ = session.invalidate_provider_at(
+            crate::multi_provider::ProviderId::Qqmusic,
+            session.play_intent_token(),
+        );
         session.cancel_radar();
         session.clear_shuffle_likes();
     }
     let auth = state.auth.clone().ok_or_else(provider_unavailable)?;
     let result = run_auth_blocking(move || auth.logout()).await?;
+    if let Some(session) = &state.playback_session {
+        let _ = session.invalidate_provider_at(
+            crate::multi_provider::ProviderId::Qqmusic,
+            session.play_intent_token(),
+        );
+    }
     crate::file_logging::event("auth_logout_completed");
     *state
         .auth_snapshot
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = AuthSnapshot::signed_out();
     #[cfg(windows)]
-    if let Some(artwork) = &state.smtc_artwork {
-        artwork.clear_for_logout();
-    }
+    let non_qq_active = state
+        .playback_session
+        .as_ref()
+        .and_then(|s| s.snapshot().player.current_track)
+        .is_some_and(|t| {
+            crate::multi_provider::identity::track_provider(&t.id)
+                != Ok(crate::multi_provider::ProviderId::Qqmusic)
+        });
     #[cfg(windows)]
-    if let Some(dynamic_lyrics) = &state.smtc_dynamic_lyrics {
-        dynamic_lyrics.clear_for_logout();
+    if !non_qq_active {
+        if let Some(artwork) = &state.smtc_artwork {
+            artwork.clear_for_logout();
+        }
+        if let Some(dynamic_lyrics) = &state.smtc_dynamic_lyrics {
+            dynamic_lyrics.clear_for_logout();
+        }
     }
     let cover_cache_cleared = state
         .cover

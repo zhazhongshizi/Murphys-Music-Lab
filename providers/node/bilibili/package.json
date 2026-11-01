@@ -1,0 +1,9 @@
+{
+  "name": "qqmusic-gui-bilibili-provider",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": "24.22.2" },
+  "scripts": { "test": "node --test tests/*.test.mjs" },
+  "dependencies": { "ajv": "8.17.1", "qrcode": "1.5.4", "tough-cookie": "5.1.2" }
+}

@@ -117,6 +117,20 @@ function renderWorkspace(
 }
 
 describe("live catalog workspace", () => {
+it.each(["discover", "search"] as const)("gates the %s online view through signed-out, restoring and ready", async section => {
+  const view=renderWorkspace(section,{state:"signedOut"});
+  expect(screen.getByText("请先登录后搜索或发现音乐")).toBeInTheDocument();
+  if(section==="search")await userEvent.type(screen.getByRole("combobox"),"待恢复");
+  await new Promise(resolve=>setTimeout(resolve,350));
+  expect(discoverMock).not.toHaveBeenCalled();expect(searchMock).not.toHaveBeenCalled();expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  view.rerender(<LibraryWorkspace authSnapshot={{state:"signedOut"}} authRecovering initialSection={section} onBack={()=>{}} />);
+  expect(screen.getByText("正在恢复账号")).toBeInTheDocument();
+  await new Promise(resolve=>setTimeout(resolve,350));expect(discoverMock).not.toHaveBeenCalled();expect(searchMock).not.toHaveBeenCalled();
+  view.rerender(<LibraryWorkspace authSnapshot={AUTHENTICATED} authRecovering={false} initialSection={section} onBack={()=>{}} />);
+  await screen.findAllByText(SONG.title);
+  expect(section==="discover"?discoverMock:searchMock).toHaveBeenCalledOnce();
+});
+
   beforeEach(() => {
     setLikedMock.mockReset().mockResolvedValue({ status: "applied" });
     invalidatePlaylistSongs();

@@ -25,7 +25,7 @@ export function parseUpdateSnapshot(value: unknown): UpdateSnapshot {
   if (r.release !== null) {
     const v = record(r.release, ["version", "name", "notes", "url", "publishedAt"]);
     const url = text(v.url, 512);
-    if (!/^https:\/\/github\.com\/zhazhongshizi\/qqmusic-gui\/releases\/tag\/v?\d+\.\d+\.\d+(?:\+[\w.%+-]+)?$/u.test(url)) return invalid();
+    if (!/^https:\/\/github\.com\/zhazhongshizi\/Murphys-Music-Lab\/releases\/tag\/v?\d+\.\d+\.\d+(?:\+[\w.%+-]+)?$/u.test(url)) return invalid();
     release = { version: text(v.version, 128), name: text(v.name, 512), notes: text(v.notes, 128 * 1024), url, publishedAt: v.publishedAt === null ? null : text(v.publishedAt, 64) };
   }
   if (r.state === "available" && !release) return invalid();

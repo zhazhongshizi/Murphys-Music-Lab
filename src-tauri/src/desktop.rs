@@ -62,7 +62,7 @@ impl PixelRect {
 pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .show_menu_on_left_click(false)
-        .tooltip("QQ Music GUI")
+        .tooltip(app.config().product_name.as_deref().unwrap_or("Music Lab"))
         .on_tray_icon_event(|tray, event| match event {
             TrayIconEvent::Click {
                 position,

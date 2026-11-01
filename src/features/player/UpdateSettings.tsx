@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { APP_NAME } from "../../app/branding";
 import { hasPlaybackTransport } from "../../backend/playbackTransport";
 import { updatesControl, type UpdateRequest, type UpdateSnapshot } from "../../backend/updateAdapter";
 import "./update-settings.css";
@@ -44,14 +45,14 @@ export default function UpdateSettings({ presentation = "normal" }: { presentati
     {open && createPortal(<dialog className="update-dialog" ref={dialog} aria-labelledby="update-title" onKeyDown={event => event.stopPropagation()} onCancel={event => { event.preventDefault(); close(); }}>
       <header><div><span>APPLICATION / RELEASES</span><h2 id="update-title">版本与更新</h2></div><button type="button" aria-label="关闭更新设置" onClick={close}>关闭</button></header>
       {snapshot ? <>
-        <p className="update-version">QQMusic GUI <strong>{snapshot.currentVersion}</strong><small>{snapshot.buildChannel === "Debug" ? "Debug · 开发测试版本" : "Release · 发行构建"}</small></p>
+        <p className="update-version">{APP_NAME} <strong>{snapshot.currentVersion}</strong><small>{snapshot.buildChannel === "Debug" ? "Debug · 开发测试版本" : "Release · 发行构建"}</small></p>
         <label className="update-auto"><input type="checkbox" checked={snapshot.automatic} disabled={checking} onChange={e => void run({ action: "setAutomatic", enabled: e.target.checked })} />启动后检查更新</label>
         <p className="update-muted">仅查询官方稳定版本；启动后在后台检查，播放照常进行。</p>
         <div className="update-actions"><button type="button" disabled={checking} onClick={() => void run({ action: "check" })}>{checking ? "正在检查…" : "检查新版本"}</button><button type="button" disabled={busy} onClick={() => void run({ action: "openReleases" })}>官方发行页面 ↗</button></div>
         <p role="status">{messages[snapshot.state]}</p>
         {snapshot.checkedMs !== null && <small>最近检查：{new Date(snapshot.checkedMs).toLocaleString("zh-CN")}</small>}
         {snapshot.release && <section className="update-release" aria-label="官方更新日志"><div><h3>{snapshot.release.name}</h3><small>稳定版 {snapshot.release.version}{snapshot.release.publishedAt ? ` · ${snapshot.release.publishedAt.slice(0, 10)}` : ""}</small></div>
-          <p className="update-source">来源：GitHub · zhazhongshizi/qqmusic-gui{snapshot.state === "unavailable" || snapshot.state === "rateLimited" || snapshot.state === "noRelease" ? " · 上次成功读取的发行信息" : ""}</p>
+          <p className="update-source">来源：GitHub · zhazhongshizi/Murphys-Music-Lab{snapshot.state === "unavailable" || snapshot.state === "rateLimited" || snapshot.state === "noRelease" ? " · 上次成功读取的发行信息" : ""}</p>
           <pre>{snapshot.release.notes || "此版本没有附带更新说明。"}</pre><button type="button" disabled={busy} onClick={() => void run({ action: "openRelease" })}>打开此版本发行页 ↗</button>
         </section>}
         <details className="update-data"><summary>升级前的数据位置与迁移说明</summary>

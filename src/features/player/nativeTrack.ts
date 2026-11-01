@@ -16,7 +16,8 @@ export function nativeTrack(track: QueueSnapshot["items"][number], previous?: Tr
     previous.artist === track.artist &&
     previous.album === track.album &&
     previous.durationMs === track.durationMs &&
-    previous.coverCacheKey === track.coverCacheKey
+    previous.coverCacheKey === track.coverCacheKey &&
+    JSON.stringify(previous.video) === JSON.stringify(track.video)
   ) {
     return previous;
   }
@@ -51,12 +52,14 @@ export function nativeTrack(track: QueueSnapshot["items"][number], previous?: Tr
         lyrics: [],
       };
 
+  if (track.video) next.video = track.video; else delete next.video;
   if (track.coverCacheKey === undefined) delete next.coverCacheKey;
   else next.coverCacheKey = track.coverCacheKey;
   return next;
 }
 
-export function actualQuality(value: PlaybackLoadResult["quality"], trackId?: string): Track["actualQuality"] {
+export function actualQuality(value: PlaybackLoadResult["quality"], trackId?: string, bitrate?: number): Track["actualQuality"] {
+  if (value === "aac") return bitrate ? `AAC ${Math.round(bitrate / 1000)} kbps` : "AAC";
   if (value === "qq-mv") return "QQ MV 音轨";
   if (value === "local") {
     const format = trackId ? localMusicFormatFromId(trackId) : null;

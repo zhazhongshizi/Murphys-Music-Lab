@@ -1,0 +1,135 @@
+[
+  {
+    "name": "startupWithoutLogin",
+    "events": [
+      "restoreAbsent"
+    ],
+    "state": "disabled",
+    "effects": []
+  },
+  {
+    "name": "successfulQr",
+    "events": [
+      "login",
+      "started",
+      "authenticated"
+    ],
+    "state": "ready",
+    "effects": [
+      "StartProcess"
+    ]
+  },
+  {
+    "name": "sessionOnlyOnSaveFailure",
+    "events": [
+      "login",
+      "started",
+      "saveFailed"
+    ],
+    "state": "ready",
+    "effects": [
+      "StartProcess"
+    ]
+  },
+  {
+    "name": "cancelQr",
+    "events": [
+      "login",
+      "started",
+      "cancel",
+      "stopped"
+    ],
+    "state": "disabled",
+    "effects": [
+      "StartProcess",
+      "InvalidateSession",
+      "StopProcess"
+    ]
+  },
+  {
+    "name": "restoreSaved",
+    "events": [
+      "restoreSaved",
+      "started",
+      "authenticated"
+    ],
+    "state": "ready",
+    "effects": [
+      "StartProcess"
+    ]
+  },
+  {
+    "name": "offlineRestorePreservesSecret",
+    "events": [
+      "restoreSaved",
+      "started",
+      "networkFailure",
+      "stopped"
+    ],
+    "state": "disabled",
+    "effects": [
+      "StartProcess",
+      "InvalidateSession",
+      "StopProcess"
+    ]
+  },
+  {
+    "name": "invalidRestoreNoRestart",
+    "events": [
+      "restoreSaved",
+      "started",
+      "invalidCredential",
+      "stopped"
+    ],
+    "state": "disabled",
+    "effects": [
+      "StartProcess",
+      "InvalidateSession",
+      "StopProcess"
+    ]
+  },
+  {
+    "name": "logout",
+    "events": [
+      "login",
+      "started",
+      "authenticated",
+      "logout",
+      "stopped"
+    ],
+    "state": "disabled",
+    "effects": [
+      "StartProcess",
+      "InvalidateSession",
+      "DeleteCredential",
+      "StopProcess"
+    ]
+  },
+  {
+    "name": "exitPreservesLogin",
+    "events": [
+      "restoreSaved",
+      "started",
+      "authenticated",
+      "shutdown",
+      "stopped"
+    ],
+    "state": "disabled",
+    "effects": [
+      "StartProcess",
+      "InvalidateSession",
+      "StopProcess"
+    ]
+  },
+  {
+    "name": "logoutDisabledClearsSavedCredential",
+    "events": [
+      "logout"
+    ],
+    "state": "disabled",
+    "effects": [
+      "InvalidateSession",
+      "DeleteCredential"
+    ]
+  }
+]

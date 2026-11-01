@@ -141,6 +141,18 @@ impl PublicError {
         crate::file_logging::public_error(&error);
         error
     }
+
+    pub fn provider(code: &'static str, retryable: bool, user_message: &'static str) -> Self {
+        let error = Self {
+            code,
+            retryable,
+            operation: Operation::Provider,
+            correlation_id: Uuid::new_v4().to_string(),
+            user_message,
+        };
+        crate::file_logging::public_error(&error);
+        error
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

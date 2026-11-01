@@ -63,7 +63,7 @@ pub struct CatalogArtist {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", into = "serde_json::Value")]
 pub struct CatalogSong {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,6 +82,13 @@ pub struct CatalogSong {
     pub duration_ms: u64,
     pub quality_candidates: Vec<CatalogQualityCandidate>,
     pub availability: CatalogAvailability,
+}
+impl From<CatalogSong> for Value {
+    fn from(t: CatalogSong) -> Self {
+        crate::multi_provider::identity::public_track(
+            serde_json::json!({"id":t.id,"mediaMid":t.media_mid,"coverCacheKey":t.cover_cache_key,"title":t.title,"subtitle":t.subtitle,"artists":t.artists,"artist":t.artist,"album":t.album,"albumId":t.album_id,"albumPublishDate":t.album_publish_date,"durationMs":t.duration_ms,"qualityCandidates":t.quality_candidates,"availability":t.availability}),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

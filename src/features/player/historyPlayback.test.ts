@@ -16,6 +16,17 @@ it("plays the ID's actual queue position and hydrates the resulting native state
   expect(mocks.hydrate).toHaveBeenLastCalledWith(queue, result.playback.player, "320k");
 });
 
+it("replays Bilibili history with source, durable part metadata and actual AAC bitrate", async () => {
+  const video = { title: "视频原题", partTitle: "第二 P", partNumber: 2 };
+  const track = { providerId: "bilibili" as const, id: "bilibili:video:BV17x411w7KC:124", title: "第二 P", artist: "UP", album: "视频原题", durationMs: 3800000, video };
+  const queue = { generation: 3, selectedIndex: 0, items: [track] };
+  const playback = { quality: "aac", bitrate: 73451, player: { generation: 4 } };
+  mocks.enqueue.mockResolvedValue(queue); mocks.play.mockResolvedValue({ queue, playback });
+  await playHistoryEntry({ ...track, playedAtUnixMs: 1000 });
+  expect(mocks.enqueue).toHaveBeenCalledWith(track);
+  expect(mocks.hydrate).toHaveBeenLastCalledWith(queue, playback.player, "aac", 73451);
+});
+
 it("does not play another song when the requested history ID was not enqueued", async () => {
   mocks.enqueue.mockResolvedValue({ items: [{ id: "other-song" }] });
   await expect(playHistoryEntry(entry)).rejects.toThrow();

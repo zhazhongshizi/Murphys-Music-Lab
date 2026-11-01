@@ -144,14 +144,39 @@ it("莱茵只读收藏歌单不显示移出和勾选入口", async () => {
 it("点播后进入磁带机，返回时保留同一个歌单详情", async () => {
   vi.spyOn(playerActions, "playTrack").mockResolvedValueOnce(true);
   const view = render(<RhineMode {...props} />);
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: /抽取档案/ }));
   const document = screen.getByRole("region", { name: "歌单详情" });
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: "播放 沿途" }));
   expect(await screen.findByRole("region", { name: "磁带机" })).toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "歌单详情" })).not.toBeInTheDocument();
   expect(view.container.querySelector(".player-bar")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "↙ 返回音乐档案" }));
   expect(screen.getByRole("region", { name: "歌单详情" })).toBe(document);
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+});
+it("仅在创建的歌单、收藏的歌单与搜索界面显示音乐来源切换条", async () => {
+  render(<RhineMode {...props} />);
+  await screen.findByRole("button", { name: /抽取档案/ });
+  const nav = screen.getByRole("navigation", { name: "档案分类" });
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "收藏的歌单" }));
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "搜索" }));
+  expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "最近播放" }));
+  expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "回忆磁带" }));
+  expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+
+  fireEvent.click(within(nav).getByRole("button", { name: "设置" }));
+  expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
 });
 it("点播入队失败时留在详情并显示失败提示", async () => {
   mocks.enqueue.mockRejectedValueOnce(new Error("queue failed"));

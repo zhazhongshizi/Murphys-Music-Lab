@@ -1,4 +1,11 @@
-# Provider protocol v1
+# Provider contracts
+
+The existing QQ provider continues to use v1 below. New provider v2 and renderer-safe
+multi-provider DTOs are frozen separately in [provider-v2.md](provider-v2.md).
+3c production integration, explicit private AAC backup/DASH extensions, schema 12 part metadata
+and public AAC bitrate fields are documented in provider-v2.md. QQ continues to use v1.
+
+## Provider protocol v1
 
 The Rust host owns and supervises one private provider child process. The transport is the
 child's stdin/stdout; it does not expose a TCP or HTTP listener.
@@ -70,6 +77,11 @@ media, network, and schema drift. The result URL crosses only the private provid
 Rust validates it and removes it before returning the public player snapshot to the renderer.
 
 ## Fixture catalogue
+
+The multi-provider 3a host now has a separate strict Rust v2 client, lifecycle Registry,
+current-user DPAPI storage, and source-aware compatibility fixtures. QQ keeps private v1.
+See the [v2 host contract](provider-v2.md) and [architecture overview](../docs/architecture.md).
+The step-2 Node probes are not production platform registrations.
 
 `tests/fixtures/provider-v1/index.json` catalogues valid requests and host-side response scenarios
 for out-of-order, duplicate, unknown, timeout, malformed encoding, oversized lines, and version

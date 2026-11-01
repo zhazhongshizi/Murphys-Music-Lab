@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { SourceBadge } from "../providers/SourceBadge";
 
 import { Icon } from "../../components/Icon";
 import { AlbumArtwork } from "../stage/AlbumArtwork";
@@ -224,6 +225,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
               <span className="queue-list__index">{active ? <Icon name="play" size={13} /> : String(index + 1).padStart(2, "0")}</span>
               <span>
                 <strong>{track.title}</strong>
+                <SourceBadge track={track} />
               </span>
             </button>
             <small><SongArtistLinks track={track} /> · {presentation === "rhine-detail" ? track.album || track.actualQuality : track.actualQuality}</small>

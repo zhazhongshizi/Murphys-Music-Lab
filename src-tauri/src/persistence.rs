@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
-pub const LOCAL_SCHEMA_VERSION: u32 = 11;
+pub const LOCAL_SCHEMA_VERSION: u32 = 12;
 const MAX_QUEUE_ITEMS: usize = 1_000;
 const MAX_HISTORY_ITEMS: i64 = 5_000;
 const MAX_METADATA_CACHE_ITEMS: i64 = 2_000;
@@ -116,7 +116,9 @@ UPDATE playback_history SET
 "#;
 
 #[cfg(test)]
-pub(crate) const REMOVE_HISTORY_V9_COLUMNS: &str = "ALTER TABLE playback_history DROP COLUMN album;
+pub(crate) const REMOVE_HISTORY_V9_COLUMNS: &str = "ALTER TABLE queue_items DROP COLUMN video_json;
+ALTER TABLE playback_history DROP COLUMN video_json;
+ALTER TABLE playback_history DROP COLUMN album;
 ALTER TABLE playback_history DROP COLUMN duration_ms;
 ALTER TABLE playback_history DROP COLUMN cover_cache_key;
 ALTER TABLE playback_history DROP COLUMN media_mid;";
@@ -236,6 +238,7 @@ impl Default for AppSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedTrack {
+    pub video: Option<crate::multi_provider::VideoPartMetadata>,
     pub track_id: String,
     pub media_mid: Option<String>,
     pub title: String,
@@ -248,6 +251,7 @@ pub struct PersistedTrack {
 impl PersistedTrack {
     pub fn validate(&self) -> Result<(), PersistenceError> {
         validate_stable_id(&self.track_id)?;
+        if !crate::multi_provider::VideoPartMetadata::validate_for(&self.track_id, self.video.as_ref()) { return Err(PersistenceError::InvalidData); }
         if let Some(media_mid) = &self.media_mid {
             validate_stable_id(media_mid)?;
         }
@@ -416,8 +420,9 @@ pub struct PersistenceService {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", into = "serde_json::Value")]
 pub struct PlaybackHistoryEntry {
+    pub video: Option<crate::multi_provider::VideoPartMetadata>,
     pub id: String,
     pub title: String,
     pub artist: String,
@@ -428,6 +433,13 @@ pub struct PlaybackHistoryEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_mid: Option<String>,
     pub played_at_unix_ms: i64,
+}
+impl From<PlaybackHistoryEntry> for serde_json::Value {
+    fn from(t: PlaybackHistoryEntry) -> Self {
+        crate::multi_provider::identity::public_track(
+            serde_json::json!({"video":t.video,"id":t.id,"title":t.title,"artist":t.artist,"album":t.album,"durationMs":t.duration_ms,"coverCacheKey":t.cover_cache_key,"mediaMid":t.media_mid,"playedAtUnixMs":t.played_at_unix_ms}),
+        )
+    }
 }
 
 impl PersistenceService {
@@ -644,11 +656,12 @@ impl PersistenceService {
                 .prepare_cached(
                     "INSERT INTO queue_items (
                         position, track_id, title, artist, album, duration_ms, cover_cache_key,
-                        media_mid
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        media_mid, video_json
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )
                 .map_err(|_| PersistenceError::Unavailable)?;
             for (position, track) in tracks.iter().enumerate() {
+                retain_video(&transaction, track)?;
                 let position =
                     i64::try_from(position).map_err(|_| PersistenceError::LimitExceeded)?;
                 let duration_ms =
@@ -663,6 +676,7 @@ impl PersistenceService {
                         duration_ms,
                         track.cover_cache_key,
                         track.media_mid,
+                        video_json(track.video.as_ref())?,
                     ])
                     .map_err(|_| PersistenceError::Unavailable)?;
             }
@@ -676,7 +690,7 @@ impl PersistenceService {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare(
-                "SELECT track_id, title, artist, album, duration_ms, cover_cache_key, media_mid
+                "SELECT track_id, title, artist, album, duration_ms, cover_cache_key, media_mid, video_json
                  FROM queue_items ORDER BY position ASC",
             )
             .map_err(|_| PersistenceError::Unavailable)?;
@@ -684,6 +698,7 @@ impl PersistenceService {
             .query_map([], |row| {
                 let duration_ms = row.get::<_, i64>(4)?;
                 Ok(PersistedTrack {
+                    video: read_video(row, 7)?,
                     track_id: row.get(0)?,
                     media_mid: row.get(6)?,
                     title: row.get(1)?,
@@ -720,7 +735,7 @@ impl PersistenceService {
         let connection = self.connection()?;
         let mut query = connection
             .prepare(
-                "SELECT track_id, title, artist, played_at_unix_ms, album, duration_ms, cover_cache_key, media_mid FROM playback_history
+                "SELECT track_id, title, artist, played_at_unix_ms, album, duration_ms, cover_cache_key, media_mid, video_json FROM playback_history
              WHERE history_id IN (SELECT MAX(history_id) FROM playback_history GROUP BY track_id)
              ORDER BY played_at_unix_ms DESC, history_id DESC LIMIT 5000",
             )
@@ -728,6 +743,7 @@ impl PersistenceService {
         let rows = query
             .query_map([], |row| {
                 Ok(PlaybackHistoryEntry {
+                    video: read_video(row, 8)?,
                     id: row.get(0)?,
                     title: row.get(1)?,
                     artist: row.get(2)?,
@@ -754,11 +770,12 @@ impl PersistenceService {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| PersistenceError::Unavailable)?;
+        retain_video(&transaction, track)?;
         transaction
             .execute(
                 "INSERT INTO playback_history (
-                    track_id, title, artist, played_at_unix_ms, completed, album, duration_ms, cover_cache_key, media_mid
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    track_id, title, artist, played_at_unix_ms, completed, album, duration_ms, cover_cache_key, media_mid, video_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     track.track_id,
                     track.title,
@@ -769,6 +786,7 @@ impl PersistenceService {
                     i64::try_from(track.duration_ms).map_err(|_| PersistenceError::InvalidData)?,
                     track.cover_cache_key,
                     track.media_mid,
+                    video_json(track.video.as_ref())?,
                 ],
             )
             .map_err(|_| PersistenceError::Unavailable)?;
@@ -1262,6 +1280,18 @@ fn migrate(connection: &mut Connection) -> Result<(), PersistenceError> {
     if version < 11 {
         crate::memory_tapes::migrate(&transaction)?;
     }
+    if version < 12 {
+        transaction.execute_batch("CREATE TABLE IF NOT EXISTS video_part_metadata (track_id TEXT PRIMARY KEY, video_json TEXT NOT NULL CHECK(length(video_json) BETWEEN 1 AND 4096)) STRICT;").map_err(|_| PersistenceError::Unavailable)?;
+        for table in ["queue_items", "playback_history"] {
+            // Presence check also supports the repository's synthetic downgrade
+            // fixtures. Real schema 11 has neither column.
+            let exists: bool = transaction.query_row(&format!("SELECT EXISTS(SELECT 1 FROM pragma_table_info('{table}') WHERE name='video_json')"), [], |r| r.get(0)).map_err(|_| PersistenceError::Unavailable)?;
+            if !exists {
+                transaction.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN video_json TEXT CHECK(video_json IS NULL OR length(video_json) BETWEEN 1 AND 4096);"))
+                    .map_err(|_| PersistenceError::Unavailable)?;
+            }
+        }
+    }
     transaction
         .pragma_update(None, "user_version", LOCAL_SCHEMA_VERSION)
         .map_err(|_| PersistenceError::Unavailable)?;
@@ -1377,6 +1407,7 @@ mod tests {
 
     fn track(id: &str) -> PersistedTrack {
         PersistedTrack {
+            video: None,
             track_id: id.to_owned(),
             media_mid: None,
             title: "纸月光".to_owned(),
@@ -1811,4 +1842,17 @@ mod tests {
             );
         }
     }
+}
+
+fn video_json(v: Option<&crate::multi_provider::VideoPartMetadata>) -> Result<Option<String>, PersistenceError> {
+    v.map(serde_json::to_string).transpose().map_err(|_| PersistenceError::InvalidData)
+}
+fn read_video(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Option<crate::multi_provider::VideoPartMetadata>> {
+    row.get::<_, Option<String>>(index)?.map(|s| serde_json::from_str(&s).map_err(|_| rusqlite::Error::InvalidQuery)).transpose()
+}
+fn retain_video(tx: &rusqlite::Transaction<'_>, track: &PersistedTrack) -> Result<(), PersistenceError> {
+    if let Some(video) = video_json(track.video.as_ref())? {
+        tx.execute("INSERT INTO video_part_metadata(track_id,video_json) VALUES(?1,?2) ON CONFLICT(track_id) DO UPDATE SET video_json=excluded.video_json", params![track.track_id,video]).map_err(|_| PersistenceError::Unavailable)?;
+    }
+    Ok(())
 }

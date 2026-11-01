@@ -6,6 +6,10 @@
 pnpm install --frozen-lockfile
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-provider.ps1 -PythonExe "C:\Path\To\Python313\python.exe"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-provider.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-node-runtime.ps1
+npm ci --prefix providers/node/netease --ignore-scripts
+npm ci --prefix providers/node/bilibili --ignore-scripts
+& .\provider\.venv\Scripts\python.exe scripts/generate-provider-notices.py
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/debug-review.ps1 -Action Run
 ```
 
@@ -25,4 +29,4 @@ PowerShell 脚本使用 `powershell -NoProfile -ExecutionPolicy Bypass -File ...
 
 Portable 默认冻结／stage Provider、构建主和 Remote 前端、编译 Release，在 `output/releases/` 创建唯一目录与 ZIP。标准脚本包含 Provider 清单、live 模式和目标检查，不读取个人账号或听歌数据库。NSIS 安装包需显式用 `scripts/build-release.ps1 -Installer`。
 
-版本同步 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 应用条目与 `src-tauri/tauri.conf.json`。发布包只带 GUI、对应 Provider、README、LICENSE 与第三方声明；不要打包运行过的目录，以免带入日志和个人数据。Release 需提供对应源码并说明实际验证范围。
+版本同步 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 应用条目与 `src-tauri/tauri.conf.json`。2.0.0 起发行包中的启动程序为 `Music-Lab.exe`，还包含固定 Node 运行时、三平台 Provider、协议及完整依赖许可。Debug 保持上述开发路径。不要打包运行过的目录，以免带入日志和个人数据；Release 需提供对应源码并说明实际验证范围。

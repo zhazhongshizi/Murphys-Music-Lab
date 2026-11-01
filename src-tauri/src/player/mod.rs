@@ -38,13 +38,20 @@ pub(crate) enum PlayerState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", into = "serde_json::Value")]
 pub struct TrackSummary {
     pub id: String,
     pub title: String,
     pub artist: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<TrackSource>,
+}
+impl From<TrackSummary> for serde_json::Value {
+    fn from(t: TrackSummary) -> Self {
+        crate::multi_provider::identity::public_track(
+            serde_json::json!({"id":t.id,"title":t.title,"artist":t.artist,"source":t.source}),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -286,6 +293,15 @@ impl Drop for RemoteMediaUrl {
     fn drop(&mut self) {
         self.0.zeroize();
     }
+}
+
+/// Only a Rust-owned loopback probe can construct this URI. Ordinary URL parsing
+/// remains HTTPS-only, including in builds with manual-spikes enabled.
+pub(crate) fn private_bridge_url(port: u16, token: uuid::Uuid) -> RemoteMediaUrl {
+    RemoteMediaUrl(format!("http://127.0.0.1:{port}/media/{}", token.simple()))
+}
+pub(crate) fn private_bridge_manifest_url(port: u16, token: uuid::Uuid) -> RemoteMediaUrl {
+    RemoteMediaUrl(format!("http://127.0.0.1:{port}/media/{}/manifest.mpd", token.simple()))
 }
 
 impl fmt::Debug for RemoteMediaUrl {
@@ -577,7 +593,7 @@ mod tests {
         let value = serde_json::to_value(track).expect("track summary must serialize");
         assert_eq!(
             value,
-            serde_json::json!({"id": "track", "title": "Title", "artist": "Artist"})
+            serde_json::json!({"id": "track", "providerId":"qqmusic", "title": "Title", "artist": "Artist"})
         );
         assert!(value.get("album").is_none());
         assert!(value.get("durationMs").is_none());

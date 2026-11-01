@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced",
+  "commit": "984cc021b8598cf94c22134f32a8426887fb2de7",
+  "license": "upstream/LICENSE",
+  "files": [
+    {
+      "path": "reference/write-api-docs.txt",
+      "upstreamPath": "public/docs/home.md",
+      "format": "selected complete sections with original line numbers",
+      "sha256": "72c88819b73e3cceb27b50e9be848a878383b5d2052aaab6852272f5b7f03acf"
+    }
+  ]
+}

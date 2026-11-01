@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ArchiveSearch } from "./ArchiveSearch";
+import { catalogAccessMessage } from "../catalog/catalogAccess";
 import { playerActions, resetPlayerFixture } from "../player/playerStore";
 const mocks = vi.hoisted(() => ({ search: vi.fn(), enqueue: vi.fn() }));
 vi.mock("../../backend/catalogAdapter", () => ({ searchCatalogSongs: mocks.search }));
@@ -10,6 +11,13 @@ const result = { generation: 1, page: 1, hasMore: false, total: 1, items: [song]
 beforeEach(() => { localStorage.clear(); resetPlayerFixture(); mocks.search.mockResolvedValue(result); mocks.enqueue.mockResolvedValue({}); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 function submit(query: string) { fireEvent.change(screen.getByRole("combobox", { name: "搜索歌曲" }), { target: { value: query } }); fireEvent.click(screen.getByRole("button", { name: "搜索 ↗" })); }
+it("shows login/restoring guidance without querying and resumes only when ready",async()=>{
+  const close=()=>{};const view=render(<ArchiveSearch active onClose={close} accessMessage={catalogAccessMessage({state:"signedOut"},false)} />);
+  expect(screen.getByRole("status")).toHaveTextContent("请先登录");expect(mocks.search).not.toHaveBeenCalled();
+  view.rerender(<ArchiveSearch active onClose={close} accessMessage={catalogAccessMessage({state:"signedOut"},true)} />);
+  expect(screen.getByRole("status")).toHaveTextContent("正在恢复账号");expect(mocks.search).not.toHaveBeenCalled();
+  view.rerender(<ArchiveSearch active onClose={close} />);submit("夜航");await screen.findByRole("button",{name:"播放 夜航"});expect(mocks.search).toHaveBeenCalledOnce();
+});
 it("试听留在搜索页，封面缺失有占位，历史可再次搜索与清空", async () => {
   const close = vi.fn(), play = vi.spyOn(playerActions, "playTrack");
   render(<ArchiveSearch active onClose={close} />); submit("夜航");

@@ -49,6 +49,7 @@ export interface PlayerFailure {
 }
 
 export interface TrackSummary {
+  readonly providerId?: import("./providers").ProviderId;
   readonly id: string;
   readonly title: string;
   readonly artist: string;

@@ -9,8 +9,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub const RELEASES: &str = "https://github.com/zhazhongshizi/qqmusic-gui/releases";
-pub const API: &str = "https://api.github.com/repos/zhazhongshizi/qqmusic-gui/releases/latest";
+pub const RELEASES: &str = "https://github.com/zhazhongshizi/Murphys-Music-Lab/releases";
+pub const API: &str = "https://api.github.com/repos/zhazhongshizi/Murphys-Music-Lab/releases/latest";
 const MAX_RESPONSE: u64 = 512 * 1024;
 
 #[derive(Clone, Serialize, Debug)]

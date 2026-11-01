@@ -1,0 +1,146 @@
+{
+  "tracks": [
+    {
+      "id": "001MID_a-b",
+      "providerId": "qqmusic"
+    },
+    {
+      "id": "123",
+      "providerId": "qqmusic"
+    },
+    {
+      "id": "local_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_flac",
+      "providerId": "local"
+    },
+    {
+      "id": "netease:track:123",
+      "providerId": "netease"
+    },
+    {
+      "id": "netease:track:9007199254740993",
+      "providerId": "netease"
+    },
+    {
+      "id": "bilibili:video:BV17x411w7KC:456",
+      "providerId": "bilibili"
+    },
+    {
+      "id": "bilibili:video:BV17x411w7KC:457",
+      "providerId": "bilibili"
+    },
+    {
+      "id": "",
+      "providerId": null
+    },
+    {
+      "id": "local_invalid",
+      "providerId": null
+    },
+    {
+      "id": "local_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA_flac",
+      "providerId": null
+    },
+    {
+      "id": "local_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_mp4",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:01",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:0",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:-1",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:1e3",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:１２",
+      "providerId": null
+    },
+    {
+      "id": "netease:track:123:extra",
+      "providerId": null
+    },
+    {
+      "id": "netease:playlist:123",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:video:BV17x411w7KC",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:video:bv17x411w7KC:456",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:video:BV07x411w7KC:456",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:video:BV17x411w7KC:0",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:favorite:77",
+      "providerId": null
+    },
+    {
+      "id": "spotify:track:123",
+      "providerId": null
+    },
+    {
+      "id": "../123",
+      "providerId": null
+    },
+    {
+      "id": "a b",
+      "providerId": null
+    },
+    {
+      "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "providerId": null
+    },
+    {
+      "id": "123\n",
+      "providerId": null
+    }
+  ],
+  "containers": [
+    {
+      "id": "netease:playlist:77",
+      "providerId": "netease"
+    },
+    {
+      "id": "bilibili:favorite:77",
+      "providerId": "bilibili"
+    },
+    {
+      "id": "netease:track:77",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:video:BV17x411w7KC:77",
+      "providerId": null
+    },
+    {
+      "id": "netease:playlist:077",
+      "providerId": null
+    },
+    {
+      "id": "qqmusic:playlist:77",
+      "providerId": null
+    },
+    {
+      "id": "bilibili:favorite:0",
+      "providerId": null
+    }
+  ]
+}

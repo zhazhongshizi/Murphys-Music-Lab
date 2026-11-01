@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "qqmusic-gui-provider"
 version = "0.1.0"
-description = "Private NDJSON provider process for QQ Music GUI"
+description = "Private NDJSON provider process for Murphy’s Music Lab"
 requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
 dependencies = [

@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { APP_NAME } from "../../app/branding";
 
 import { getCoverImage } from "../../backend/coverAdapter";
 import {
@@ -271,7 +272,7 @@ export function TrayMenu() {
 
   return (
     <main
-      aria-label="QQ Music GUI 托盘控制"
+      aria-label={`${APP_NAME} 托盘控制`}
       className="tray-menu"
       data-state={view.state}
       onKeyDown={onKeyDown}
@@ -330,7 +331,7 @@ export function TrayMenu() {
           </button>
           <button className="tray-menu__utility-button tray-menu__utility-button--danger" onClick={() => void performAction("quit")} type="button">
             <Icon name="close" size={16} />
-            <span>退出 QQ Music GUI</span>
+            <span>退出 {APP_NAME}</span>
           </button>
         </div>
       </section>

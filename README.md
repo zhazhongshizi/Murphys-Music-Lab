@@ -1,19 +1,20 @@
 <div align="center">
 
-# QQ Music GUI
+# Murphy’s Music Lab
 
-**为 Windows 打造的本地 QQ 音乐客户端，提供日常界面与莱茵磁带档案界面。**
+**为 Windows 打造的本地音乐实验室，支持 QQ 音乐、网易云、Bilibili 与本地音乐，提供日常界面与莱茵磁带档案界面。**
 
-[![Release](https://img.shields.io/github/v/release/zhazhongshizi/qqmusic-gui)](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest)
+[![Release](https://img.shields.io/github/v/release/zhazhongshizi/Murphys-Music-Lab)](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D4)](#下载安装)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-[下载安装](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) · [使用说明](#开始使用) · [源码构建](#从源码运行) · [反馈问题](https://github.com/zhazhongshizi/qqmusic-gui/issues)
+[下载安装](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) · [使用说明](#开始使用) · [源码构建](#从源码运行) · [反馈问题](https://github.com/zhazhongshizi/Murphys-Music-Lab/issues)
 
 </div>
 
+![莱茵音乐档案界面](docs/screenshots/rhine-archive.png)
 
-> 当前源码与构建版本：**1.3.3**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前源码与构建版本：**2.0.0**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -69,9 +70,9 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/qqmusic-gui/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 1.3.3；线上发行版本以官方页面为准。
-2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider` 文件夹。
-3. 运行 `qqmusic-gui.exe`。发行版包含 Python Provider，无需另装 Python、Node.js 或 Rust。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 2.0.0；线上发行版本以官方页面为准。
+2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider`、`node`、`providers`、`contracts`、`licenses` 及资源清单。
+3. 新构建的 portable 包使用 `Murphys-Music-Lab` 名称前缀，运行包内的 `Music-Lab.exe`；历史发行包的启动文件仍为 `qqmusic-gui.exe`。现有数据目录沿用原标识。多来源构建包含 Python Provider、固定 Node 24.22.2 和全部运行依赖，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。
 
 支持 **Windows 10／11 x64**。目前交付免安装版，没有 macOS、Linux 或 Windows ARM64 构建。EXE 尚未进行代码签名。
@@ -89,6 +90,14 @@
 - 可播放性受账号权益、版权、地区与服务端条件限制；无损优先不保证每首歌均有无损资源。
 - MV 补播可在设置中关闭。MV 与原曲不同步时，可调整歌词偏移。
 - 莱茵“设置 → 播放设置 → 默认音质”可选择无损优先、高品质 320k 或标准 128k；与普通界面共用并自动保存，从下次加载歌曲生效。
+
+### 多来源构建（工程预览，真实验收待补）
+
+普通与莱茵模式的来源入口可选择 QQ 音乐、网易云、Bilibili 和本地音乐；在平台账号入口分别扫码登录网易云或 Bilibili，二维码由对应官方应用扫描。未登录来源不启动 Provider；Remote 新来源登录须在桌面完成。网易支持歌曲/歌单搜索与曲库，B站视频须展开分 P 后入队，播放仅取兼容 AAC 音频。来源切换与当前播放来源独立，退出正在播放的来源会停止该来源播放并保留队列。
+
+QQ 凭据仍保存在 Windows Credential Manager；新来源凭据以 Windows DPAPI 保护，保存在应用数据目录的 `provider-state/<来源>/credentials.v1.dpapi`。队列、历史和私人集合继续使用同一应用数据库，新构建会按既有升级提示迁移 schema 11 至 12。准确路径见“版本与更新”的数据位置，不要删除或分享凭据文件。资源与许可分别见 `provider-manifest.json`、`licenses/provider-g/dependencies.json`。
+
+真实扫码/重启恢复、私人曲库、听音和云端写入仍待验收。网易暂无曲目封面；平台权益与验证可能限制接口。新来源 Remote 只读浏览/搜索/点播，不提供登录或云端写入；B站不提供视频播放、下载或转码。测试写入时请先选定可修改的歌单/收藏夹和条目；结果不确定时先只读核对，避免重复提交。
 
 ### 界面与磁带操作
 
@@ -135,7 +144,8 @@
 
 | 数据 | 保存与处理 |
 | --- | --- |
-| 登录凭据 | Windows Credential Manager，目标名 `QQMusicGUI/Auth/v1`；不以明文 JSON 回退保存 |
+| QQ 登录凭据 | Windows Credential Manager，目标名 `QQMusicGUI/Auth/v1`；不以明文 JSON 回退保存 |
+| 网易云／B站登录凭据 | 应用数据目录 `provider-state/<来源>/credentials.v1.dpapi`，由 Windows DPAPI 保护 |
 | 队列、历史与个人资料 | 当前用户应用数据目录的 SQLite，例如 `state.sqlite3` |
 | 智能随机状态 | 本机 SQLite，例如 `smart-shuffle.sqlite3` |
 | 界面偏好、搜索及部分统计 | 当前用户的本机 WebView 存储 |
@@ -143,11 +153,11 @@
 | 封面缓存 | 应用旁 `cover-cache`，只缓存图片，不缓存音频 |
 | 诊断日志 | 默认关闭，开启后写到应用旁 `logs`，不自动上传 |
 
-程序会使用认证与播放所需的 QQ 音乐网络请求；本地保存不等于离线。项目没有自动遥测上传。详见 [隐私说明](docs/privacy.md)。反馈时只提供复现步骤、版本和脱敏截图，不上传凭据导出、数据库、Cookie、二维码、连接码或整个用户数据目录。安全问题见 [SECURITY](SECURITY.md)。
+程序会使用已登录来源认证与播放所需的 QQ 音乐、网易云或 Bilibili 网络请求；本地保存不等于离线。项目没有自动遥测上传。详见 [隐私说明](docs/privacy.md)。反馈时只提供复现步骤、版本和脱敏截图，不上传凭据导出、数据库、Cookie、二维码、连接码或整个用户数据目录。安全问题见 [SECURITY](SECURITY.md)。
 
 ## 常见问题
 
-**启动失败／缺少组件**：完整解压，确认 `provider` 与 EXE 同级，并安装 WebView2；不要从 ZIP 预览直接运行。
+**启动失败／缺少组件**：完整解压并保留 EXE 旁的全部资源目录（多来源构建包含 `provider`、`node`、`providers`、`contracts`、`licenses`），并安装 WebView2；不要从 ZIP 预览直接运行。
 
 **登录过期**：重新获取二维码，必要时在程序内退出账号后登录。不要上传凭据文件求助。
 
@@ -172,13 +182,17 @@
 | Python | Windows x64 Python 3.13，仅开发／冻结 Provider 需要 |
 
 ```powershell
-git clone https://github.com/zhazhongshizi/qqmusic-gui.git
-cd qqmusic-gui
+git clone https://github.com/zhazhongshizi/Murphys-Music-Lab.git
+cd Murphys-Music-Lab
 pnpm install --frozen-lockfile
 
 # 替换为本机 Python 3.13 路径，创建 provider/.venv。
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-provider.ps1 -PythonExe "C:\Path\To\Python313\python.exe"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-provider.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-node-runtime.ps1
+npm ci --prefix providers/node/netease --ignore-scripts
+npm ci --prefix providers/node/bilibili --ignore-scripts
+& .\provider\.venv\Scripts\python.exe scripts/generate-provider-notices.py
 
 # 日常桌面开发，退出后释放互斥。
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/debug-review.ps1 -Action Run
@@ -223,7 +237,7 @@ QQ 音乐服务
 
 ## 参与项目
 
-通过 [Issues](https://github.com/zhazhongshizi/qqmusic-gui/issues) 反馈，通过 Pull Request 提交改动。先阅读 [贡献指南](CONTRIBUTING.md)，使用虚构数据与测试账号描述问题。
+通过 [Issues](https://github.com/zhazhongshizi/Murphys-Music-Lab/issues) 反馈，通过 Pull Request 提交改动。先阅读 [贡献指南](CONTRIBUTING.md)，使用虚构数据与测试账号描述问题。
 
 ## 许可证与致谢
 

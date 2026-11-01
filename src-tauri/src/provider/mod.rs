@@ -1,5 +1,7 @@
 mod bundle;
 mod protocol;
+// Version-neutral framing/JSON checks only. V2 never uses v1 payload types.
+pub(crate) use protocol::parse_json_value;
 mod supervisor;
 
 pub use bundle::{ProviderBundleError, VerifiedProviderBundle};
@@ -7,6 +9,7 @@ pub use protocol::{
     EventFrame, FailureFrame, ProtocolError, ProviderFrame, RequestFrame, SuccessFrame,
     WarningFrame, MAX_JSON_DEPTH, MAX_LINE_BYTES,
 };
+pub use supervisor::ProviderCapabilities as V1Capabilities;
 pub use supervisor::{
     HandshakeInfo, ProviderError, ProviderEvent, ProviderLaunch, ProviderRecoveryHook,
     ProviderRecoveryPort, ProviderReply, ProviderRequest, ProviderSupervisor, RequestSemantics,
@@ -48,6 +51,9 @@ struct ProviderCapabilitySummary {
 }
 
 impl ProviderSnapshot {
+    pub fn transport_ready(&self) -> bool {
+        self.state == ProviderState::Ready
+    }
     pub fn not_started() -> Self {
         Self {
             protocol_version: PROVIDER_PROTOCOL_VERSION,

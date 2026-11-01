@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CommitRange } from "../player/CommitRange";
 import { PlaybackNotice } from "../player/PlaybackNotice";
+import { SourceBadge } from "../providers/SourceBadge";
 import { Icon } from "../../components/Icon";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
@@ -19,7 +20,7 @@ export function NowPlaying({ onOpen }: { onOpen: () => void }) {
   const error = usePlayerSelector(s => s.playbackError);
   if (!track) return null;
   return <div className="rhine-now">
-    <button onClick={onOpen}><i data-playing={playing && !error} /><span>{error ? "播放异常" : playing ? "正在播放" : "已暂停"} / {track.title}</span><span>进入磁带机 ↗</span></button>
+    <button onClick={onOpen}><i data-playing={playing && !error} /><span>{error ? "播放异常" : playing ? "正在播放" : "已暂停"} / {track.title}<SourceBadge track={track} /></span><span>进入磁带机 ↗</span></button>
     <button aria-label={playing ? "暂停" : "播放"} onClick={playerActions.toggle}><Icon name={playing ? "pause" : "play"} size={14} /></button>
   </div>;
 }
@@ -92,6 +93,7 @@ export function TapeDeck({ playlistTitle, accountKey, authenticated = true, onBa
     <PlaybackNotice />
     <button className="rhine-deck-back" onClick={onBack}>↙ 返回音乐档案</button>
     <DeckCaption track={track ?? null} playlistTitle={playlistTitle} direction={() => performance.now() < captionIntent.current.until ? captionIntent.current.direction : 0} />
+    {track && <SourceBadge track={track} />}
     <DeckOutroPreview />
     <div className="rhine-deck-rail" aria-hidden="true"><span>RL—01</span><i /><span>STEREO<br />TRANSPORT</span></div>
     <div className="rhine-deck-console">

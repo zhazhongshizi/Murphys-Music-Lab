@@ -13,6 +13,9 @@ import {
   type PlayerSnapshot,
 } from "../player/playerStore";
 import { PlaybackQualitySelector } from "../player/PlaybackQualitySelector";
+import { SourceBadge } from "../providers/SourceBadge";
+import { SOURCE_LABELS } from "../providers/DesktopProviders";
+import { trackProvider } from "../../contracts/providerIdentity";
 import { MvLyricOffsetControl } from "../player/MvPlaybackSettings";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import { StageSpectrum } from "../spectrum/StageSpectrum";
@@ -100,13 +103,14 @@ export function ListeningStage({
 
       <section className="stage__cover-column" aria-label="当前专辑">
         <div className="stage__edition">
-          <span>{localFormat ? "LOCAL MUSIC" : nativeMode ? "QQ LIVE" : "LOCAL FIXTURE"}</span>
+          <span>{localFormat ? "LOCAL MUSIC" : nativeMode ? trackProvider(track.id) === "qqmusic" ? "QQ LIVE" : SOURCE_LABELS[trackProvider(track.id) ?? "qqmusic"] : "LOCAL FIXTURE"}</span>
           <span>{nativeMode ? "NATIVE SESSION" : "SESSION 01"}</span>
         </div>
         <AlbumArtwork track={track} />
         <div key={track.id} className="stage__metadata">
           <p className="stage__album">{track.album}</p>
           <h1>{track.title}</h1>
+          <SourceBadge track={track} />
           <p><SongArtistLinks track={track} /></p>
         </div>
         <div className="stage__quality" aria-label="播放质量">

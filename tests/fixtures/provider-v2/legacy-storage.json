@@ -1,0 +1,8 @@
+{
+  "items": [
+    {"id":"001LegacyQQ_mid","mediaMid":"C400LegacyQQ","title":"Synthetic QQ","artist":"Fixture","album":"Old album","durationMs":123456,"coverCacheKey":"fixture_qq"},
+    {"id":"local_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_flac","title":"Synthetic local","artist":"Fixture","album":"","durationMs":98765}
+  ],
+  "selectedIndex":1,
+  "savedAtMs":1234
+}

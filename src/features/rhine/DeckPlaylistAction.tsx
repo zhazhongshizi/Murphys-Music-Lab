@@ -3,6 +3,7 @@ import { addSongsToPlaylist, getLibraryPlaylists, LibraryAdapterError } from "..
 import type { PlaylistSummary } from "../../contracts/library";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import PlaylistPicker from "../library/PlaylistPicker";
+import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
 
 type Song = { id: string; title: string };
 
@@ -78,12 +79,12 @@ export function DeckPlaylistAction({ track, authenticated = true }: { track: Son
     setSong(null);
     trigger.current?.focus();
   }
-  return <div className="rhine-deck-playlist" onKeyDown={event => {
+  return <><ProviderLibraryActions track={track} variant="rhine" /><div hidden={Boolean(track?.id.startsWith("netease:") || track?.id.startsWith("bilibili:"))} className="rhine-deck-playlist" onKeyDown={event => {
     if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); close(); }
   }}>
     <button ref={trigger} type="button" disabled={!available} aria-expanded={Boolean(song)} aria-controls={song ? panelId : undefined}
       title={!authenticated ? "登录后可添加到歌单" : !available ? "请选择在线歌曲" : undefined}
       onClick={() => { if (song) close(); else if (track) setSong({ id: track.id, title: track.title }); }}>将歌曲添加进歌单</button>
     {song && <section id={panelId} aria-label="添加歌曲到歌单"><PlaylistForm song={song} onClose={close} /></section>}
-  </div>;
+  </div></>;
 }

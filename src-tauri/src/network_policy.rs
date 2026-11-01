@@ -18,6 +18,9 @@ const COVER_HOSTS: &[&str] = &[
     "thirdqq.qlogo.cn",
     "thirdwx.qlogo.cn",
     "wx.qlogo.cn",
+    "i0.hdslb.com",
+    "i1.hdslb.com",
+    "i2.hdslb.com",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +132,7 @@ fn is_public_address(address: IpAddr) -> bool {
     }
 }
 
-fn is_allowed_resolved_address(address: IpAddr, purpose: RemoteUrlPurpose) -> bool {
+pub(crate) fn is_allowed_resolved_address(address: IpAddr, purpose: RemoteUrlPurpose) -> bool {
     is_public_address(address)
         || matches!(
             purpose,
@@ -256,6 +259,15 @@ mod tests {
             &resolver,
         )
         .is_err());
+    }
+
+    #[test]
+    fn bilibili_image_hosts_are_only_allowed_for_covers() {
+        for host in ["i0.hdslb.com", "i1.hdslb.com", "i2.hdslb.com"] {
+            let value = format!("https://{host}/bfs/archive/cover.jpg");
+            assert!(TrustedRemoteUrl::validate(&value, RemoteUrlPurpose::Cover, &FakeResolver::public()).is_ok());
+            assert!(TrustedRemoteUrl::validate(&value, RemoteUrlPurpose::Media, &FakeResolver::public()).is_err());
+        }
     }
 
     #[test]

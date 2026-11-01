@@ -1,0 +1,4 @@
+[
+  {"v":2,"id":"restore-risk","ok":false,"error":{"code":"verification_required","retryable":false,"retryAfterMs":120}},
+  {"v":2,"id":"write-readback","ok":false,"error":{"code":"verification_failed","retryable":false}}
+]

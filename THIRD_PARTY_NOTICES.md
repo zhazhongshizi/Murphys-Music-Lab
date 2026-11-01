@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-本文件记录 QQ Music GUI 的直接第三方依赖。发行前会根据最终锁文件生成并复核完整清单；未进入发行物的开发工具会与运行时依赖分开标注。
+本文件记录 Murphy’s Music Lab 的第三方来源与通知。多 Provider 构建的锁定依赖清单及完整许可文本位于 [licenses/provider-g/README.md](licenses/provider-g/README.md) 和 [机器清单](licenses/provider-g/dependencies.json)，portable 保留相同路径；未进入发行物的开发工具不作为运行时依赖列出。
 
 QQ 与 QQ 音乐相关名称、服务和标识归其权利人所有。本项目为非官方社区客户端，不代表腾讯或 QQ 音乐。
 
@@ -9,7 +9,7 @@ QQ 与 QQ 音乐相关名称、服务和标识归其权利人所有。本项目�
 - Project: `L-1124/QQMusicApi`
 - Source: https://github.com/L-1124/QQMusicApi
 - Package: `qqmusic-api-python`
-- Baseline version: `0.6.9`
+- Locked runtime version: `0.8.2` (`provider/requirements.lock`)
 - License: GNU General Public License v3.0 or later
 - Use: Python provider 中的 QQ 音乐认证、目录、歌单、歌词和标准 GetVkey 适配。
 
@@ -58,4 +58,21 @@ THE SOFTWARE.
 - `zeroize 1.8.2`（Apache-2.0 OR MIT），用于 secret 缓冲区释放清零；
 - `uuid 1.23.4`（Apache-2.0 OR MIT），用于关联编号、设备身份和唯一测试目标。
 
-最终发行物还将包含 Tauri、React、Rust crates、Python packages 和相关传递依赖。它们的版本、许可证文本、来源和是否进入运行时会从 `pnpm-lock.yaml`、`Cargo.lock` 与 Python 锁文件生成，并在发行候选阶段固化；本文件不会用未锁定的预估清单冒充最终声明。
+## Multi-provider integration (Stage G)
+
+- API Enhanced `4.41.1`, commit `984cc021b8598cf94c22134f32a8426887fb2de7`: MIT, Copyright (c) 2013-2022 Binaryify. The package contains 22 locked original upstream files plus a local CommonJS `package.json` shim. The dedicated NetEase provider's production dependency closure is locked separately; the upstream application's unused dependencies are not bundled.
+- BBPlayer commit `e2e7f52759ad8c79f54ab28021b43df473f849ed`: MIT, Copyright (c) 2025 Roitium. Source: https://github.com/bbplayer-app/BBPlayer . API/response/WBI implementation reference; full original notice is retained in the generated notice directory.
+- bili-music commit `94ef03bb97d9ae3117f2f08c3255f17714b61dc3`: MIT, Copyright (c) 2026 Jmiao11. Source: https://github.com/Jmiao11/bili-music . Rust streaming-bridge implementation reference; full original notice is retained. Reference `.txt` files are not runtime providers.
+- Node.js `24.22.2` Windows x64: the official archive/executable digests are fixed in `providers/node/runtime.json`. The complete official `LICENSE`, including embedded dependency notices, is preserved.
+- All production npm dependency versions, tarball integrity strings, installed metadata/tree hashes and actual license texts for both new providers are recorded in `dependencies.json`. This includes `node-forge`'s alternative BSD-3-Clause/GPL-2.0 terms. Biu and PolyForm Noncommercial code are not dependencies.
+- Rust changes since the integration baseline: `futures-util 0.3.32`, `regex 1.13.0`, `reqwest 0.12.28` (`stream`) and `windows 0.61.3` (additional Windows API features). Actual crate licenses and Cargo.lock checksums are recorded. There are no new frontend package dependencies; the existing five-package frontend runtime closure and Rhine MIT text are also retained.
+- The QQ Python runtime dependency closure and CPython license are included. `paho-mqtt 2.1.0`'s wheel contains a short `LICENSE.txt` referring to omitted `edl-v10` and `epl-v20` files; the complete texts were recovered from the matching upstream tag, with Git blob checksums retained in `scripts/generate-provider-notices.sources.json`.
+
+Rebuild/check the inventory with the provider virtual environment:
+
+```powershell
+& provider/.venv/Scripts/python.exe scripts/generate-provider-notices.py
+& provider/.venv/Scripts/python.exe scripts/generate-provider-notices.py --check
+```
+
+The inventory's `inputs` hashes prevent independent drift of the lockfiles, runtime metadata and generated notices. It covers the Stage G additions, the frontend runtime closure and the existing QQ Python runtime closure; it is not a complete historical Rust/OS/framework SBOM. Existing Tauri/Rust and Windows system-component terms continue to apply. G is an engineering portable build, not a published release or legal clearance.

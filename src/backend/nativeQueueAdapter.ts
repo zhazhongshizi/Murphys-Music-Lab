@@ -1,4 +1,5 @@
 import { createSchemaGuards } from "./schemaGuards";
+import { trackSource } from "./trackSource";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type {
   NativePlaybackMode,
@@ -41,7 +42,7 @@ export class QueueAdapterError extends Error {
 
 const SNAPSHOT_KEYS = ["generation", "selectedIndex", "items"] as const;
 const TRACK_KEYS = ["id", "title", "artist", "album", "durationMs"] as const;
-const OPTIONAL_TRACK_KEYS = ["mediaMid", "coverCacheKey"] as const;
+const OPTIONAL_TRACK_KEYS = ["mediaMid", "coverCacheKey", "providerId", "video"] as const;
 const PLAY_KEYS = ["requestedQuality", "queue", "playback"] as const;
 const SESSION_KEYS = ["mode", "queue", "player", "requestedQuality"] as const;
 const STABLE_ID = /^[A-Za-z0-9_.:-]+$/;
@@ -84,6 +85,14 @@ export function parseQueueTrack(value: unknown): QueueTrack {
     ...OPTIONAL_TRACK_KEYS.filter((key) => key in value),
   ];
   const record = exactRecord(value, keys);
+  const source = trackSource(record);
+  let video: import("../contracts/providers").VideoPartMetadata | undefined;
+  if (source.providerId === "bilibili") {
+    const v = exactRecord(record.video, ["title", "partTitle", "partNumber"]);
+    const partNumber = unsigned(v.partNumber);
+    if (partNumber < 1 || partNumber > 10000) return invalid();
+    video = { title: displayText(v.title), partTitle: displayText(v.partTitle), partNumber };
+  } else if ("video" in record) return invalid();
   const track: QueueTrack = {
     id: stableText(record.id),
     title: displayText(record.title),
@@ -93,6 +102,8 @@ export function parseQueueTrack(value: unknown): QueueTrack {
   };
   return {
     ...track,
+    ...source,
+    ...(video ? { video } : {}),
     ...(hasMediaMid ? { mediaMid: stableText(record.mediaMid) } : {}),
     ...(hasCover ? { coverCacheKey: stableText(record.coverCacheKey, true) } : {}),
   };
@@ -124,11 +135,17 @@ export function parseQueuePlayResult(value: unknown): QueuePlayResult {
 }
 
 export function parsePlaybackSessionSnapshot(value: unknown, knownQueue?: QueueSnapshot): PlaybackSessionSnapshot {
-  const keys = [...SESSION_KEYS, ...["actualQuality", "lyricOffsetMs", "skipNotice"].filter(key => typeof value === "object" && value !== null && key in value)];
+  const keys = [...SESSION_KEYS, ...["actualQuality", "actualBitrate", "lyricOffsetMs", "skipNotice"].filter(key => typeof value === "object" && value !== null && key in value)];
   const record = exactRecord(value, keys);
   const actualQuality = record.actualQuality;
   if (record.lyricOffsetMs !== undefined && (!Number.isSafeInteger(record.lyricOffsetMs) || Math.abs(record.lyricOffsetMs as number) > 60000)) return invalid();
-  if (actualQuality !== undefined && actualQuality !== null && (typeof actualQuality !== "string" || !["flac", "320k", "128k", "local", "qq-mv"].includes(actualQuality))) return invalid();
+  if (actualQuality !== undefined && actualQuality !== null && (typeof actualQuality !== "string" || !["flac", "320k", "128k", "local", "qq-mv", "aac"].includes(actualQuality))) return invalid();
+  let actualBitrate: number | undefined;
+  if ("actualBitrate" in record) {
+    actualBitrate = unsigned(record.actualBitrate);
+    if (actualQuality !== "aac" || actualBitrate < 1 || actualBitrate > 100000000) return invalid();
+  }
+  if (actualQuality === "aac" && actualBitrate === undefined) return invalid();
   const mode = record.mode;
   let skipNotice: PlaybackSessionSnapshot["skipNotice"];
   if (record.skipNotice !== undefined) {
@@ -140,6 +157,7 @@ export function parsePlaybackSessionSnapshot(value: unknown, knownQueue?: QueueS
     return invalid();
   }
   return {
+    ...(actualBitrate !== undefined ? { actualBitrate } : {}),
     ...(skipNotice ? { skipNotice } : {}),
     ...(record.lyricOffsetMs !== undefined ? { lyricOffsetMs: record.lyricOffsetMs as number } : {}),
     ...(actualQuality !== undefined ? { actualQuality: actualQuality as PlaybackSessionSnapshot["actualQuality"] } : {}),

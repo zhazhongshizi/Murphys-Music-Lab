@@ -1,0 +1,333 @@
+{
+  "protocolVersion": 2,
+  "maxLineBytes": 1048576,
+  "maxJsonDepth": 128,
+  "maxCredentialBytes": 65536,
+  "versionEncoding": "json-integer-token",
+  "firstMethod": "system.handshake",
+  "requestIdPattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+  "providerNames": {
+    "netease": "netease-provider",
+    "bilibili": "bilibili-provider"
+  },
+  "capabilities": {
+    "netease": {
+      "loginMethods": [
+        "qr"
+      ],
+      "searchKinds": [
+        "songs",
+        "playlists"
+      ],
+      "libraryKinds": [
+        "created",
+        "favorite",
+        "likes"
+      ],
+      "writeActions": [
+        "song.like",
+        "song.unlike",
+        "playlist.subscribe",
+        "playlist.unsubscribe",
+        "playlist.addTracks",
+        "playlist.removeTracks"
+      ],
+      "lyrics": true,
+      "qualities": [
+        "auto",
+        "flac",
+        "320k",
+        "128k"
+      ]
+    },
+    "bilibili": {
+      "loginMethods": [
+        "qr"
+      ],
+      "searchKinds": [
+        "videos"
+      ],
+      "libraryKinds": [
+        "created",
+        "favorite"
+      ],
+      "writeActions": [
+        "favorite.addVideos",
+        "favorite.removeVideos"
+      ],
+      "lyrics": false,
+      "qualities": [
+        "auto",
+        "aac"
+      ]
+    }
+  },
+  "methods": {
+    "system.handshake": {
+      "params": "system_handshakeParams",
+      "result": "handshake",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "handshake",
+      "semantics": "neverReplay"
+    },
+    "system.ping": {
+      "params": "system_pingParams",
+      "result": "ping",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "liveProcess",
+      "semantics": "readOnly"
+    },
+    "auth.qr.start": {
+      "params": "auth_qr_startParams",
+      "result": "qrImage",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "authenticating",
+      "semantics": "neverReplay"
+    },
+    "auth.qr.poll": {
+      "params": "auth_qr_pollParams",
+      "result": "qrState",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "authenticating",
+      "semantics": "neverReplay"
+    },
+    "auth.qr.cancel": {
+      "params": "auth_qr_cancelParams",
+      "result": "cancel",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "authenticating",
+      "semantics": "neverReplay"
+    },
+    "auth.credential.restore": {
+      "params": "auth_credential_restoreParams",
+      "result": "authResult",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "restoring",
+      "semantics": "neverReplay"
+    },
+    "auth.credential.check": {
+      "params": "auth_credential_checkParams",
+      "result": "checkResult",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "authenticated",
+      "semantics": "readOnly"
+    },
+    "auth.credential.refresh": {
+      "params": "auth_credential_refreshParams",
+      "result": "refreshResult",
+      "providers": [
+        "netease"
+      ],
+      "access": "authenticated",
+      "semantics": "neverReplay"
+    },
+    "auth.logout": {
+      "params": "auth_logoutParams",
+      "result": "logout",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "signingOut",
+      "semantics": "neverReplay"
+    },
+    "search.songs": {
+      "params": "search_songsParams",
+      "result": "trackPage",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "search.playlists": {
+      "params": "search_playlistsParams",
+      "result": "containerPage",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "search.videos": {
+      "params": "search_videosParams",
+      "result": "videoPage",
+      "providers": [
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "song.detail": {
+      "params": "song_detailParams",
+      "result": "track",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "video.resolve": {
+      "params": "video_resolveParams",
+      "result": "video",
+      "providers": [
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "video.parts": {
+      "params": "video_partsParams",
+      "result": "parts",
+      "providers": [
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.containers": {
+      "params": "library_containersParams",
+      "result": "containerPage",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.tracks": {
+      "params": "library_tracksParams",
+      "result": "trackPage",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.videos": {
+      "params": "library_videosParams",
+      "result": "videoPage",
+      "providers": [
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.likes": {
+      "params": "library_likesParams",
+      "result": "trackPage",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.setLiked": {
+      "params": "library_setLikedParams",
+      "result": "writeReceipt",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "neverReplay"
+    },
+    "library.setSubscribed": {
+      "params": "library_setSubscribedParams",
+      "result": "writeReceipt",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "neverReplay"
+    },
+    "library.addItems": {
+      "params": "library_addItemsParams",
+      "result": "writeReceipt",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "neverReplay"
+    },
+    "library.removeItems": {
+      "params": "library_removeItemsParams",
+      "result": "writeReceipt",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "neverReplay"
+    },
+    "lyrics.get": {
+      "params": "lyrics_getParams",
+      "result": "lyrics",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "playback.resolve": {
+      "params": "playback_resolveParams",
+      "result": "resolution",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.container": {
+      "params": "library_containerParams",
+      "result": "container",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.verify": {
+      "params": "library_verifyParams",
+      "result": "writeReceipt",
+      "providers": [
+        "netease",
+        "bilibili"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "library.likeIds": {
+      "params": "empty",
+      "result": "likeIds",
+      "providers": [
+        "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    }
+  }
+}

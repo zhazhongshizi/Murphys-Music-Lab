@@ -1,6 +1,8 @@
 import { parseQueueTrack } from "./nativeQueueAdapter";
 
 export interface HistoryEntry {
+  readonly providerId?: import("../contracts/providers").ProviderId;
+  readonly video?: import("../contracts/providers").VideoPartMetadata;
   readonly id: string;
   readonly title: string;
   readonly artist: string;
@@ -20,8 +22,10 @@ export async function getPlaybackHistory(): Promise<readonly HistoryEntry[]> {
       if (!entry || typeof entry !== "object") throw new Error();
       const value = entry as Record<string, unknown>;
       const track = parseQueueTrack({ id: value.id, title: value.title, artist: value.artist,
+        ...("providerId" in value ? { providerId: value.providerId } : {}),
         album: value.album ?? "", durationMs: value.durationMs ?? 0,
         ...(value.coverCacheKey != null ? { coverCacheKey: value.coverCacheKey } : {}),
+        ...("video" in value ? { video: value.video } : {}),
         ...(value.mediaMid != null ? { mediaMid: value.mediaMid } : {}),
       });
       if (typeof value.playedAtUnixMs !== "number" || !Number.isSafeInteger(value.playedAtUnixMs)

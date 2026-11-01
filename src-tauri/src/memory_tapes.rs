@@ -148,11 +148,12 @@ impl PersistenceService {
         }
         let mut reader = self.tape_reader()?;
         let tx = reader.transaction().map_err(unavailable)?;
-        let mut stmt=tx.prepare("SELECT t.track_id,t.title,t.artist FROM listening_totals t WHERE t.track_id=?1 AND EXISTS(SELECT 1 FROM listening_hourly h WHERE h.track_id=t.track_id AND h.day BETWEEN ?2 AND ?3)").map_err(unavailable)?;
+        let mut stmt=tx.prepare("SELECT t.track_id,t.title,t.artist,v.video_json FROM listening_totals t LEFT JOIN video_part_metadata v ON v.track_id=t.track_id WHERE t.track_id=?1 AND EXISTS(SELECT 1 FROM listening_hourly h WHERE h.track_id=t.track_id AND h.day BETWEEN ?2 AND ?3)").map_err(unavailable)?;
         ids.iter()
             .map(|id| {
                 stmt.query_row(params![id, start, end], |r| {
                     Ok(QueueTrack {
+                        video: r.get::<_,Option<String>>(3)?.map(|s|serde_json::from_str(&s).map_err(|_|rusqlite::Error::InvalidQuery)).transpose()?,
                         id: r.get(0)?,
                         title: r.get(1)?,
                         artist: r.get(2)?,

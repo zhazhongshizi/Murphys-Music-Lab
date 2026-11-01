@@ -83,11 +83,27 @@ if ($response.v -ne 1 -or $response.id -ne 'release-guard' -or $response.ok -ne 
 $mode = $response.result.provider.mode
 if ($mode -eq 'live') {
     Write-Host 'Release provider mode: live'
-    return
 }
-if ($mode -eq 'fixture' -and $AllowFixtureProviderForSpike) {
+elseif ($mode -eq 'fixture' -and $AllowFixtureProviderForSpike) {
     Write-Warning 'Fixture provider accepted only because -AllowFixtureProviderForSpike was explicitly supplied.'
     return
 }
 
-throw "Release builds require provider mode 'live'; received '$mode'."
+else { throw "Release builds require provider mode 'live'; received '$mode'." }
+$manifestPath = Join-Path (Split-Path -Parent $resolvedRoot) 'provider-manifest.json'
+if (-not (Test-Path -LiteralPath $manifestPath)) { throw 'Multi-provider release manifest is missing.' }
+$manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+$expectedQq = $manifest.providers | Where-Object { $_.id -eq 'qqmusic' }
+if ($response.result.provider.name -ne $expectedQq.name -or $response.result.provider.version -ne $expectedQq.version -or
+    $response.result.protocol.version -ne $expectedQq.protocolVersion -or
+    ($response.result.capabilities | ConvertTo-Json -Depth 20 -Compress) -ne ($expectedQq.capabilities | ConvertTo-Json -Depth 20 -Compress) -or
+    ($response.result.implementedMethods | ConvertTo-Json -Depth 20 -Compress) -ne ($expectedQq.implementedMethods | ConvertTo-Json -Depth 20 -Compress)) {
+    throw 'QQ release provider metadata differs from its manifest.'
+}
+$resourceRoot = Split-Path -Parent $resolvedRoot
+$pin = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'providers/node/runtime.json') | ConvertFrom-Json
+if ((Get-FileHash -LiteralPath (Join-Path $resourceRoot 'node/node.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pin.executableSha256) {
+    throw 'Node release guard runtime hash mismatch.'
+}
+& (Join-Path $resourceRoot 'node/node.exe') (Join-Path $PSScriptRoot 'stage-node-resources.mjs') --handshakes $resourceRoot
+if ($LASTEXITCODE -ne 0) { throw 'Node release provider handshake guard failed.' }

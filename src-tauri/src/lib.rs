@@ -16,6 +16,7 @@ pub mod local_music;
 pub mod lyrics;
 mod memory_tapes;
 pub mod migration_guard;
+pub mod multi_provider;
 pub mod network_policy;
 pub mod organizer;
 pub mod persistence;
@@ -50,9 +51,8 @@ use std::{
 };
 
 use auth::{
-    AuthError, AuthQrEvent, AuthQrEventError, AuthRecoveryCoordinator, AuthService, QrLoginStart,
-    QrLoginState, RecoveringProviderPort, RecoveryState, AUTH_QR_PROVIDER_EVENT,
-    AUTH_QR_RENDERER_EVENT,
+    AuthError, AuthQrEvent, AuthQrEventError, AuthService, QrLoginStart, QrLoginState,
+    RecoveryState, AUTH_QR_PROVIDER_EVENT, AUTH_QR_RENDERER_EVENT,
 };
 use catalog::{CatalogArtist, CatalogError, CatalogService, CatalogSongPage};
 use cover::{CoverError, CoverPayload, CoverService};
@@ -78,7 +78,7 @@ use playback_session::{
 use player::PlayerSnapshot;
 #[cfg(windows)]
 use player::WindowsMediaPlayerEngine;
-use provider::{ProviderSnapshot, ProviderSupervisor, SupervisorConfig, VerifiedProviderBundle};
+use provider::{ProviderSnapshot, VerifiedProviderBundle};
 use queue::{QueueError, QueueService, QueueSnapshot, QueueTrack};
 use serde::Serialize;
 #[cfg(windows)]
@@ -92,7 +92,7 @@ use tauri::{Emitter, Manager, State};
 const SNAPSHOT_SCHEMA_VERSION: u16 = 1;
 
 #[cfg(all(target_os = "windows", not(target_arch = "x86_64")))]
-compile_error!("QQ Music GUI currently supports only x86_64 Windows builds");
+compile_error!("Murphy’s Music Lab currently supports only x86_64 Windows builds");
 
 #[cfg(all(feature = "desktop-e2e", not(debug_assertions)))]
 compile_error!("desktop-e2e is a debug-only test feature and must never enter a release build");
@@ -149,7 +149,10 @@ impl AppSnapshot {
 struct AppState {
     remote: Arc<remote::RemoteControl>,
     snapshot: RwLock<AppSnapshot>,
-    provider: Option<Arc<ProviderSupervisor>>,
+    provider: Option<Arc<multi_provider::qq::QqHost>>,
+    registry: Arc<multi_provider::registry::ProviderRegistry>,
+    netease: Option<Arc<multi_provider::netease::NeteaseService>>,
+    bilibili: Option<Arc<multi_provider::bilibili::BilibiliService>>,
     auth: Option<Arc<AuthService>>,
     catalog: Option<Arc<CatalogService>>,
     library: Option<Arc<LibraryService>>,
@@ -181,6 +184,9 @@ impl AppState {
             remote: Arc::new(remote::RemoteControl::default()),
             snapshot: RwLock::new(AppSnapshot::bootstrap()),
             provider: None,
+            registry: Arc::new(multi_provider::registry::ProviderRegistry::default()),
+            netease: None,
+            bilibili: None,
             auth: None,
             catalog: None,
             library: None,
@@ -277,84 +283,128 @@ impl AppState {
                 spectrum_enabled,
             )));
         }
-        let device_path = application_data_directory(app)
-            .and_then(|root| ProviderDevicePath::prepare(&root).ok());
-        let Some(device_path) = device_path else {
-            file_logging::event("startup_provider_device_unavailable");
-            state
-                .snapshot
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .provider = ProviderSnapshot::failed();
-            return state;
-        };
-        let Some(provider_root) = provider_root(app) else {
-            file_logging::event("startup_provider_root_unavailable");
-            state
-                .snapshot
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .provider = ProviderSnapshot::failed();
-            return state;
-        };
         let credential_store: Arc<dyn credentials::CredentialStore> = if release_smoke::active() {
             Arc::new(release_smoke::NoCredentials)
         } else {
             Arc::new(WindowsCredentialStore::new())
         };
-        let recovery = Arc::new(AuthRecoveryCoordinator::new(credential_store.clone()));
-        let provider = match VerifiedProviderBundle::verify(provider_root)
-            .and_then(|bundle| {
-                bundle
-                    .launch_with_device_path(&device_path)
-                    .map_err(|_| provider::ProviderBundleError::Io)
-            })
-            .and_then(|launch| {
-                ProviderSupervisor::start_with_recovery_allow_initial_failure(
-                    launch,
-                    SupervisorConfig::default(),
-                    recovery.clone(),
-                )
-                .map_err(|_| provider::ProviderBundleError::Io)
-            }) {
-            Ok(provider) => Arc::new(provider),
-            Err(_) => {
-                file_logging::event("startup_provider_bundle_or_launch_failed");
-                state
-                    .snapshot
-                    .write()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .provider = ProviderSnapshot::failed();
-                return state;
+        let qq_provider = match application_data_directory(app)
+            .and_then(|root| ProviderDevicePath::prepare(&root).ok())
+        {
+            None => {
+                file_logging::event("startup_provider_device_unavailable");
+                None
             }
+            Some(device_path) => match provider_root(app) {
+                None => {
+                    file_logging::event("startup_provider_root_unavailable");
+                    None
+                }
+                Some(provider_root) => match VerifiedProviderBundle::verify(provider_root)
+                    .and_then(|bundle| {
+                        bundle
+                            .launch_with_device_path(&device_path)
+                            .map_err(|_| provider::ProviderBundleError::Io)
+                    })
+                    .map(|launch| {
+                        multi_provider::qq::QqHost::new(launch, credential_store.clone())
+                    }) {
+                    Ok(provider) => Some(provider),
+                    Err(_) => {
+                        file_logging::event("startup_provider_bundle_or_launch_failed");
+                        None
+                    }
+                },
+            },
         };
-        let auth = Arc::new(AuthService::new(provider.clone(), credential_store));
-        let (event_stop, event_thread) = spawn_auth_event_bridge(
-            app,
-            provider.clone(),
-            auth.clone(),
-            state.auth_snapshot.clone(),
-        );
-        state.auth_event_stop = Some(event_stop);
-        state.auth_event_thread = event_thread;
-        let business_provider: Arc<dyn provider::ProviderRequestPort> = Arc::new(
-            RecoveringProviderPort::new(provider.clone(), recovery.clone()),
-        );
-        let lyrics = Arc::new(LyricService::new(business_provider.clone()));
-        state.lyrics = Some(lyrics.clone());
-        state.catalog = Some(Arc::new(
-            CatalogService::new(business_provider.clone()).with_covers(state.cover.clone()),
-        ));
-        let library = Arc::new(LibraryService::new(business_provider.clone()));
-        state.library = Some(library.clone());
-        if let Some(persistence) = state.persistence.clone() {
-            state.organizer = Some(Arc::new(OrganizerService::new(library, persistence)));
+        if let Some(provider) = &qq_provider {
+            Arc::get_mut(&mut state.registry)
+                .expect("bootstrap registry ownership")
+                .attach_qq(provider.clone());
+        } else {
+            state
+                .snapshot
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .provider = ProviderSnapshot::failed();
         }
+        if let (Some((root, node)), Some(data)) =
+            (node_provider_paths(app), application_data_directory(app))
+        {
+            let n = multi_provider::netease::registration(&root, &node).ok();
+            let b = multi_provider::bilibili::registration(&root, &node).ok();
+            let registry = Arc::get_mut(&mut state.registry).expect("bootstrap registry ownership");
+            let mut register = |r| {
+                if release_smoke::active() {
+                    registry.register(r, Arc::new(release_smoke::EmptyProviderStore)).is_ok()
+                } else {
+                    registry.register_dpapi(r, data.clone()).is_ok()
+                }
+            };
+            let n = n.is_some_and(&mut register);
+            let b = b.is_some_and(&mut register);
+            if n { state.netease = Some(Arc::new(multi_provider::netease::NeteaseService::new(state.registry.clone()))); }
+            if b {
+                let service = Arc::new(multi_provider::bilibili::BilibiliService::new(state.registry.clone()));
+                if let Some(cover) = &state.cover {
+                    let service = service.clone();
+                    cover.set_bilibili_lookup(move |bvid| service.cover_url(bvid).map_err(|_| CoverError::CoverUnavailable));
+                }
+                state.bilibili = Some(service);
+            }
+            for id in [n.then_some(multi_provider::OnlineProviderId::Netease), b.then_some(multi_provider::OnlineProviderId::Bilibili)].into_iter().flatten() {
+                let registry = state.registry.clone();
+                std::thread::spawn(move || { let _ = registry.restore(id); });
+            }
+        }
+        let business_provider: Arc<dyn provider::ProviderRequestPort> =
+            if let Some(provider) = &qq_provider {
+                let auth = Arc::new(
+                    AuthService::new(provider.clone(), credential_store)
+                        .with_host(provider.clone()),
+                );
+                let (event_stop, event_thread) = spawn_auth_event_bridge(
+                    app,
+                    provider.clone(),
+                    auth.clone(),
+                    state.auth_snapshot.clone(),
+                );
+                state.auth_event_stop = Some(event_stop);
+                state.auth_event_thread = event_thread;
+                let business_provider: Arc<dyn provider::ProviderRequestPort> = provider.clone();
+                state.catalog = Some(Arc::new(
+                    CatalogService::new(business_provider.clone()).with_covers(state.cover.clone()),
+                ));
+                let library = Arc::new(LibraryService::new(business_provider.clone()));
+                state.library = Some(library.clone());
+                if let Some(persistence) = state.persistence.clone() {
+                    state.organizer = Some(Arc::new(OrganizerService::new(library, persistence)));
+                }
+                *state
+                    .auth_snapshot
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    AuthSnapshot::signed_out();
+                state.provider = Some(provider.clone());
+                state.auth = Some(auth);
+                business_provider
+            } else {
+                Arc::new(UnavailableProvider)
+            };
+        let mut lyrics = LyricService::new(business_provider.clone());
+        if let Some(n) = &state.netease {
+            lyrics = lyrics.with_netease(n.clone());
+        }
+        let lyrics = Arc::new(lyrics);
+        state.lyrics = Some(lyrics.clone());
         state.playback = WindowsMediaPlayerEngine::new().ok().map(|player| {
-            Arc::new(PlaybackController::new(
-                business_provider.clone(),
-                Box::new(player),
-            ))
+            let mut controller =
+                PlaybackController::new(business_provider.clone(), Box::new(player));
+            if let Some(n) = &state.netease {
+                controller = controller.with_netease(n.clone());
+            }
+            if let Some(b) = &state.bilibili { controller = controller.with_bilibili(b.clone()); }
+            Arc::new(controller)
         });
         #[cfg(windows)]
         let artwork = match (&state.cover, &state.playback) {
@@ -403,26 +453,53 @@ impl AppState {
                 .with_lyric_service(state.lyrics.clone()),
             );
             session.set_default_quality(default_quality);
+            if let Some(provider) = &qq_provider {
+                let weak = Arc::downgrade(&session);
+                let weak_host = Arc::downgrade(provider);
+                let auth_projection = state.auth_snapshot.clone();
+                provider.set_invalidator(Arc::new(move || {
+                    if let Some(session) = weak.upgrade() {
+                        let intent = session.play_intent_token();
+                        let weak_host = weak_host.clone();
+                        let auth_projection = auth_projection.clone();
+                        thread::spawn(move || {
+                            let _ = session
+                                .invalidate_provider_at(multi_provider::ProviderId::Qqmusic, intent);
+                            session.clear_shuffle_likes();
+                            let account = weak_host.upgrade().and_then(|h| h.account());
+                            *auth_projection
+                                .write()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner) = account
+                                .map(|a| AuthSnapshot::authenticated(Some(a)))
+                                .unwrap_or_else(AuthSnapshot::signed_out);
+                        });
+                    }
+                }));
+            }
             PlaybackSession::start_auto_advance_worker(&session);
             state.playback_session = Some(session);
         }
-        *state
-            .auth_snapshot
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = match recovery.state() {
-            RecoveryState::SignedOut => AuthSnapshot::signed_out(),
-            RecoveryState::Authenticated { account } => AuthSnapshot::authenticated(Some(account)),
-        };
-        state.provider = Some(provider);
-        state.auth = Some(auth);
         state
+    }
+}
+
+#[cfg(windows)]
+struct UnavailableProvider;
+
+#[cfg(windows)]
+impl provider::ProviderRequestPort for UnavailableProvider {
+    fn request(
+        &self,
+        _request: provider::ProviderRequest,
+    ) -> Result<provider::ProviderReply, provider::ProviderError> {
+        Err(provider::ProviderError::Unavailable)
     }
 }
 
 #[cfg(windows)]
 fn spawn_auth_event_bridge(
     app: &tauri::AppHandle,
-    provider: Arc<ProviderSupervisor>,
+    provider: Arc<multi_provider::qq::QqHost>,
     auth: Arc<AuthService>,
     auth_snapshot: Arc<RwLock<AuthSnapshot>>,
 ) -> (Arc<AtomicBool>, Option<JoinHandle<()>>) {
@@ -437,8 +514,11 @@ fn spawn_auth_event_bridge(
         .spawn(move || {
             while !thread_stop.load(Ordering::Acquire) {
                 match events.recv_timeout(Duration::from_millis(100)) {
-                    Ok(event) if event.name == AUTH_QR_PROVIDER_EVENT => {
-                        let public_event = match auth.apply_qr_event(event.payload) {
+                    Ok(tagged) if tagged.event.name == AUTH_QR_PROVIDER_EVENT => {
+                        let event=tagged.event;
+                        let session=event.payload.get("sessionId").and_then(serde_json::Value::as_str).unwrap_or("").to_owned();
+                        if !provider.accepts(tagged.generation,&session) {continue;}
+                        let public_event = match auth.apply_qr_event_at(Some(tagged.generation),event.payload) {
                             Ok(event) => event,
                             Err(error) => auth_qr_event_error(error),
                         };
@@ -458,10 +538,14 @@ fn spawn_auth_event_bridge(
                             );
                         }
                         if let AuthQrEvent::Authenticated { account, .. } = &public_event {
+                            if !provider.accepts(tagged.generation,&session) {continue;}
                             *auth_snapshot
                                 .write()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
                                 AuthSnapshot::authenticated(Some(account.clone()));
+                        }
+                        if let AuthQrEvent::Expired{session_id}|AuthQrEvent::Rejected{session_id}|AuthQrEvent::Error{session_id,..}=&public_event {
+                            provider.cancel(tagged.generation,session_id);
                         }
                         if app.emit(AUTH_QR_RENDERER_EVENT, &public_event).is_err() {
                             file_logging::event("auth_qr_event_emit_failed");
@@ -522,6 +606,7 @@ impl Drop for AppState {
         self.smtc_artwork.take();
         self.playback.take();
         self.lyrics.take();
+        let _ = self.registry.shutdown();
     }
 }
 
@@ -825,6 +910,9 @@ fn public_organizer_error(error: OrganizerError) -> PublicError {
 }
 
 fn public_playback_error(error: PlaybackError) -> PublicError {
+    if matches!(error,PlaybackError::PreviewOnly|PlaybackError::VerificationRequired) {
+        return PublicError {code:error.code(),retryable:false,operation:Operation::Playback,correlation_id:uuid::Uuid::new_v4().to_string(),user_message:if error==PlaybackError::PreviewOnly {"该歌曲仅提供试听，暂不能完整播放"} else {"平台要求完成验证，请在官方客户端处理后重试"}};
+    }
     let kind = match error {
         PlaybackError::InvalidRequest => PublicErrorKind::InvalidRequest,
         PlaybackError::ProviderUnavailable => PublicErrorKind::PlaybackUnavailable,
@@ -832,6 +920,7 @@ fn public_playback_error(error: PlaybackError) -> PublicError {
         PlaybackError::NetworkUnavailable => PublicErrorKind::NetworkUnavailable,
         PlaybackError::AuthenticationRequired => PublicErrorKind::AuthenticationRequired,
         PlaybackError::EntitlementDenied => PublicErrorKind::PlaybackEntitlementDenied,
+        PlaybackError::PreviewOnly | PlaybackError::VerificationRequired => PublicErrorKind::PlaybackUnavailable,
         PlaybackError::DeviceLimit => PublicErrorKind::PlaybackDeviceLimit,
         PlaybackError::Unavailable => PublicErrorKind::PlaybackUnavailable,
         PlaybackError::UnsafeMediaUrl => PublicErrorKind::UnsafeMediaUrl,
@@ -903,6 +992,48 @@ fn provider_root(app: &tauri::AppHandle) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
+fn node_provider_paths(app: &tauri::AppHandle) -> Option<(PathBuf, PathBuf)> {
+    if release_smoke::active() {
+        let root = std::env::current_exe().ok()?.parent()?.to_path_buf();
+        let node = root.join("node/node.exe");
+        return (node.is_file()
+            && root.join("providers/node/netease/main.mjs").is_file()
+            && root.join("providers/node/bilibili/main.mjs").is_file())
+            .then_some((root, node));
+    }
+    let mut roots = Vec::new();
+    if cfg!(debug_assertions) {
+        if let Some(dev_root) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+            roots.push(dev_root.to_path_buf());
+        }
+    }
+    if let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(PathBuf::from))
+    {
+        roots.push(exe_dir);
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        roots.push(resource_dir);
+    }
+    for root in roots {
+        if !root.join("providers/node/netease/main.mjs").is_file() && !root.join("providers/node/bilibili/main.mjs").is_file() {
+            continue;
+        }
+        for node_rel in [
+            "output/node-24.22.2/bundled/node-v24.22.2-win-x64/node.exe",
+            "node/node.exe",
+        ] {
+            let node = root.join(node_rel);
+            if node.is_file() {
+                return Some((root, node));
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
 fn application_data_directory(app: &tauri::AppHandle) -> Option<PathBuf> {
     if release_smoke::active() {
         release_smoke::data_directory()
@@ -949,7 +1080,14 @@ fn preferred_quality_from_playback(quality: PlaybackQuality) -> Option<Preferred
 
 pub fn run() {
     let mut context = tauri::generate_context!();
+    let smoke_acl = release_smoke::active()
+        .then(|| release_smoke::provider_acl_report(context.runtime_authority_mut()));
     if release_smoke::active() {
+        // Give the isolated copy its own single-instance mutex. The user's
+        // running application must never receive this check's launch event.
+        context.config_mut().identifier = format!(
+            "dev.qqmusic.gui.isolated-smoke.p{}", std::process::id()
+        );
         for window in &mut context.config_mut().app.windows {
             window.create = false;
         }
@@ -965,7 +1103,7 @@ pub fn run() {
         .plugin(tauri_plugin_wdio::init());
 
     builder
-        .setup(|app| {
+        .setup(move |app| {
             file_logging::initialize();
             #[cfg(windows)]
             {
@@ -985,7 +1123,10 @@ pub fn run() {
                             .visible(false)
                             .build()?;
                     }
-                    release_smoke::schedule(app.handle().clone());
+                    release_smoke::schedule(
+                        app.handle().clone(),
+                        smoke_acl.unwrap_or_else(|| Err("compiled ACL check missing".into())),
+                    );
                 }
             }
             #[cfg(not(windows))]
@@ -998,6 +1139,17 @@ pub fn run() {
             desktop::handle_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            commands::providers::provider_status,
+            commands::providers::provider_login,
+            commands::providers::provider_poll,
+            commands::providers::provider_cancel,
+            commands::providers::provider_restore,
+            commands::providers::provider_check,
+            commands::providers::provider_logout,
+            commands::providers::provider_read,
+            commands::providers::provider_write,
+            commands::providers::provider_verify_write,
+            commands::providers::provider_likes,
             commands::settings::shortcuts_control,
             file_logging::logging_status,
             file_logging::logging_set_enabled,
@@ -1077,7 +1229,7 @@ pub fn run() {
             desktop::tray_menu_action
         ])
         .build(context)
-        .expect("failed to build QQ Music GUI")
+        .expect("failed to build Murphy’s Music Lab")
         .run(|_app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 file_logging::event("app_exit");
@@ -1176,6 +1328,7 @@ mod tests {
             PersistenceService::open(&root.join("state.sqlite3")).expect("open persistence");
         persistence
             .replace_queue(&[PersistedTrack {
+                video: None,
                 track_id: "fixture-track".to_owned(),
                 media_mid: None,
                 title: "纸月光".to_owned(),

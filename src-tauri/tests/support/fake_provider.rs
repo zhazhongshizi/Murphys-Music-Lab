@@ -49,6 +49,9 @@ fn run() -> Result<(), String> {
         thread::sleep(Duration::from_millis(300));
         return write_success_for_id(request_id_arg.as_deref().ok_or("request id required")?);
     }
+    if scenario.starts_with("qq-") {
+        return run_qq(&scenario, marker.as_ref());
+    }
 
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines();
@@ -225,6 +228,115 @@ fn request_id(request: &Value) -> Result<&str, String> {
     request["id"]
         .as_str()
         .ok_or_else(|| "missing id".to_owned())
+}
+
+fn run_qq(scenario: &str, marker: Option<&PathBuf>) -> Result<(), String> {
+    if let Some(p) = marker {
+        let n = read_counter(p).unwrap_or(0);
+        write_counter(p, n + 1)?;
+    }
+    for line in io::stdin().lock().lines() {
+        let request: Value =
+            serde_json::from_str(&line.map_err(|_| "stdin")?).map_err(|_| "json")?;
+        let method = request["method"].as_str().ok_or("method")?;
+        let result = match method {
+            "system.handshake" => {
+                let capabilities = json!({"authMethods":["qq","wx"],"searchTypes":["songs","artists","albums","playlists"],"recommendModules":["guess","radar","newSongs","playlists","charts"],"playlistWrites":["create","delete","addSongs","removeSongs","likeSong","unlikeSong","favoritePlaylist","unfavoritePlaylist"],"playlistExtensions":{"rename":false,"description":false},"lyricVariants":["original","translation","romanization"],"qualityCandidates":["flac","320k","128k"]});
+                json!({"provider":{"name":"qqmusic-provider","version":if scenario=="qq-wrong-version"{"other"}else{"0.1.0"},"mode":"fixture"},"protocol":{"version":1,"maxLineBytes":MAX_LINE_BYTES},"capabilities":capabilities,"implementedMethods":["system.handshake","system.ping","auth.qr.start","auth.qr.poll","auth.qr.cancel","auth.credential.restore","auth.credential.check","auth.credential.refresh","auth.logout","search.songs","playback.resolve","search.hotkeys","search.complete","search.artists","search.albums","search.playlists","recommend.guess","recommend.radar","recommend.newSongs","recommend.playlists","charts.list","charts.detail","song.detail","playlist.detail","album.detail","album.songs","artist.detail","artist.songs","artist.albums","lyrics.get","library.playlists","library.liked","playlist.create","playlist.delete","playlist.addSongs","playlist.removeSongs","song.like","song.unlike","playlist.favorite","playlist.unfavorite"],"upstream":{"name":"fixture","requiredVersion":"0","installedVersion":"0"}})
+            }
+            "auth.qr.start" => {
+                if scenario == "qq-login-network" {
+                    write_json(
+                        &json!({"v":1,"id":request["id"],"ok":false,"error":{"code":"network_unavailable","retryable":false}}),
+                    )?;
+                    continue;
+                }
+                json!({"sessionId":"qq-synthetic","loginMethod":"qq","mimeType":"image/png","imageBase64":"AA==","expiresAtMs":100000,"pollAfterMs":1000})
+            }
+            "auth.qr.poll" => {
+                json!({"sessionId":"qq-synthetic","state":"authenticated","account":{"musicId":"123","loginMethod":"qq"},"credential":{"musicid":123,"login_type":2,"musickey":"SYNTHETIC_TEST_ONLY"}})
+            }
+            "auth.credential.restore" => {
+                if scenario == "qq-restore-blocked" {
+                    let marker = marker.ok_or("restore marker")?;
+                    fs::write(marker.with_extension("restoring"), b"synthetic-restoring")
+                        .map_err(|_| "marker")?;
+                    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                    while !marker.with_extension("release").exists() {
+                        if std::time::Instant::now() > deadline {
+                            return Err("restore gate timeout".into());
+                        }
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                }
+                if scenario == "qq-network" {
+                    write_json(
+                        &json!({"v":1,"id":request["id"],"ok":false,"error":{"code":"network_unavailable","retryable":true}}),
+                    )?;
+                    continue;
+                }
+                json!({"status":"restored"})
+            }
+            "auth.credential.check" => json!({"status":"authenticated"}),
+            "auth.credential.refresh" => {
+                if let Some(m) = marker {
+                    let file = m.with_extension("refresh");
+                    let count = read_counter(&file).unwrap_or(0);
+                    write_counter(&file, count + 1)?;
+                }
+                let code = match scenario {
+                    "qq-refresh-network" => Some("network_unavailable"),
+                    "qq-refresh-rate" => Some("rate_limited"),
+                    "qq-refresh-invalid" => Some("credential_invalid"),
+                    "qq-refresh-required" => Some("authentication_required"),
+                    _ => None,
+                };
+                if let Some(code) = code {
+                    write_json(
+                        &json!({"v":1,"id":request["id"],"ok":false,"error":{"code":code,"retryable":false}}),
+                    )?;
+                    continue;
+                }
+                if scenario == "qq-refresh-crash" {
+                    process::exit(7);
+                }
+                if scenario == "qq-refresh-protocol" {
+                    write_json(
+                        &json!({"v":2,"id":request["id"],"ok":true,"result":{},"warnings":[]}),
+                    )?;
+                    continue;
+                }
+                json!({"status":"authenticated","credential":{"musicid":123,"login_type":2,"musickey":"SYNTHETIC_TEST_ONLY"}})
+            }
+            "auth.logout" => json!({"status":"signed_out"}),
+            "system.ping" => json!({"pong":true}),
+            "search.songs" => {
+                if let Some(m) = marker {
+                    let file = m.with_extension("search");
+                    let n = read_counter(&file).unwrap_or(0);
+                    write_counter(&file, n + 1)?;
+                }
+                if scenario == "qq-crash" {
+                    process::exit(7);
+                }
+                json!({"items":[{"id":"SyntheticQQMID","title":"Synthetic QQ","subtitle":"","artists":[{"id":"FixtureArtist","name":"Fixture"}],"album":{"id":"FixtureAlbum","title":"Fixture album","publishDate":""},"durationMs":1000,"qualityCandidates":[{"quality":"flac","available":false,"requiresSubscription":true},{"quality":"320k","available":true,"requiresSubscription":false},{"quality":"128k","available":true,"requiresSubscription":false}],"availability":{"status":"unknown","requiresSubscription":false}}],"page":1,"hasMore":false,"total":1})
+            }
+            _ => json!({}),
+        };
+        let mut result = result;
+        if method == "system.handshake" {
+            match scenario {
+                "qq-wrong-name" => result["provider"]["name"] = json!("other-provider"),
+                "qq-wrong-capability" => result["capabilities"]["authMethods"] = json!([]),
+                "qq-missing-method" => {
+                    result["implementedMethods"] = json!(["system.handshake", "system.ping"])
+                }
+                _ => {}
+            }
+        }
+        write_json(&json!({"v":1,"id":request["id"],"ok":true,"result":result,"warnings":[]}))?;
+    }
+    Ok(())
 }
 
 fn write_handshake(id: &str) -> Result<(), String> {

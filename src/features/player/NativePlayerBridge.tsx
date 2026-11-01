@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { subscribeProviderSessions } from "../../backend/providerSessions";
 import { hasPlaybackTransport, playbackConnectionRevision, subscribePlaybackConnection } from "../../backend/playbackTransport";
 
 import { getTimedLyrics } from "../../backend/lyricsAdapter";
@@ -45,6 +46,12 @@ function readLyrics(trackId: string, generation: number, offset: number) {
 }
 
 export function NativePlayerBridge() {
+  useEffect(() => {
+    const unsubscribe = subscribeProviderSessions(id => { if (id === "netease") playerActions.invalidateProviderLikes(); });
+    void playerActions.refreshProviderLikes();
+    const interval = setInterval(() => { void playerActions.refreshProviderLikes(); }, 15000);
+    return () => { unsubscribe(); clearInterval(interval); };
+  }, []);
   const connectionRevision = useSyncExternalStore(subscribePlaybackConnection, playbackConnectionRevision, playbackConnectionRevision);
   const nativeMode = usePlayerSelector(selectNativeMode);
   const nativeLoaded = usePlayerSelector(selectNativeLoaded);

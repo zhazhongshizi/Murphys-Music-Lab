@@ -1,6 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { connectRemote, disconnectRemote, invokeRemote, remoteStatus } from "./remoteTransport";
 import { installPlaybackTransport } from "../backend/playbackTransport";
+import {
+  nativeProviderLikes,
+  nativeProviderLogin,
+  nativeProviderSearchSongs,
+  nativeProviderStatus,
+  nativeProviderVideoParts,
+  nativeProviderWrite,
+} from "../backend/providersAdapter";
+import constants from "../../contracts/protocol-v2.constants.json";
 
 const state = {
   requestedQuality: "320k", mode: "sequence",
@@ -151,4 +160,195 @@ it("does not hydrate a response whose connection was closed while its body was p
   resolve(state);
   await expect(connecting).rejects.toThrow("连接已变化");
   expect(remoteStatus()).toBe("disconnected");
+});
+
+it("routes multi-provider read-only commands with explicit providerId and rejects writes, auth, and legacy cross-source IDs", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(state)));
+  vi.stubGlobal("fetch", fetcher);
+  await connectRemote("test-code");
+
+  const neteaseReady = {
+    providerId: "netease",
+    capabilities: constants.capabilities.netease,
+    state: "ready",
+    account: { providerId: "netease", id: "123", displayName: "测试用户" },
+    persistence: "saved",
+  };
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(neteaseReady)));
+  expect(await nativeProviderStatus("netease")).toEqual(neteaseReady);
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
+    command: "provider_status",
+    providerId: "netease",
+  });
+
+  const songsPage = {
+    page: 1,
+    hasMore: false,
+    total: 1,
+    items: [
+      {
+        providerId: "netease",
+        id: "netease:track:1901371647",
+        title: "孤勇者",
+        artist: "陈奕迅",
+        creatorKind: "artist",
+        album: "孤勇者",
+        durationMs: 256_000,
+        availability: "unknown",
+      },
+    ],
+  };
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(songsPage)));
+  expect(await nativeProviderSearchSongs("netease", "孤勇者", 1, 20)).toEqual(songsPage);
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
+    command: "provider_read",
+    providerId: "netease",
+    method: "search.songs",
+    params: { keyword: "孤勇者", page: 1, pageSize: 20 },
+  });
+
+  const partsPage = {
+    page: 1,
+    hasMore: false,
+    total: 1,
+    items: [
+      {
+        providerId: "bilibili",
+        id: "bilibili:video:BV17x411w7KC:124",
+        title: "视频原题 / 第二 P 原题",
+        artist: "UP 主",
+        creatorKind: "uploader",
+        album: "",
+        durationMs: 95_000,
+        availability: "unknown",
+        video: { title: "视频原题", partTitle: "第二 P 原题", partNumber: 2 },
+      },
+    ],
+  };
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(partsPage)));
+  expect(await nativeProviderVideoParts("BV17x411w7KC", 1, 50)).toEqual(partsPage);
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
+    command: "provider_read",
+    providerId: "bilibili",
+    method: "video.parts",
+    params: { bvid: "BV17x411w7KC", page: 1, pageSize: 50 },
+  });
+
+  const callsBeforeRejections = fetcher.mock.calls.length;
+
+  // Reject provider login/auth/write commands on Remote without network calls.
+  await expect(nativeProviderLogin("netease")).rejects.toMatchObject({
+    upstreamCode: "unsupported_capability",
+  });
+  await expect(
+    nativeProviderWrite({
+      providerId: "netease",
+      accountId: "123",
+      operation: { kind: "setLiked", trackId: "netease:track:1901371647", liked: true },
+    }),
+  ).rejects.toMatchObject({ upstreamCode: "unsupported_capability" });
+  await expect(nativeProviderLikes()).rejects.toMatchObject({
+    upstreamCode: "unsupported_capability",
+  });
+  await expect(
+    invokeRemote("provider_read", {
+      providerId: "netease",
+      method: "library.setLiked",
+      params: {},
+    }),
+  ).rejects.toMatchObject({ code: "unsupported_capability" });
+
+  // Reject missing or non-new providerId on provider_status / provider_read.
+  await expect(invokeRemote("provider_status", {})).rejects.toMatchObject({
+    code: "invalid_params",
+  });
+  await expect(invokeRemote("provider_status", { providerId: "qqmusic" })).rejects.toMatchObject({
+    code: "invalid_params",
+  });
+
+  // Reject legacy endpoints when passed new-platform canonical IDs (containing ':') or missing providerId.
+  await expect(
+    invokeRemote("library_set_liked", { songIds: ["netease:track:1901371647"], liked: true }),
+  ).rejects.toMatchObject({ code: "unsupported_capability" });
+  await expect(
+    invokeRemote("catalog_song_artists", { songId: "netease:track:1901371647" }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+  await expect(
+    invokeRemote("catalog_playlist_songs", {
+      playlistId: "netease:playlist:1",
+      editableId: null,
+      page: 1,
+      pageSize: 20,
+      generation: 1,
+    }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+  await expect(
+    invokeRemote("personal_library", {
+      request: { action: "bookmark", kind: "album", id: "netease:playlist:1", title: "T", saved: true },
+    }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+  await expect(
+    invokeRemote("playback_set_mv_lyric_offset", {
+      trackId: "netease:track:1901371647",
+      generation: 4,
+      offsetMs: 100,
+    }),
+  ).rejects.toMatchObject({ code: "unsupported_capability" });
+
+  // Reject enqueueing new-source tracks without explicit providerId, or Bilibili video summaries.
+  await expect(
+    invokeRemote("queue_enqueue", { item: { id: "netease:track:1901371647" } }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+  await expect(
+    invokeRemote("queue_enqueue", { item: { providerId: "bilibili", id: "BV17x411w7KC" } }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+  await expect(
+    invokeRemote("queue_enqueue", { item: { providerId: "bilibili", id: "bilibili:video:BV17x411w7KC" } }),
+  ).rejects.toMatchObject({ code: "invalid_params" });
+
+  expect(fetcher.mock.calls.length).toBe(callsBeforeRejections);
+
+  // Enqueueing playable NetEase track and Bilibili video part carries explicit providerId and updates mixed queue.
+  const mixedQueue = {
+    generation: 9,
+    selectedIndex: 0,
+    items: [
+      ...state.queue.items,
+      {
+        providerId: "netease",
+        id: "netease:track:1901371647",
+        title: "孤勇者",
+        artist: "陈奕迅",
+        album: "孤勇者",
+        durationMs: 256_000,
+      },
+      {
+        providerId: "bilibili",
+        id: "bilibili:video:BV17x411w7KC:124",
+        title: "视频原题 / 第二 P 原题",
+        artist: "UP 主",
+        album: "",
+        durationMs: 95_000,
+        video: { title: "视频原题", partTitle: "第二 P 原题", partNumber: 2 },
+      },
+    ],
+  };
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(mixedQueue)));
+  await invokeRemote("queue_enqueue_next", {
+    item: mixedQueue.items[2],
+  });
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
+    command: "queue_enqueue_next",
+    providerId: "bilibili",
+    id: "bilibili:video:BV17x411w7KC:124",
+  });
+
+  fetcher.mockResolvedValueOnce(new Response("null"));
+  await invokeRemote("queue_play", { index: 2 });
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
+    action: "playTrack",
+    providerId: "bilibili",
+    id: "bilibili:video:BV17x411w7KC:124",
+    queue_generation: 9,
+  });
 });

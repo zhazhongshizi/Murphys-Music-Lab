@@ -151,6 +151,7 @@ pub struct LogoutResult {
 pub struct AuthService {
     provider: Arc<dyn ProviderRequestPort>,
     credential_store: Arc<dyn CredentialStore>,
+    host: Option<Arc<crate::multi_provider::qq::QqHost>>,
 }
 
 pub struct AuthRecoveryCoordinator {
@@ -222,6 +223,7 @@ impl AuthRecoveryCoordinator {
         }
         drop(flight);
 
+        crate::file_logging::event("auth_recovery_runtime_required");
         let mut request = |request| provider.request(request);
         let recovered = recover_credential(self.credential_store.as_ref(), &mut request)
             .map_err(|_| ProviderError::Unavailable);
@@ -255,6 +257,7 @@ impl ProviderRecoveryHook for AuthRecoveryCoordinator {
         _generation: u64,
         provider: &mut dyn ProviderRecoveryPort,
     ) -> Result<(), ProviderError> {
+        crate::file_logging::event("auth_recovery_provider_ready");
         let mut request = |request| provider.request(request);
         let state = recover_credential(self.credential_store.as_ref(), &mut request)
             .map_err(|_| ProviderError::Unavailable)?;
@@ -317,7 +320,13 @@ impl AuthService {
         Self {
             provider,
             credential_store,
+            host: None,
         }
+    }
+
+    pub fn with_host(mut self, host: Arc<crate::multi_provider::qq::QqHost>) -> Self {
+        self.host = Some(host);
+        self
     }
 
     pub fn start_qr(&self, login_method: &str) -> Result<QrLoginStart, AuthError> {
@@ -346,6 +355,11 @@ impl AuthService {
     }
 
     pub fn poll_qr(&self, session_id: &str) -> Result<QrLoginState, AuthError> {
+        let generation = self
+            .host
+            .as_ref()
+            .map(|h| h.ticket(Some(session_id)))
+            .transpose()?;
         let mut result = self.success_result(
             ProviderRequest::write("auth.qr.poll", session_param(session_id)?)
                 .with_timeout(QR_POLL_TIMEOUT),
@@ -394,7 +408,21 @@ impl AuthService {
                     zeroize_value(&mut credential);
                     return Err(AuthError::InvalidResponse);
                 }
-                self.replace_credential(credential)?;
+                if let (Some(host), Some(generation)) = (&self.host, generation) {
+                    host.accept(
+                        generation,
+                        session_id,
+                        PublicAccount {
+                            music_id: account.music_id.clone(),
+                            login_method: account.login_method.clone(),
+                        },
+                        &credential,
+                    )?;
+                    let mut credential = credential;
+                    zeroize_value(&mut credential);
+                } else {
+                    self.replace_credential(credential)?;
+                }
                 QrLoginState::Authenticated {
                     session_id: returned_session,
                     account: PublicAccount {
@@ -408,11 +436,26 @@ impl AuthService {
                 return Err(AuthError::InvalidResponse);
             }
         };
+        if matches!(
+            &public,
+            QrLoginState::Expired { .. } | QrLoginState::Rejected { .. }
+        ) {
+            if let (Some(host), Some(g)) = (&self.host, generation) {
+                host.cancel(g, session_id);
+            }
+        }
         Ok(public)
     }
 
     pub fn apply_qr_event(
         &self,
+        payload: Map<String, Value>,
+    ) -> Result<AuthQrEvent, AuthQrEventError> {
+        self.apply_qr_event_at(None, payload)
+    }
+    pub fn apply_qr_event_at(
+        &self,
+        expected: Option<u64>,
         mut payload: Map<String, Value>,
     ) -> Result<AuthQrEvent, AuthQrEventError> {
         let session_id = match take_string(&mut payload, "sessionId") {
@@ -435,6 +478,25 @@ impl AuthService {
                 });
             }
         };
+        let generation = match self
+            .host
+            .as_ref()
+            .map(|h| h.ticket(Some(&session_id)))
+            .transpose()
+        {
+            Ok(g) => g,
+            Err(error) => {
+                zeroize_map(&mut payload);
+                return Err(AuthQrEventError { session_id, error });
+            }
+        };
+        if expected.is_some() && expected != generation {
+            zeroize_map(&mut payload);
+            return Err(AuthQrEventError {
+                session_id,
+                error: AuthError::SessionNotFound,
+            });
+        }
         match state.as_str() {
             "waiting_scan" if payload.is_empty() => Ok(AuthQrEvent::WaitingScan { session_id }),
             "waiting_confirmation" if payload.is_empty() => {
@@ -527,11 +589,26 @@ impl AuthService {
                         error: AuthError::InvalidResponse,
                     });
                 }
-                self.replace_credential(credential)
-                    .map_err(|error| AuthQrEventError {
-                        session_id: session_id.clone(),
-                        error,
-                    })?;
+                let saved = if let (Some(host), Some(generation)) = (&self.host, generation) {
+                    let result = host.accept(
+                        generation,
+                        &session_id,
+                        PublicAccount {
+                            music_id: account.music_id.clone(),
+                            login_method: account.login_method.clone(),
+                        },
+                        &credential,
+                    );
+                    let mut credential = credential;
+                    zeroize_value(&mut credential);
+                    result
+                } else {
+                    self.replace_credential(credential)
+                };
+                saved.map_err(|error| AuthQrEventError {
+                    session_id: session_id.clone(),
+                    error,
+                })?;
                 Ok(AuthQrEvent::Authenticated {
                     session_id,
                     account: PublicAccount {
@@ -551,6 +628,14 @@ impl AuthService {
     }
 
     pub fn cancel_qr(&self, session_id: &str) -> Result<QrLoginState, AuthError> {
+        if let Some(host) = &self.host {
+            if let Ok(g) = host.ticket(Some(session_id)) {
+                host.cancel(g, session_id);
+            }
+            return Ok(QrLoginState::Cancelled {
+                session_id: session_id.into(),
+            });
+        }
         let mut result = self.success_result(ProviderRequest::write(
             "auth.qr.cancel",
             session_param(session_id)?,
@@ -567,16 +652,29 @@ impl AuthService {
     }
 
     pub fn recover(&self) -> Result<RecoveryState, AuthError> {
+        crate::file_logging::event("auth_recovery_requested");
+        if let Some(host) = &self.host {
+            return host.restore();
+        }
         let mut request = |request| self.provider.request(request);
         recover_credential(self.credential_store.as_ref(), &mut request)
     }
 
     pub fn refresh(&self) -> Result<RecoveryState, AuthError> {
+        if let Some(host) = &self.host {
+            return host.refresh();
+        }
         let mut request = |request| self.provider.request(request);
         refresh_credential(self.credential_store.as_ref(), &mut request)
     }
 
     pub fn logout(&self) -> Result<LogoutResult, AuthError> {
+        if let Some(host) = &self.host {
+            host.logout()?;
+            return Ok(LogoutResult {
+                upstream_revoked: false,
+            });
+        }
         let upstream_revoked =
             match self.success_result(ProviderRequest::write("auth.logout", Map::new())) {
                 Ok(result) if is_status(&result, "signed_out") => true,
@@ -603,7 +701,7 @@ impl AuthService {
 
 type AuthRequest<'a> = dyn FnMut(ProviderRequest) -> Result<ProviderReply, ProviderError> + 'a;
 
-fn recover_credential(
+pub(crate) fn recover_credential(
     credential_store: &dyn CredentialStore,
     request: &mut AuthRequest<'_>,
 ) -> Result<RecoveryState, AuthError> {
@@ -650,9 +748,11 @@ fn recover_credential(
         ProviderRequest::read_only("auth.credential.check", Map::new()),
     ) {
         Ok(result) if is_status(&result, "authenticated") => {
+            crate::file_logging::event("auth_check_valid");
             Ok(RecoveryState::Authenticated { account })
         }
         Ok(result) if is_status(&result, "expired") => {
+            crate::file_logging::event("auth_check_expired");
             refresh_credential(credential_store, request)
         }
         Ok(mut result) => {
@@ -667,14 +767,22 @@ fn recover_credential(
     }
 }
 
-fn refresh_credential(
+pub(crate) fn refresh_credential(
     credential_store: &dyn CredentialStore,
     request: &mut AuthRequest<'_>,
 ) -> Result<RecoveryState, AuthError> {
-    let mut result = request_success(
+    // Fixed event names only: never record credentials or upstream response bodies.
+    crate::file_logging::event("auth_refresh_started");
+    let reply = request_success(
         request,
         ProviderRequest::write("auth.credential.refresh", Map::new()),
-    )?;
+    );
+    crate::file_logging::event(if reply.is_ok() {
+        "auth_refresh_reply_success"
+    } else {
+        "auth_refresh_reply_failed"
+    });
+    let mut result = reply?;
     let status = take_string(&mut result, "status")?;
     let credential = result
         .remove("credential")
@@ -686,6 +794,7 @@ fn refresh_credential(
     }
     let account = public_account_from_credential(&credential)?;
     replace_stored_credential(credential_store, credential)?;
+    crate::file_logging::event("auth_refresh_persisted");
     Ok(RecoveryState::Authenticated { account })
 }
 

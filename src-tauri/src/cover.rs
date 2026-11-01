@@ -28,6 +28,7 @@ enum CoverKind {
     Album,
     Artist,
     Playlist,
+    Bilibili,
 }
 
 impl CoverKind {
@@ -36,6 +37,7 @@ impl CoverKind {
             Self::Album => "album",
             Self::Artist => "artist",
             Self::Playlist => "playlist",
+            Self::Bilibili => "bilibili",
         }
     }
 
@@ -43,7 +45,7 @@ impl CoverKind {
         match self {
             Self::Album => ALBUM_COVER_URL_PREFIX,
             Self::Artist => ARTIST_COVER_URL_PREFIX,
-            Self::Playlist => "",
+            Self::Playlist | Self::Bilibili => "",
         }
     }
 }
@@ -148,11 +150,14 @@ impl CoverTransport for ReqwestCoverTransport {
     }
 }
 
+type BilibiliCoverLookup = dyn Fn(&str) -> Result<String, CoverError> + Send + Sync;
+
 pub struct CoverService {
     playlist_urls: Mutex<BTreeMap<String, String>>,
     cache_root: PathBuf,
     resolver: Arc<dyn DnsResolver>,
     transport: Arc<dyn CoverTransport>,
+    bilibili_lookup: Mutex<Option<Arc<BilibiliCoverLookup>>>,
 }
 
 impl CoverService {
@@ -175,11 +180,23 @@ impl CoverService {
             cache_root,
             resolver,
             transport,
+            bilibili_lookup: Mutex::new(None),
         })
     }
 
     pub fn get(&self, raw_key: &str) -> Result<CoverPayload, CoverError> {
+        if let Some(bvid) = raw_key.strip_prefix("bili_") {
+            return self.get_bilibili(raw_key, || {
+                let lookup = self.bilibili_lookup.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone().ok_or(CoverError::CoverUnavailable)?;
+                lookup(bvid)
+            });
+        }
         self.get_with_kind(CoverKind::Album, raw_key)
+    }
+
+    pub fn set_bilibili_lookup(&self, lookup: impl Fn(&str) -> Result<String, CoverError> + Send + Sync + 'static) {
+        *self.bilibili_lookup.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(lookup));
     }
 
     pub fn get_artist(&self, raw_key: &str) -> Result<CoverPayload, CoverError> {
@@ -211,7 +228,22 @@ impl CoverService {
         self.get_with_kind(CoverKind::Playlist, raw_key)
     }
 
+    fn get_bilibili(&self, raw_key: &str, resolve: impl FnOnce() -> Result<String, CoverError>) -> Result<CoverPayload, CoverError> {
+        self.get_with_source(CoverKind::Bilibili, raw_key, || {
+            let value = resolve()?;
+            let url = Url::parse(&value).map_err(|_| CoverError::UnsafeUrl)?;
+            if !matches!(url.host_str(), Some("i0.hdslb.com" | "i1.hdslb.com" | "i2.hdslb.com")) {
+                return Err(CoverError::UnsafeUrl);
+            }
+            TrustedRemoteUrl::validate(&value, RemoteUrlPurpose::Cover, self.resolver.as_ref()).map_err(|_| CoverError::UnsafeUrl)
+        })
+    }
+
     fn get_with_kind(&self, kind: CoverKind, raw_key: &str) -> Result<CoverPayload, CoverError> {
+        self.get_with_source(kind, raw_key, || self.trusted_url(kind, raw_key))
+    }
+
+    fn get_with_source(&self, kind: CoverKind, raw_key: &str, source: impl FnOnce() -> Result<TrustedRemoteUrl, CoverError>) -> Result<CoverPayload, CoverError> {
         let key = validate_cache_key(raw_key)?;
         let cache_path = self.cache_path(kind, key);
         if cache_path.is_file() {
@@ -227,7 +259,7 @@ impl CoverService {
             }
         }
 
-        let mut target = self.trusted_url(kind, key)?;
+        let mut target = source()?;
         for redirect_count in 0..=MAX_REDIRECTS {
             let response = self.transport.fetch(target.expose_to_trusted_backend())?;
             if (200..300).contains(&response.status) {
@@ -245,6 +277,9 @@ impl CoverService {
                     .expose_to_trusted_backend()
                     .join(&location)
                     .map_err(|_| CoverError::RedirectRejected)?;
+                if kind == CoverKind::Bilibili && !matches!(next.host_str(), Some("i0.hdslb.com" | "i1.hdslb.com" | "i2.hdslb.com")) {
+                    return Err(CoverError::RedirectRejected);
+                }
                 target = TrustedRemoteUrl::validate(
                     next.as_str(),
                     RemoteUrlPurpose::Cover,
@@ -505,6 +540,37 @@ mod tests {
         assert_eq!(service.get("bad/key"), Err(CoverError::InvalidKey));
         service.clear().expect("clear cache");
         assert_eq!(fs::read_dir(&root).expect("cache entries").count(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bilibili_video_cover_survives_restart_without_metadata_or_login() {
+        let root = root("bilibili");
+        let transport = Arc::new(FakeTransport::new(vec![jpeg_response()]));
+        let service = CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone()).unwrap();
+        let key = "bili_BV17x411w7KC";
+        service.set_bilibili_lookup(|bvid| {
+            assert_eq!(bvid, "BV17x411w7KC");
+            Ok("https://i0.hdslb.com/bfs/archive/fixture.jpg".into())
+        });
+        let first = service.get(key).unwrap();
+        let reopened = CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone()).unwrap();
+        assert_eq!(reopened.get(key).unwrap(), first);
+        assert_eq!(transport.calls.lock().unwrap().len(), 1);
+        assert_eq!(service.get_bilibili("bili_other", || Ok("https://y.gtimg.cn/not-a-bili-cover.jpg".into())), Err(CoverError::UnsafeUrl));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bilibili_cover_redirect_stays_on_image_hosts() {
+        let root = root("bilibili-redirect");
+        let transport = Arc::new(FakeTransport::new(vec![CoverResponse {
+            status: 302, content_type: None, location: Some("https://y.gtimg.cn/other.jpg".into()), body: vec![],
+        }]));
+        let service = CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone()).unwrap();
+        service.set_bilibili_lookup(|_| Ok("https://i0.hdslb.com/bfs/archive/fixture.jpg".into()));
+        assert_eq!(service.get("bili_BV17x411w7KC"), Err(CoverError::RedirectRejected));
+        assert_eq!(transport.calls.lock().unwrap().len(), 1);
         let _ = fs::remove_dir_all(root);
     }
 

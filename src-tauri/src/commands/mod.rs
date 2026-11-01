@@ -4,6 +4,7 @@ pub(crate) mod library;
 pub(crate) mod local_music;
 pub(crate) mod personal;
 pub(crate) mod playback;
+pub(crate) mod providers;
 pub(crate) mod remote;
 pub(crate) mod settings;
 pub(crate) mod updates;

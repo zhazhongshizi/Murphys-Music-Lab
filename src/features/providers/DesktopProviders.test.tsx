@@ -1,0 +1,279 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import * as api from "../../backend/providersAdapter";
+import { invalidateProviderSession } from "../../backend/providerSessions";
+import { installPlaybackTransport } from "../../backend/playbackTransport";
+import type { NewProviderId, ProviderContainer, ProviderPage, ProviderSnapshot, ProviderTrack } from "../../contracts/providers";
+import constants from "../../../contracts/protocol-v2.constants.json";
+import { DesktopProviders, SourceNavigation, useDesktopProviders } from "./DesktopProviders";
+import { DesktopAccountDialog } from "./ProviderAccount";
+import { ProviderWorkspace, type RhineProviderSceneState } from "./ProviderWorkspace";
+import { SourceBadge } from "./SourceBadge";
+import { playerActions } from "../player/playerStore";
+import { nativeQueuePlay } from "../../backend/nativeQueueAdapter";
+
+vi.mock("../../backend/providersAdapter", async original => ({
+  ...await original<typeof import("../../backend/providersAdapter")>(),
+  nativeProviderStatus: vi.fn(), nativeProviderLogin: vi.fn(), nativeProviderPoll: vi.fn(), nativeProviderCancel: vi.fn(), nativeProviderRestore: vi.fn(), nativeProviderLogout: vi.fn(), nativeProviderCheck: vi.fn(),
+  nativeProviderSearchSongs: vi.fn(), nativeProviderSearchPlaylists: vi.fn(), nativeProviderSearchVideos: vi.fn(), nativeProviderLibraryContainers: vi.fn(), nativeProviderLibraryTracks: vi.fn(), nativeProviderLibraryVideos: vi.fn(), nativeProviderLibraryLikes: vi.fn(), nativeProviderContainer: vi.fn(), nativeProviderResolveVideo: vi.fn(), nativeProviderVideoParts: vi.fn(), nativeProviderEnqueueTracks: vi.fn(), nativeProviderEnqueueVideo: vi.fn(), nativeProviderWrite: vi.fn(),
+}));
+vi.mock("../player/playerStore", () => ({ playerActions: { hydrateNative: vi.fn(), refreshProviderLikes: vi.fn(), applyVerifiedProviderLike: vi.fn() } }));
+vi.mock("../../backend/nativeQueueAdapter", async original => ({ ...await original<typeof import("../../backend/nativeQueueAdapter")>(), nativeQueuePlay: vi.fn() }));
+
+const ready = (id: NewProviderId, account = "42"): Extract<ProviderSnapshot, { state: "ready" }> => ({ providerId: id, state: "ready", account: { providerId: id, id: account, displayName: `Synthetic ${account}` }, persistence: "saved", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
+const disabled = (id: NewProviderId): ProviderSnapshot => ({ providerId: id, state: "disabled", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
+const song: ProviderTrack = { providerId: "netease", id: "netease:track:1", title: "网易歌曲", artist: "艺人", creatorKind: "artist", album: "专辑", durationMs: 10000, availability: "unknown" };
+const part: ProviderTrack = { providerId: "bilibili", id: "bilibili:video:BV17x411w7KC:124", title: "视频 P2", artist: "测试 UP", creatorKind: "uploader", album: "视频", durationMs: 10000, availability: "unknown", video: { title: "视频", partTitle: "第二 P", partNumber: 2 } };
+const video = { providerId: "bilibili" as const, bvid: "BV17x411w7KC", aid: "170001", title: "视频", uploader: "测试 UP", durationMs: 20000, availability: "unknown" as const };
+const folder = (id: NewProviderId): ProviderContainer => ({ providerId: id, id: id === "netease" ? "netease:playlist:7" : "bilibili:favorite:7", kind: id === "netease" ? "playlist" : "favoriteFolder", owner: { providerId: id, id: "42" }, ownership: "created", title: "自建容器", description: "简介", itemCount: 2, allowedActions: id === "netease" ? ["playlist.addTracks", "playlist.removeTracks"] : ["favorite.addVideos", "favorite.removeVideos"] });
+const page = <T,>(items: T[], hasMore = false, n = 1): ProviderPage<T> => ({ page: n, items, total: items.length, hasMore });
+function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: Error) => void; const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; }); return { resolve, reject, promise }; }
+let statuses: Record<NewProviderId, ProviderSnapshot>;
+beforeEach(() => {
+  vi.resetAllMocks(); localStorage.clear(); installPlaybackTransport(null);
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+  statuses = { netease: ready("netease"), bilibili: ready("bilibili") };
+  vi.mocked(api.nativeProviderStatus).mockImplementation(async id => statuses[id as NewProviderId]);
+  vi.mocked(api.nativeProviderLibraryContainers).mockImplementation(async id => page([folder(id)]));
+  vi.mocked(api.nativeProviderContainer).mockImplementation(async id => folder(id));
+  vi.mocked(api.nativeProviderLibraryTracks).mockResolvedValue(page([song]));
+  vi.mocked(api.nativeProviderLibraryLikes).mockResolvedValue(page([song]));
+  vi.mocked(api.nativeProviderSearchSongs).mockResolvedValue(page([song]));
+  vi.mocked(api.nativeProviderSearchPlaylists).mockResolvedValue(page([folder("netease")]));
+  vi.mocked(api.nativeProviderLibraryVideos).mockResolvedValue(page([video]));
+  vi.mocked(api.nativeProviderSearchVideos).mockResolvedValue(page([video]));
+  vi.mocked(api.nativeProviderResolveVideo).mockResolvedValue(video);
+  vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part]));
+  vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [{ id: song.id, providerId: "netease", title: song.title, artist: song.artist, album: song.album, durationMs: song.durationMs }] });
+  vi.mocked(nativeQueuePlay).mockResolvedValue(null);
+  vi.mocked(api.nativeProviderWrite).mockResolvedValue({ status: "applied", affectedCount: null });
+  vi.mocked(api.nativeProviderCancel).mockResolvedValue();
+});
+afterEach(() => { cleanup(); vi.useRealTimers(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); installPlaybackTransport(null); });
+function Harness({ variant, onScene }: { variant: "default" | "rhine"; onScene?: (scene: RhineProviderSceneState) => void }) {
+  const [account, setAccount] = useState(false);
+  const [section, setSection] = useState<"created" | "favorite" | "search">("search");
+  const { source, refresh } = useDesktopProviders();
+  return <>{variant === "rhine" && <nav aria-label="档案分类"><button onClick={() => setSection("created")}>自建</button><button onClick={() => setSection("favorite")}>收藏</button><button onClick={() => setSection("search")}>搜索</button></nav>}<SourceNavigation variant={variant} onAccount={() => setAccount(true)} /><button onClick={() => { if (source === "netease" || source === "bilibili") void refresh(source); }}>刷新测试会话</button><ProviderWorkspace variant={variant} initialSection={section} onArchive={() => setSection("created")} onAccount={() => setAccount(true)} onRhineSceneChange={onScene} />{account && <DesktopAccountDialog variant={variant} auth={{ state: "signedOut" }} onAuthChange={() => {}} onClose={() => setAccount(false)} />}</>;
+}
+async function open(variant: "default" | "rhine", id: NewProviderId = "netease", onScene?: (scene: RhineProviderSceneState) => void) {
+  const view = render(<DesktopProviders><Harness variant={variant} onScene={onScene} /></DesktopProviders>);
+  fireEvent.click(within(screen.getByRole("navigation", { name: "音乐来源" })).getByRole("button", { name: id === "netease" ? "网易云" : "Bilibili" }));
+  await screen.findByRole("region", { name: `${id === "netease" ? "网易云" : "Bilibili"}曲库` });
+  if (statuses[id].state === "ready") {
+    if (variant === "rhine") {
+      await screen.findByLabelText("搜索关键词");
+      if (id === "bilibili") fireEvent.click(screen.getByText("通过 BV/AV 或链接打开分 P"));
+    } else await screen.findByRole("heading", { name: `${id === "netease" ? "网易云" : "Bilibili"} · ${statuses[id].account.displayName}` });
+  }
+  return view;
+}
+describe.each(["default", "rhine"] as const)("%s full provider desktop", variant => {
+  it("disabled sources use only local status and never start QR, restore or library requests", async () => {
+    statuses.netease = disabled("netease"); await open(variant);
+    expect(screen.getByText(/登录此来源后访问曲库/)).toBeInTheDocument();
+    expect(api.nativeProviderLibraryContainers).not.toHaveBeenCalled(); expect(api.nativeProviderRestore).not.toHaveBeenCalled(); expect(api.nativeProviderLogin).not.toHaveBeenCalled(); expect(api.nativeProviderSearchSongs).not.toHaveBeenCalled();
+  });
+  it("new source search is explicit; navigating sources discards delayed results", async () => {
+    const d = deferred<ProviderPage<ProviderTrack>>(); vi.mocked(api.nativeProviderSearchSongs).mockReturnValue(d.promise);
+    await open(variant); expect(api.nativeProviderSearchSongs).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "固定关键词" } }); fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    expect(api.nativeProviderSearchSongs).toHaveBeenCalledWith("netease", "固定关键词", 1, 50);
+    fireEvent.click(within(screen.getByRole("navigation", { name: "音乐来源" })).getByRole("button", { name: "Bilibili" }));
+    await act(async () => { d.resolve(page([song])); });
+    expect(screen.queryByText("网易歌曲")).not.toBeInTheDocument(); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
+  });
+  it("fresh owner/allowedActions govern container removal; pending is verified read-only", async () => {
+    vi.mocked(api.nativeProviderWrite).mockResolvedValueOnce({ status: "verificationPending", affectedCount: null }).mockResolvedValueOnce({ status: "applied", affectedCount: null });
+    await open(variant); fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    const check = await screen.findByRole("checkbox", { name: "网易歌曲" }); fireEvent.click(check);
+    fireEvent.click(screen.getByRole("button", { name: "从当前容器移出选中" }));
+    await screen.findByText(/结果待核对，可能部分完成/);
+    expect(screen.getByRole("button", { name: "从当前容器移出选中" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "只读核对结果" }));
+    await waitFor(() => expect(api.nativeProviderWrite).toHaveBeenLastCalledWith({ providerId: "netease", accountId: "42", operation: { kind: "removeItems", containerId: "netease:playlist:7", trackIds: [song.id] } }, true));
+    expect(api.nativeProviderWrite).toHaveBeenCalledTimes(2);
+  });
+  it("a collected container never enables content removal even when the source supports writes", async () => {
+    vi.mocked(api.nativeProviderContainer).mockResolvedValue({ ...folder("netease"), ownership: "collected", owner: { providerId: "netease", id: "99" }, allowedActions: ["playlist.subscribe", "playlist.unsubscribe"] });
+    await open(variant); fireEvent.click(screen.getByRole("button", { name: "自建" })); fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "网易歌曲" }));
+    expect(screen.getByRole("button", { name: "从当前容器移出选中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "收藏此歌单" })).toBeEnabled(); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
+  });
+  it("capabilities hide unsupported library kinds and disable unsupported mutations", async () => {
+    const status = ready("netease"); statuses.netease = { ...status, capabilities: { ...status.capabilities, libraryKinds: [], writeActions: [], searchKinds: ["songs"] } };
+    await open(variant);
+    const workspace = within(screen.getByRole("region", { name: "网易云曲库" }));
+    expect(workspace.queryByRole("button", { name: "喜欢的歌曲" })).not.toBeInTheDocument(); expect(workspace.queryByRole("button", { name: "自建" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "歌曲" } }); fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    fireEvent.click(await screen.findByRole("button", { name: "网易喜欢 / 歌单操作" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "喜欢此歌曲" })).toBeDisabled()); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
+  });
+  it("Bilibili reads real parts, selects a CID, and queues intact metadata", async () => {
+    await open(variant, "bilibili");
+    fireEvent.change(screen.getByLabelText("BV/AV 或视频链接"), { target: { value: video.bvid } }); fireEvent.click(screen.getByRole("button", { name: "读取视频分 P" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: part.title }));
+    expect(screen.getAllByText(/Bilibili.*P2.*第二 P/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /选中加入队列/ }));
+    await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([part])); expect(nativeQueuePlay).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "喜欢的歌曲" })).not.toBeInTheDocument();
+  });
+  it("a later link input invalidates an earlier video resolution", async () => {
+    const d = deferred<typeof video>(); vi.mocked(api.nativeProviderResolveVideo).mockReturnValueOnce(d.promise);
+    await open(variant, "bilibili");
+    fireEvent.change(screen.getByLabelText("BV/AV 或视频链接"), { target: { value: video.bvid } }); fireEvent.click(screen.getByRole("button", { name: "读取视频分 P" }));
+    fireEvent.change(screen.getByLabelText("BV/AV 或视频链接"), { target: { value: "BV17x411w7KD" } });
+    await act(async () => { d.resolve(video); });
+    expect(api.nativeProviderVideoParts).not.toHaveBeenCalled(); expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+  });
+  it("same-account re-login discards old read results and selection", async () => {
+    const d = deferred<ProviderPage<ProviderTrack>>(); vi.mocked(api.nativeProviderSearchSongs).mockReturnValueOnce(d.promise);
+    await open(variant); fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "歌曲" } }); fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    act(() => invalidateProviderSession("netease"));
+    fireEvent.click(screen.getByRole("button", { name: "刷新测试会话" }));
+    await act(async () => { d.resolve(page([song])); });
+    expect(screen.queryByText(song.title)).not.toBeInTheDocument(); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
+  });
+  it("whole playlist collection is bounded and commits once after complete pagination", async () => {
+    vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _c, n = 1, size) => size === 100 ? { ...page([n === 1 ? song : { ...song, id: "netease:track:2", title: "第二首" }], n === 1, n), total: 2 } : page([song]));
+    await open(variant); fireEvent.click(screen.getByRole("button", { name: "自建" })); fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    fireEvent.click(await screen.findByRole("button", { name: "全部歌曲加入队列" }));
+    await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledTimes(1)); expect(vi.mocked(api.nativeProviderEnqueueTracks).mock.calls[0]![0]).toHaveLength(2);
+  });
+  it("QR returned after closing is cancelled and never polled", async () => {
+    statuses.netease = disabled("netease"); const d = deferred<import("../../contracts/providers").ProviderQrImage>(); vi.mocked(api.nativeProviderLogin).mockReturnValueOnce(d.promise);
+    await open(variant); fireEvent.click(screen.getByRole("button", { name: "打开此来源账号" }));
+    await waitFor(() => expect(api.nativeProviderLogin).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "恢复已保存登录" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "平台账号" })).queryByRole("button", { name: "刷新账号状态" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭登录窗口" }));
+    await act(async () => { d.resolve({ sessionId: "synthetic-qr", mimeType: "image/png", imageBase64: "iVBORw0KGgo=", expiresAtMs: Date.now() + 180000, pollAfterMs: 2000 }); });
+    expect(api.nativeProviderCancel).toHaveBeenCalledWith("netease", "synthetic-qr"); expect(api.nativeProviderPoll).not.toHaveBeenCalled();
+  });
+  it("QR polling confirms the account, stops after authentication and exposes session-only persistence", async () => {
+    statuses.netease = disabled("netease"); await open(variant);
+    vi.mocked(api.nativeProviderLogin).mockResolvedValue({ sessionId: "synthetic-qr", mimeType: "image/png", imageBase64: "iVBORw0KGgo=", expiresAtMs: Date.now() + 180000, pollAfterMs: 2000 });
+    vi.mocked(api.nativeProviderPoll).mockImplementationOnce(async () => {
+      statuses.netease = { ...ready("netease"), persistence: "sessionOnly" };
+      return { sessionId: "synthetic-qr", state: "authenticated", account: { providerId: "netease", id: "42", displayName: "Synthetic" }, persistence: "sessionOnly" };
+    });
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "打开此来源账号" })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByAltText("网易云登录二维码")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.queryByAltText("网易云登录二维码")).not.toBeInTheDocument();
+    expect(screen.getByText(/登录成功，本次已登录，未能保存/)).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(api.nativeProviderPoll).toHaveBeenCalledTimes(1);
+    expect(api.nativeProviderWrite).not.toHaveBeenCalled();
+  });
+  it("switching account tabs cancels a late QR and automatically starts the selected platform once", async () => {
+    statuses.netease = disabled("netease"); statuses.bilibili = disabled("bilibili");
+    const old = deferred<import("../../contracts/providers").ProviderQrImage>();
+    const image = (sessionId: string) => ({ sessionId, mimeType: "image/png" as const, imageBase64: "iVBORw0KGgo=", expiresAtMs: Date.now()+180000, pollAfterMs: 60000 });
+    vi.mocked(api.nativeProviderLogin).mockImplementation(id => id === "netease" ? old.promise : Promise.resolve(image("bili-new")));
+    await open(variant); fireEvent.click(screen.getByRole("button", {name:"打开此来源账号"}));
+    await waitFor(() => expect(api.nativeProviderLogin).toHaveBeenCalledExactlyOnceWith("netease"));
+    fireEvent.click(within(screen.getByRole("navigation", {name:"平台账号"})).getByRole("button", {name:"Bilibili"}));
+    await screen.findByAltText("Bilibili登录二维码");
+    await act(async () => old.resolve(image("netease-old")));
+    expect(api.nativeProviderCancel).toHaveBeenCalledWith("netease","netease-old");
+    expect(api.nativeProviderLogin).toHaveBeenCalledTimes(2);
+    expect(screen.queryByAltText("网易云登录二维码")).not.toBeInTheDocument();
+    expect(api.nativeProviderPoll).not.toHaveBeenCalled();
+  });
+  it("logout removes only that platform and leaves the other ready account usable", async () => {
+    await open(variant); fireEvent.click(screen.getByRole("button", { name: "网易云账号 · 已登录" }));
+    vi.mocked(api.nativeProviderLogout).mockImplementation(async (id = "netease") => { statuses[id] = disabled(id); invalidateProviderSession(id); });
+    fireEvent.click(await screen.findByRole("button", { name: "退出此平台" }));
+    await screen.findByText(/已退出此平台，其他来源保持不变/);
+    fireEvent.click(within(screen.getByRole("navigation", { name: "平台账号" })).getByRole("button", { name: "Bilibili" }));
+    expect(screen.getByRole("button", { name: "退出此平台" })).toBeEnabled();
+    expect(api.nativeProviderLogout).toHaveBeenCalledExactlyOnceWith("netease");
+  });
+  it("reuses existing Normal catalog/inspector and Rhine shelf/document/search surfaces", async () => {
+    const scenes: RhineProviderSceneState[] = [];
+    const view = await open(variant, "netease", s => scenes.push(s));
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    await screen.findByRole("button", { name: "打开此容器" });
+    if (variant === "default") {
+      expect(view.container.querySelector(".catalog-pane")).not.toBeNull();
+      expect(view.container.querySelector(".catalog-inspector")).not.toBeNull();
+      expect(view.container.querySelector(".playlist-grid .playlist-card")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "打开此容器" }));
+      await screen.findByRole("checkbox", { name: "网易歌曲" });
+      expect(view.container.querySelector("table.catalog-table")).not.toBeNull();
+    } else {
+      expect(view.container.querySelector(".rhine-provider-bar")).toBeNull();
+      expect(view.container.querySelector(".rhine-selection")).not.toBeNull();
+      expect(view.container.querySelector(".rhine-catalog .rhine-card-list")).not.toBeNull();
+      await waitFor(() =>
+        expect(scenes.at(-1)).toMatchObject({ titles: ["自建容器"], selected: 0, detail: false, searchMode: false }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "打开此容器" }));
+      await screen.findByRole("checkbox", { name: "网易歌曲" });
+      expect(view.container.querySelector(".rhine-document.rhine-playlist-document")).not.toBeNull();
+      expect(view.container.querySelector("ol.rhine-songs")).not.toBeNull();
+      await waitFor(() =>
+        expect(scenes.at(-1)).toMatchObject({ detail: true, searchMode: false }),
+      );
+    }
+  });
+});
+it("Rhine shares QQ search layout, keeps histories per source and returns to the shelf", async () => {
+  const view = await open("rhine");
+  expect(view.container.querySelector(".rhine-search-heading")).not.toBeNull();
+  expect(view.container.querySelector(".rhine-search-body .rhine-search-history")).not.toBeNull();
+  expect(within(screen.getByLabelText("搜索类型")).queryByRole("button", { name: "歌手" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "网易关键词" } });
+  fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+  await screen.findByText("网易歌曲");
+  fireEvent.click(within(screen.getByLabelText("搜索类型")).getByRole("button", { name: "歌单" }));
+  await waitFor(() => expect(api.nativeProviderSearchPlaylists).toHaveBeenCalledWith("netease", "网易关键词", 1, 50));
+  expect(localStorage.getItem("qqmusic_search_history_v1")).toBeNull();
+  fireEvent.click(within(screen.getByLabelText("音乐来源")).getByRole("button", { name: "Bilibili" }));
+  await screen.findByLabelText("搜索关键词");
+  expect(screen.queryByText("网易关键词", { selector: ".search-history button" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "视频关键词" } });
+  fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+  await waitFor(() => expect(api.nativeProviderSearchVideos).toHaveBeenCalledWith("视频关键词", 1, 50));
+  fireEvent.click(screen.getByRole("button", { name: "清空搜索历史" }));
+  expect(localStorage.getItem("qqmusic_bilibili_search_history_v1")).toBe("[]");
+  expect(localStorage.getItem("qqmusic_netease_search_history_v1")).toContain("网易关键词");
+  fireEvent.click(screen.getByRole("button", { name: "← 返回档案" }));
+  await screen.findByRole("button", { name: "打开此容器" });
+  expect(view.container.querySelector(".rhine-search")).toBeNull();
+});
+it("Remote does not expose desktop source navigation or query desktop accounts", async () => {
+  installPlaybackTransport(vi.fn()); render(<DesktopProviders><SourceNavigation /></DesktopProviders>);
+  expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument(); expect(api.nativeProviderStatus).not.toHaveBeenCalled();
+});
+it("Rhine returns from a favorite video to its folder without duplicating the back row", async () => {
+  await open("rhine", "bilibili");
+  fireEvent.click(screen.getByRole("button", { name: "自建" }));
+  fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+  fireEvent.click(await screen.findByRole("button", { name: "选择分 P" }));
+  await screen.findByRole("button", { name: "全部分 P 加入队列" });
+  expect(screen.queryByRole("button", { name: "返回视频列表" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "自建容器" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "← 返回档案" }));
+  await screen.findByRole("button", { name: "返回容器列表" });
+  expect(screen.getByRole("heading", { name: "自建容器" })).toBeInTheDocument();
+});
+it("a concurrent session observation gets one bounded local snapshot reread and no platform startup", async () => {
+  let neteaseReads = 0;
+  vi.mocked(api.nativeProviderStatus).mockImplementation(async id => {
+    if (id === "netease" && neteaseReads++ === 0) throw new api.ProviderAdapterError("QMG-PROVIDER-001", "cancelled");
+    return statuses[id as NewProviderId];
+  });
+  await open("default");
+  expect(neteaseReads).toBe(2); expect(api.nativeProviderLogin).not.toHaveBeenCalled(); expect(api.nativeProviderRestore).not.toHaveBeenCalled();
+});
+it("source labels preserve four platform identities and video part labels", () => {
+  render(<><SourceBadge track={song} /><SourceBadge track={part} /><SourceBadge track={{ id: "qqSong" }} /><SourceBadge track={{ id: `local_${"a".repeat(64)}_mp3` }} /></>);
+  expect(screen.getByText("网易云")).toBeInTheDocument(); expect(screen.getByText(/Bilibili.*P2/)).toBeInTheDocument(); expect(screen.getByText("QQ 音乐")).toBeInTheDocument(); expect(screen.getByText("本地音乐")).toBeInTheDocument();
+});

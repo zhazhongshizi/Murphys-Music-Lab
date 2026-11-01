@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getPlaybackHistory, type HistoryEntry } from "../../backend/historyAdapter";
+import { SourceBadge } from "../providers/SourceBadge";
 import { playHistoryEntry } from "../player/historyPlayback";
 import { usePlayerSelector } from "../player/playerStore";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -82,14 +83,14 @@ export default function HistoryArchive({ active, quality, superPerformance, rend
       <button className="rhine-back" onClick={() => setDetail(false)}>← 返回最近播放阵列</button>
       <p className="rhine-eyebrow">TAPE / {String(currentPage * PAGE_SIZE + selected + 1).padStart(3, "0")}</p>
       <h2>{chosen.title}</h2><p><SongArtistLinks track={chosen} /></p>
-      <dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
+      <SourceBadge track={chosen} /><dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
       <div className="rhine-history-actions"><button className="rhine-history-primary" disabled={busy} onClick={() => void play(selected)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />{busy ? "正在装载…" : "播放磁带"}</button><button onClick={onDeck}>进入磁带机 ↗</button></div>
     </section> : <section className="rhine-selection rhine-history-selection rhine-history-glass" aria-label="选中歌曲">
       <i className="rhine-history-screw" aria-hidden="true" /><i className="rhine-history-screw" aria-hidden="true" />
       <div className="rhine-history-panel-label"><span>TAPE SELECT / 选中磁带</span><span>{String(currentPage * PAGE_SIZE + selected + 1).padStart(3, "0")} / {String(matches.length).padStart(3, "0")}</span></div>
       <div className="rhine-history-song-head"><SongCover cacheKey={chosen.coverCacheKey} title={chosen.title} /><div><h2>{chosen.title}</h2><SongArtistLinks track={chosen} /></div></div>
       <div className="rhine-history-ruler" aria-hidden="true" />
-      <dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
+      <SourceBadge track={chosen} /><dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
       <div className="rhine-history-actions"><button className="rhine-history-primary" disabled={busy} onClick={() => void play(selected)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />{busy ? "正在装载…" : "播放"}</button><button onClick={() => open(selected)} aria-label="抽取磁带 · 查看歌曲 ↗"><svg className="icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7h16v-7M12 15V3m-4 4 4-4 4 4" /></svg>抽取磁带</button></div>
     </section>)}
     <footer className="rhine-catalog rhine-history-footer" hidden={detail && !!chosen}>

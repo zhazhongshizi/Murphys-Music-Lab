@@ -48,6 +48,7 @@ pub struct LyricService {
     provider: Arc<dyn ProviderRequestPort>,
     shared: Mutex<LyricState>,
     mv_offset: Mutex<Option<(String, u64, i64)>>,
+    netease: Option<Arc<crate::multi_provider::netease::NeteaseService>>,
 }
 
 struct LyricState {
@@ -71,12 +72,14 @@ impl LyricService {
         Self {
             provider,
             mv_offset: Mutex::new(None),
+            netease: None,
             shared: Mutex::new(LyricState {
                 cached: None,
                 in_flight: HashMap::new(),
             }),
         }
     }
+    pub fn with_netease(mut self,service:Arc<crate::multi_provider::netease::NeteaseService>)->Self {self.netease=Some(service);self}
 
     pub fn timeline(&self, track_id: &str, generation: u64) -> Result<LyricTimeline, LyricError> {
         let lines = self.lines(track_id)?;
@@ -115,6 +118,11 @@ impl LyricService {
 
     pub(crate) fn lines(&self, track_id: &str) -> Result<Arc<Vec<LyricLine>>, LyricError> {
         validate_track_id(track_id)?;
+        if crate::multi_provider::identity::track_provider(track_id) == Ok(crate::multi_provider::ProviderId::Bilibili) { return Ok(Arc::new(Vec::new())); }
+        if track_id.starts_with("netease:") {
+            // Account-scoped reads; do not serve the legacy QQ cache after logout.
+            return self.load_lines(track_id).map(Arc::new);
+        }
         let (flight, owner) = {
             let mut shared = self
                 .shared
@@ -189,13 +197,24 @@ impl LyricService {
     }
 
     fn load_lines(&self, track_id: &str) -> Result<Vec<LyricLine>, LyricError> {
-        let reply = self
+        let reply = if track_id.starts_with("netease:") {
+            let n=self.netease.as_ref().ok_or(LyricError::ProviderUnavailable)?;
+            let generation=n.ready_generation().map_err(|_|LyricError::AuthenticationRequired)?;
+            let song=crate::multi_provider::netease::raw_song(track_id).map_err(|_|LyricError::InvalidRequest)?;
+            let v=n.call(generation,"lyrics.get",serde_json::json!({"songId":song})).map_err(|_|LyricError::ProviderUnavailable)?;
+            ProviderReply::Success {result:Map::from_iter([
+                ("trackId".into(),Value::String(track_id.into())),
+                ("lyric".into(),Value::String(v["original"].as_str().unwrap_or("").into())),
+                ("translation".into(),Value::String(v["translation"].as_str().unwrap_or("").into())),
+                ("romanization".into(),Value::String(v["romanization"].as_str().unwrap_or("").into())),
+            ]),warnings:vec![]}
+        } else {self
             .provider
             .request(ProviderRequest::read_only(
                 "lyrics.get",
                 Map::from_iter([("id".to_owned(), Value::String(track_id.to_owned()))]),
             ))
-            .map_err(map_provider_error)?;
+            .map_err(map_provider_error)?};
         let mut result = match reply {
             ProviderReply::Success { result, .. } => result,
             ProviderReply::Failure { code, .. } => return Err(map_provider_failure(&code)),
@@ -365,6 +384,7 @@ fn apply_offset(timestamp: u64, offset_ms: i64) -> u64 {
 }
 
 fn validate_track_id(track_id: &str) -> Result<(), LyricError> {
+    if crate::multi_provider::identity::track_provider(track_id).is_ok_and(|p|matches!(p,crate::multi_provider::ProviderId::Netease|crate::multi_provider::ProviderId::Bilibili)) {return Ok(());}
     if track_id.is_empty()
         || track_id.len() > MAX_TRACK_ID_BYTES
         || !track_id

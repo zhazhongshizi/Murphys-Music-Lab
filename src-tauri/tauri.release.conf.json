@@ -1,7 +1,13 @@
 {
+  "mainBinaryName": "Music-Lab",
   "bundle": {
     "resources": {
-      "resources/provider/": "provider/"
+      "resources/provider/": "provider/",
+      "resources/node/": "node/",
+      "resources/providers/": "providers/",
+      "resources/contracts/": "contracts/",
+      "resources/licenses/": "licenses/",
+      "resources/provider-manifest.json": "provider-manifest.json"
     }
   }
 }

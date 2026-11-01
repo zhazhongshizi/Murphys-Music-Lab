@@ -1,8 +1,8 @@
 # 架构说明
 
-React 通过类型化 Tauri IPC 提交 ID、枚举与用户意图。Rust 负责认证、凭据、队列、事务化 SQLite、原生播放器和 Windows 集成。Python Provider 经私有 stdin/stdout NDJSON 调用 QQMusicApi，返回归一化 DTO。
+Murphy’s Music Lab 2.0 的 React 界面通过类型化 Tauri IPC 提交 ID、枚举与用户意图。Rust 负责认证、凭据、混合来源队列、事务化 SQLite、原生播放器和 Windows 集成。QQ 音乐使用 Python Provider 和既有 v1 协议，网易云与 Bilibili 使用固定 Node.js 运行时和 v2 NDJSON 协议，各来源独立管理账号、能力和会话代次。
 
-- 凭据由 Rust 管理，保存在 Windows Credential Manager；前端不获取 Cookie、密码或限时媒体 URL。
+- 凭据由 Rust 管理：QQ 使用 Windows Credential Manager，新来源使用用户范围 DPAPI 保护；前端不获取 Cookie、密码或限时媒体 URL。
 - 两套界面共用队列／播放器会话，异步请求使用代次与会话身份防止旧结果覆盖。
 - Provider 不接受前端指定的任意 URL、请求头或远端方法。
 - 本地文件、媒体与封面分别使用现有校验入口。诊断只输出受控事件和公开错误类别。
@@ -19,4 +19,5 @@ React 通过类型化 Tauri IPC 提交 ID、枚举与用户意图。Rust 负责�
 | `src-tauri/src/credentials.rs` | Windows 凭据与 secret blob |
 | `src-tauri/src/persistence.rs` | SQLite schema 与事务 |
 | `provider/qqmusic_provider/` | 认证、目录、播放及协议 |
+| `providers/node/`、`src-tauri/src/multi_provider/` | 网易/B站Provider、协议边界、会话与媒体桥 |
 | `contracts/`、`tests/fixtures/` | 协议与虚构测试样例 |

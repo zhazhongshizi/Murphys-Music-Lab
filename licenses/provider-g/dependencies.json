@@ -1,0 +1,2394 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "07f53de64f1150508f1ee270dd3d03311b9c2437",
+  "scope": "Stage G Node runtime/providers (all npm runtime dependencies), changed Rust dependencies/features since baseline, frontend runtime closure (no new frontend dependency), and QQ Python runtime closure. Existing other Rust/OS/framework components remain governed by THIRD_PARTY_NOTICES.md and upstream terms; this is not a claim of a complete pre-existing Rust SBOM.",
+  "inputs": {
+    "package.json": "7afcbcad789a068bc7b7085eb24d3274ec6da836d0e3127cfbc89b6e33bf4364",
+    "pnpm-lock.yaml": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b",
+    "provider/pyproject.toml": "938fd4e57dfdb55e9e63a06c487205226226e7f5e09a3351dfc72357ad06cfa2",
+    "provider/requirements.lock": "7bbd4ed7d15c595161755bd187c4affa4597f2749699182e73e5e453368a07d4",
+    "providers/node/bilibili/package-lock.json": "266cf9d3a52cad2c03d4d33fbf1d657890063ebe4956990185d47a43fd4af920",
+    "providers/node/bilibili/package.json": "90de0d630b25fd6606e2ad4dc3dd59b570aa0b48d476c434d7d14f8bfb90ce89",
+    "providers/node/bilibili/reference-lock.json": "2da3cbf0921a09f267cd81d16e57a23ba524fe18cb86a4d7b88166c3cc37615d",
+    "providers/node/netease/package-lock.json": "56f9ccd0eae4332f4ce4295c9d3ea03cc198fe87246597633d61fe43d5246a49",
+    "providers/node/netease/package.json": "a4b8b9eb3d584cc55ac1f0dcb718e3f7557f31a562c6067db91f1c00323d488e",
+    "providers/node/netease/upstream-lock.json": "1509b94347052541a497579510f5524c7e61ecd4b4f1fc563083c50627386b3f",
+    "providers/node/runtime.json": "934d28369906832c3cdcb6b9f32d1ceee81e63deff4ae4ef35fda409223433b5",
+    "scripts/generate-provider-notices.sources.json": "1ff1652af2e30a31d029fe866dbecfc68e817c51c35cd973fe2c1fb25cd7acb8",
+    "scripts/provider-notices-baseline/package.json": "8b51cb0fd43e51d53206d0e7d87e4f131d47d57d291adc9c6adaaf40c9e1f253",
+    "scripts/provider-notices-baseline/src-tauri/Cargo.toml": "0540dc4aa407744569e344160d8c60c04cd95ac3c00a5579f40837c5533315e5",
+    "src-tauri/Cargo.lock": "0bba27f2822d7ae30062f99f7418a19c461d7639fcc0e19356981f8a372c7106",
+    "src-tauri/Cargo.toml": "687a09b7ce1d96163858243c36150ca16f3b440412698ea23aabffcbdcc35e62",
+    "vendor/rhine/LICENSE": "9129c293e2a6f989d6e648fffc551a3ec914419295e67942b991f7f0f4576163",
+    "vendor/rhine/README.md": "e918dff677ea921d812fe54e11bd7f9274c2f52f2e0be4998f8133b523846c55"
+  },
+  "entries": [
+    {
+      "kind": "frontend-runtime",
+      "name": "@tauri-apps/api",
+      "version": "2.11.1",
+      "source": {
+        "type": "git",
+        "url": "git+https://github.com/tauri-apps/tauri.git"
+      },
+      "integrity": {
+        "tarball": "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==",
+        "packageJsonSha256": "e418ff5cf898e23ee7c7fd4f8f994c6cf24e0cc5c3987440c56d180dda3638d6",
+        "lockSha256": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b"
+      },
+      "license": "Apache-2.0 OR MIT",
+      "newDependencyInMultiProvider": false,
+      "notices": [
+        {
+          "path": "notices/frontend-_tauri-apps_api-2.11.1/LICENSE_APACHE-2.0",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "path": "notices/frontend-_tauri-apps_api-2.11.1/LICENSE_MIT",
+          "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+        }
+      ],
+      "retention": "Retain complete license/copyright notices in binary distributions."
+    },
+    {
+      "kind": "frontend-runtime",
+      "name": "react",
+      "version": "19.2.8",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/react/react.git",
+        "directory": "packages/react"
+      },
+      "integrity": {
+        "tarball": "sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==",
+        "packageJsonSha256": "e40c3ed9b633c9ecf188e09a4be309780a1ea0a9c068278a30ff6a27e7b2dbb6",
+        "lockSha256": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b"
+      },
+      "license": "MIT",
+      "newDependencyInMultiProvider": false,
+      "notices": [
+        {
+          "path": "notices/frontend-react-19.2.8/LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "retention": "Retain complete license/copyright notices in binary distributions."
+    },
+    {
+      "kind": "frontend-runtime",
+      "name": "react-dom",
+      "version": "19.2.8",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/react/react.git",
+        "directory": "packages/react-dom"
+      },
+      "integrity": {
+        "tarball": "sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==",
+        "packageJsonSha256": "7c82f0967114d4b5d38b1f07e543af87c9919e8d3243f9604004819319cb2200",
+        "lockSha256": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b"
+      },
+      "license": "MIT",
+      "newDependencyInMultiProvider": false,
+      "notices": [
+        {
+          "path": "notices/frontend-react-dom-19.2.8/LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "retention": "Retain complete license/copyright notices in binary distributions."
+    },
+    {
+      "kind": "frontend-runtime",
+      "name": "scheduler",
+      "version": "0.27.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/facebook/react.git",
+        "directory": "packages/scheduler"
+      },
+      "integrity": {
+        "tarball": "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==",
+        "packageJsonSha256": "393bb96b7e481bf50189a1a02c7e0e7f4d01acba5abc6fbe7d214638624462fc",
+        "lockSha256": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b"
+      },
+      "license": "MIT",
+      "newDependencyInMultiProvider": false,
+      "notices": [
+        {
+          "path": "notices/frontend-scheduler-0.27.0/LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "retention": "Retain complete license/copyright notices in binary distributions."
+    },
+    {
+      "kind": "frontend-runtime",
+      "name": "three",
+      "version": "0.183.0",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/mrdoob/three.js"
+      },
+      "integrity": {
+        "tarball": "sha512-G6SH2jfefIVa2YI4JL2VbgQhrrbp1A8dRc7lr3PW827kdVyaX2RgH6M5FmjmdVFLgSHppyg3OYOZdTfWElle+g==",
+        "packageJsonSha256": "af51840ed26d9372a1e5580da7f592bc13cebad42809feb1a22eaaba4977d692",
+        "lockSha256": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b"
+      },
+      "license": "MIT",
+      "newDependencyInMultiProvider": false,
+      "notices": [
+        {
+          "path": "notices/frontend-three-0.183.0/LICENSE",
+          "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+        }
+      ],
+      "retention": "Retain complete license/copyright notices in binary distributions."
+    },
+    {
+      "kind": "implementation-reference",
+      "name": "BBPlayer",
+      "commit": "e2e7f52759ad8c79f54ab28021b43df473f849ed",
+      "source": "https://github.com/bbplayer-app/BBPlayer",
+      "integrity": {
+        "reference/BBPlayer-LICENSE": "76f307f41e66eec2f030dc0e9e19c72b5c7cf689ee618094e969148798ddf51b",
+        "reference/api.ts.txt": "a32ab08578d50e0768cd6513c6d974cde4d3992c3a0da311a9b0f5c36a5cee79",
+        "reference/client.ts.txt": "bbb74090c57e3655ca165c9cc1c1c9dbbd43d9621b1c51d1778938c08b16177d",
+        "reference/types.ts.txt": "dfbe0707bb0edc6d516febbce42183ecf843d436f1c8979a275c378ea022c0bb",
+        "reference/wbi.ts.txt": "154aaf6c4395941a29df0d6a88921cf6be6e23176e9612fd896cdbdf6f5690f8"
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/BBPlayer/BBPlayer-LICENSE",
+          "sha256": "76f307f41e66eec2f030dc0e9e19c72b5c7cf689ee618094e969148798ddf51b"
+        }
+      ],
+      "retention": "Copyright (c) 2025 Roitium.; retain complete MIT license and reference attribution. Reference/probe source files are not production providers."
+    },
+    {
+      "kind": "implementation-reference",
+      "name": "bili-music",
+      "commit": "94ef03bb97d9ae3117f2f08c3255f17714b61dc3",
+      "source": "https://github.com/Jmiao11/bili-music",
+      "integrity": {
+        "reference/bili-music-LICENSE": "665b197997d5c855f282535e379d7f26ea10dac459ade7c4069ace8b4d02de23",
+        "reference/proxy.rs.txt": "16b36cf52dae8de0617d4816756c1a9d03072610e40e6b23ec0b69e8bf23677c"
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/bili-music/bili-music-LICENSE",
+          "sha256": "665b197997d5c855f282535e379d7f26ea10dac459ade7c4069ace8b4d02de23"
+        }
+      ],
+      "retention": "Copyright (c) 2026 Jmiao11; retain complete MIT license and reference attribution. Reference/probe source files are not production providers."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "ajv",
+      "version": "8.17.1",
+      "source": "https://registry.npmjs.org/ajv/-/ajv-8.17.1.tgz",
+      "integrity": "sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ce1539e6f4e0f345ed402c47137d2679497b2035d4a4f420ee11acdde03dea92",
+      "installedTreeSha256": "f9c55dec82b6758544371327856eb04fa54ee8add759c987bb54e418e9e48921",
+      "installedFileCount": 466,
+      "notices": [
+        {
+          "path": "notices/npm-ajv-8.17.1/LICENSE",
+          "sha256": "a05350a88e318e4f5f2c2a1ff1e2e88daa4dd38e6e78b71cccae422bdc762cc3"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "ajv",
+      "version": "8.17.1",
+      "source": "https://registry.npmmirror.com/ajv/-/ajv-8.17.1.tgz",
+      "integrity": "sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ce1539e6f4e0f345ed402c47137d2679497b2035d4a4f420ee11acdde03dea92",
+      "installedTreeSha256": "f9c55dec82b6758544371327856eb04fa54ee8add759c987bb54e418e9e48921",
+      "installedFileCount": 466,
+      "notices": [
+        {
+          "path": "notices/npm-ajv-8.17.1/LICENSE",
+          "sha256": "a05350a88e318e4f5f2c2a1ff1e2e88daa4dd38e6e78b71cccae422bdc762cc3"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "source": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.1.tgz",
+      "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "8b2dc166f2b74d5098bad38bdd3dd2f4d4775c626199872f5e36dbb48c40931d",
+      "installedTreeSha256": "5b44f2675d8871baa0c7dd924dda9f8a52eee91ea1609823f98b684b2a4f4386",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-ansi-regex-5.0.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "source": "https://registry.npmmirror.com/ansi-regex/-/ansi-regex-5.0.1.tgz",
+      "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "8b2dc166f2b74d5098bad38bdd3dd2f4d4775c626199872f5e36dbb48c40931d",
+      "installedTreeSha256": "5b44f2675d8871baa0c7dd924dda9f8a52eee91ea1609823f98b684b2a4f4386",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-ansi-regex-5.0.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "source": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
+      "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "d405f010681d53f77691015e98461f8484b2afe6a9edfdd2ddb27b1e8a8e883d",
+      "installedTreeSha256": "a771efe6983d32626913e81d3d986d6e978cb5e34a6aefc9875cd481a56f9662",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-ansi-styles-4.3.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "source": "https://registry.npmmirror.com/ansi-styles/-/ansi-styles-4.3.0.tgz",
+      "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "d405f010681d53f77691015e98461f8484b2afe6a9edfdd2ddb27b1e8a8e883d",
+      "installedTreeSha256": "a771efe6983d32626913e81d3d986d6e978cb5e34a6aefc9875cd481a56f9662",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-ansi-styles-4.3.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "camelcase",
+      "version": "5.3.1",
+      "source": "https://registry.npmjs.org/camelcase/-/camelcase-5.3.1.tgz",
+      "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "b6d533c740d144de4da1493940b541978a77aae9d712dd0d609f60c58c83a73e",
+      "installedTreeSha256": "1017f0a6c14562dca8087e86859116c5a5b81e6850a1b5e652aaff51fdbead54",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-camelcase-5.3.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "camelcase",
+      "version": "5.3.1",
+      "source": "https://registry.npmmirror.com/camelcase/-/camelcase-5.3.1.tgz",
+      "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "b6d533c740d144de4da1493940b541978a77aae9d712dd0d609f60c58c83a73e",
+      "installedTreeSha256": "1017f0a6c14562dca8087e86859116c5a5b81e6850a1b5e652aaff51fdbead54",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-camelcase-5.3.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "cliui",
+      "version": "6.0.0",
+      "source": "https://registry.npmjs.org/cliui/-/cliui-6.0.0.tgz",
+      "integrity": "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "aefd282b90d2d0a055f3b40bbd2010531ba7cbf902e76a314fe09fe777491814",
+      "installedTreeSha256": "841174dfe52567f0a736d3bb75aaf82fee0f5be991b6468ab79b7c2c57659eb3",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-cliui-6.0.0/LICENSE.txt",
+          "sha256": "2dc0465729366c3a7890dfa9e972a1ba7048a26c02116fb8b419a6a1ac110149"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "cliui",
+      "version": "6.0.0",
+      "source": "https://registry.npmmirror.com/cliui/-/cliui-6.0.0.tgz",
+      "integrity": "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "aefd282b90d2d0a055f3b40bbd2010531ba7cbf902e76a314fe09fe777491814",
+      "installedTreeSha256": "841174dfe52567f0a736d3bb75aaf82fee0f5be991b6468ab79b7c2c57659eb3",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-cliui-6.0.0/LICENSE.txt",
+          "sha256": "2dc0465729366c3a7890dfa9e972a1ba7048a26c02116fb8b419a6a1ac110149"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "color-convert",
+      "version": "2.0.1",
+      "source": "https://registry.npmjs.org/color-convert/-/color-convert-2.0.1.tgz",
+      "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "9471d21744ca3137410448da6b3bd7b30ee91d42edce3b82ebcbf84faef74fb4",
+      "installedTreeSha256": "b5a5b5109256edb1dcc7e489692f4d7ffe046fc06fb1493d56b93701917e5249",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-color-convert-2.0.1/LICENSE",
+          "sha256": "693866fc419c6f61c8570438ec00659d156ec2b4d4a4d04091711f5f11a365d4"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "color-convert",
+      "version": "2.0.1",
+      "source": "https://registry.npmmirror.com/color-convert/-/color-convert-2.0.1.tgz",
+      "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "9471d21744ca3137410448da6b3bd7b30ee91d42edce3b82ebcbf84faef74fb4",
+      "installedTreeSha256": "b5a5b5109256edb1dcc7e489692f4d7ffe046fc06fb1493d56b93701917e5249",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-color-convert-2.0.1/LICENSE",
+          "sha256": "693866fc419c6f61c8570438ec00659d156ec2b4d4a4d04091711f5f11a365d4"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "color-name",
+      "version": "1.1.4",
+      "source": "https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz",
+      "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "4a557ea373907e4643badb89ff21b3f4b969d20631086d78eab2e03d05c2efa4",
+      "installedTreeSha256": "c0fd5d95285e5db21484570506ae474a0d0ba935dcc4d8ae26649fa020af9a1f",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-color-name-1.1.4/LICENSE",
+          "sha256": "c064f7a3e353bc1bc977f3c897941c75ef763f44f41677e0a15370ca0853d6e2"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "color-name",
+      "version": "1.1.4",
+      "source": "https://registry.npmmirror.com/color-name/-/color-name-1.1.4.tgz",
+      "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "4a557ea373907e4643badb89ff21b3f4b969d20631086d78eab2e03d05c2efa4",
+      "installedTreeSha256": "c0fd5d95285e5db21484570506ae474a0d0ba935dcc4d8ae26649fa020af9a1f",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-color-name-1.1.4/LICENSE",
+          "sha256": "c064f7a3e353bc1bc977f3c897941c75ef763f44f41677e0a15370ca0853d6e2"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "crypto-js",
+      "version": "4.2.0",
+      "source": "https://registry.npmmirror.com/crypto-js/-/crypto-js-4.2.0.tgz",
+      "integrity": "sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "011d61589c95ad4e16051c492565f7c19c6a7832580674503cceeca612e7a6cd",
+      "installedTreeSha256": "4776f8c71a60c9a36bae253ac39f784cd8f35572c5e422bcb5560d0d26a40a4d",
+      "installedFileCount": 56,
+      "notices": [
+        {
+          "path": "notices/npm-crypto-js-4.2.0/LICENSE",
+          "sha256": "f729d14b7e1bf8adca0dcc38b93b929d14d53fcd5db56c3d1c9b2daa7aa69396"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "decamelize",
+      "version": "1.2.0",
+      "source": "https://registry.npmjs.org/decamelize/-/decamelize-1.2.0.tgz",
+      "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "fb07ecfb5937f8757b0721fdafa6febff75d3c159f6dc8ec0d6ad4e1d1be7d9c",
+      "installedTreeSha256": "d3473fa1390ebb405cd60965279b418b80223010c64344e4bdf8eb4a505fcae8",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-decamelize-1.2.0/license",
+          "sha256": "6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "decamelize",
+      "version": "1.2.0",
+      "source": "https://registry.npmmirror.com/decamelize/-/decamelize-1.2.0.tgz",
+      "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "fb07ecfb5937f8757b0721fdafa6febff75d3c159f6dc8ec0d6ad4e1d1be7d9c",
+      "installedTreeSha256": "d3473fa1390ebb405cd60965279b418b80223010c64344e4bdf8eb4a505fcae8",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-decamelize-1.2.0/license",
+          "sha256": "6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "dijkstrajs",
+      "version": "1.0.3",
+      "source": "https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.3.tgz",
+      "integrity": "sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "b523e007019401be68405b83e846ef9da4682026e8be339ee4ee7888e90b865a",
+      "installedTreeSha256": "88970a2aa2a1a10fb64c9cd25e7154f744b2949f3b8a6c04333bab7d70e72e6e",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-dijkstrajs-1.0.3/LICENSE.md",
+          "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "dijkstrajs",
+      "version": "1.0.3",
+      "source": "https://registry.npmmirror.com/dijkstrajs/-/dijkstrajs-1.0.3.tgz",
+      "integrity": "sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "b523e007019401be68405b83e846ef9da4682026e8be339ee4ee7888e90b865a",
+      "installedTreeSha256": "88970a2aa2a1a10fb64c9cd25e7154f744b2949f3b8a6c04333bab7d70e72e6e",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-dijkstrajs-1.0.3/LICENSE.md",
+          "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "source": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-8.0.0.tgz",
+      "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "7bec29b9ca68f2c4becc60e866c2f9342ecdc89fab39841a818ccd9eda15c148",
+      "installedTreeSha256": "a30c0f571f064137be9628db6c6ed877633c651b30558999ed05230d3deee829",
+      "installedFileCount": 8,
+      "notices": [
+        {
+          "path": "notices/npm-emoji-regex-8.0.0/LICENSE-MIT.txt",
+          "sha256": "483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "source": "https://registry.npmmirror.com/emoji-regex/-/emoji-regex-8.0.0.tgz",
+      "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "7bec29b9ca68f2c4becc60e866c2f9342ecdc89fab39841a818ccd9eda15c148",
+      "installedTreeSha256": "a30c0f571f064137be9628db6c6ed877633c651b30558999ed05230d3deee829",
+      "installedFileCount": 8,
+      "notices": [
+        {
+          "path": "notices/npm-emoji-regex-8.0.0/LICENSE-MIT.txt",
+          "sha256": "483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "source": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "a5c63940db0260739be9e2ac67f3aac268df4db5770420ee4e34e493152f97d2",
+      "installedTreeSha256": "dcf5eccbf921d201e6f608c63b93abf91079170fefac8ac608c13ec1ebd95356",
+      "installedFileCount": 11,
+      "notices": [
+        {
+          "path": "notices/npm-fast-deep-equal-3.1.3/LICENSE",
+          "sha256": "7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "source": "https://registry.npmmirror.com/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "a5c63940db0260739be9e2ac67f3aac268df4db5770420ee4e34e493152f97d2",
+      "installedTreeSha256": "dcf5eccbf921d201e6f608c63b93abf91079170fefac8ac608c13ec1ebd95356",
+      "installedFileCount": 11,
+      "notices": [
+        {
+          "path": "notices/npm-fast-deep-equal-3.1.3/LICENSE",
+          "sha256": "7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "fast-uri",
+      "version": "3.1.9",
+      "source": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz",
+      "integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==",
+      "license": "BSD-3-Clause",
+      "installedPackageJsonSha256": "06728ad83c4df979c6895d089452622441e34afe9b1c24584e2acac8d94a2876",
+      "installedTreeSha256": "3d4c742e4ef54ac7efc536b3f45b2f004aed01a225d18313b281f3cbd6259a3a",
+      "installedFileCount": 47,
+      "notices": [
+        {
+          "path": "notices/npm-fast-uri-3.1.9/LICENSE",
+          "sha256": "b010b0dfdfdb23d7396e03b82cd4621fc9bb8f95d6b0aea70b9c24e12074c786"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "fast-uri",
+      "version": "3.1.9",
+      "source": "https://registry.npmmirror.com/fast-uri/-/fast-uri-3.1.9.tgz",
+      "integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==",
+      "license": "BSD-3-Clause",
+      "installedPackageJsonSha256": "06728ad83c4df979c6895d089452622441e34afe9b1c24584e2acac8d94a2876",
+      "installedTreeSha256": "3d4c742e4ef54ac7efc536b3f45b2f004aed01a225d18313b281f3cbd6259a3a",
+      "installedFileCount": 47,
+      "notices": [
+        {
+          "path": "notices/npm-fast-uri-3.1.9/LICENSE",
+          "sha256": "b010b0dfdfdb23d7396e03b82cd4621fc9bb8f95d6b0aea70b9c24e12074c786"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "find-up",
+      "version": "4.1.0",
+      "source": "https://registry.npmjs.org/find-up/-/find-up-4.1.0.tgz",
+      "integrity": "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "19b9626d190ae97ecbc47843ff5781c462b6acfca35a2652dccded7d046dce53",
+      "installedTreeSha256": "7f6a682b34adea60834368a7a9b9ab949f0f4cc412197e58ca72ec0b5cd14305",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-find-up-4.1.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "find-up",
+      "version": "4.1.0",
+      "source": "https://registry.npmmirror.com/find-up/-/find-up-4.1.0.tgz",
+      "integrity": "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "19b9626d190ae97ecbc47843ff5781c462b6acfca35a2652dccded7d046dce53",
+      "installedTreeSha256": "7f6a682b34adea60834368a7a9b9ab949f0f4cc412197e58ca72ec0b5cd14305",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-find-up-4.1.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "fzstd",
+      "version": "0.1.1",
+      "source": "https://registry.npmmirror.com/fzstd/-/fzstd-0.1.1.tgz",
+      "integrity": "sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "e339e1eda5d0a30fc7cb8fef70378836cc80d27c1fa6ce7a1232080788d4fc15",
+      "installedTreeSha256": "835b3f7278f1f7bdf5c916c49fedfa61670b35f7e5b5d60493a7c80005ad5954",
+      "installedFileCount": 8,
+      "notices": [
+        {
+          "path": "notices/npm-fzstd-0.1.1/LICENSE",
+          "sha256": "62249119bb7df6e54300f37a37145c26a6d4420410aac8881a119c5b427cf751"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "source": "https://registry.npmjs.org/get-caller-file/-/get-caller-file-2.0.5.tgz",
+      "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "680a080d2885c05bc51dde429c80784bfb248ca3ef3685438079c5015721e2ae",
+      "installedTreeSha256": "88ad046e5f61cb7cd9b161b30dca44e45fd58c2e1aa57a1d6b863d85e8e1ca96",
+      "installedFileCount": 6,
+      "notices": [
+        {
+          "path": "notices/npm-get-caller-file-2.0.5/LICENSE.md",
+          "sha256": "902dbb4154679fb2b8d7c33878183f45b268d01eae5e5033dddaa8852d45f213"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "source": "https://registry.npmmirror.com/get-caller-file/-/get-caller-file-2.0.5.tgz",
+      "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "680a080d2885c05bc51dde429c80784bfb248ca3ef3685438079c5015721e2ae",
+      "installedTreeSha256": "88ad046e5f61cb7cd9b161b30dca44e45fd58c2e1aa57a1d6b863d85e8e1ca96",
+      "installedFileCount": 6,
+      "notices": [
+        {
+          "path": "notices/npm-get-caller-file-2.0.5/LICENSE.md",
+          "sha256": "902dbb4154679fb2b8d7c33878183f45b268d01eae5e5033dddaa8852d45f213"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "is-fullwidth-code-point",
+      "version": "3.0.0",
+      "source": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz",
+      "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5b48496ca129073ed44a677b777ea3b91366c8bc228bc75fe858749a78ac1a32",
+      "installedTreeSha256": "a501a9f54e25f692bd7d9f11139aa54ccd140a23d41e5d08999fedfdd303c6eb",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-is-fullwidth-code-point-3.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "is-fullwidth-code-point",
+      "version": "3.0.0",
+      "source": "https://registry.npmmirror.com/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz",
+      "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5b48496ca129073ed44a677b777ea3b91366c8bc228bc75fe858749a78ac1a32",
+      "installedTreeSha256": "a501a9f54e25f692bd7d9f11139aa54ccd140a23d41e5d08999fedfdd303c6eb",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-is-fullwidth-code-point-3.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "source": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "156fb24af02845c190701360d06dfda35ef04282e34a734289ea9535ad9819ae",
+      "installedTreeSha256": "863fe4c99538daa06b4e76d971c5a3cc17cc602a6557385b0dbf01d78b64bfed",
+      "installedFileCount": 12,
+      "notices": [
+        {
+          "path": "notices/npm-json-schema-traverse-1.0.0/LICENSE",
+          "sha256": "7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "source": "https://registry.npmmirror.com/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "156fb24af02845c190701360d06dfda35ef04282e34a734289ea9535ad9819ae",
+      "installedTreeSha256": "863fe4c99538daa06b4e76d971c5a3cc17cc602a6557385b0dbf01d78b64bfed",
+      "installedFileCount": 12,
+      "notices": [
+        {
+          "path": "notices/npm-json-schema-traverse-1.0.0/LICENSE",
+          "sha256": "7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "locate-path",
+      "version": "5.0.0",
+      "source": "https://registry.npmjs.org/locate-path/-/locate-path-5.0.0.tgz",
+      "integrity": "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "6fb0681c3501741d68594c69a0baae9f558f2d426c136946f2c7780a8c5e27bd",
+      "installedTreeSha256": "1fc08877f256483d2d4038d7207bde6159d929af82c2c220791c3e5bebfe0bb8",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-locate-path-5.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "locate-path",
+      "version": "5.0.0",
+      "source": "https://registry.npmmirror.com/locate-path/-/locate-path-5.0.0.tgz",
+      "integrity": "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "6fb0681c3501741d68594c69a0baae9f558f2d426c136946f2c7780a8c5e27bd",
+      "installedTreeSha256": "1fc08877f256483d2d4038d7207bde6159d929af82c2c220791c3e5bebfe0bb8",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-locate-path-5.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "node-forge",
+      "version": "1.4.0",
+      "source": "https://registry.npmmirror.com/node-forge/-/node-forge-1.4.0.tgz",
+      "integrity": "sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==",
+      "license": "(BSD-3-Clause OR GPL-2.0)",
+      "installedPackageJsonSha256": "a907bca8a62d97478062f2bd8ed5cd47d00b79385d3f08a8cad1c3bd7e3eb5bf",
+      "installedTreeSha256": "ab06b1f4fbbf073b6f1b8fc6514d7c5ef05d212776a8218cb262807c3af6201a",
+      "installedFileCount": 59,
+      "notices": [
+        {
+          "path": "notices/npm-node-forge-1.4.0/LICENSE",
+          "sha256": "f63ff0e4e239244aa79280da2dd4811a0469e5e201caf5cbc0d97c3a1dff8e82"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "p-limit",
+      "version": "2.3.0",
+      "source": "https://registry.npmjs.org/p-limit/-/p-limit-2.3.0.tgz",
+      "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "d4529e88d06488042103f25322b0b60d90dfc5de0ed61c3b7c7d27f2ac3fe1bb",
+      "installedTreeSha256": "6c8cf8879fe514ce7670a123c7d845688bc3e3a9c8782fedbef0c02517af9b20",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-limit-2.3.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "p-limit",
+      "version": "2.3.0",
+      "source": "https://registry.npmmirror.com/p-limit/-/p-limit-2.3.0.tgz",
+      "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "d4529e88d06488042103f25322b0b60d90dfc5de0ed61c3b7c7d27f2ac3fe1bb",
+      "installedTreeSha256": "6c8cf8879fe514ce7670a123c7d845688bc3e3a9c8782fedbef0c02517af9b20",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-limit-2.3.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "p-locate",
+      "version": "4.1.0",
+      "source": "https://registry.npmjs.org/p-locate/-/p-locate-4.1.0.tgz",
+      "integrity": "sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "26d44c5d05942d6b315ecde2f3dcf78972cfb3b4c81c932ac2573d3eea5f5e94",
+      "installedTreeSha256": "cb2323327bef02a79dc6dbf9a172af3b1b5be0be31113618964f14f968a6b73e",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-locate-4.1.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "p-locate",
+      "version": "4.1.0",
+      "source": "https://registry.npmmirror.com/p-locate/-/p-locate-4.1.0.tgz",
+      "integrity": "sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "26d44c5d05942d6b315ecde2f3dcf78972cfb3b4c81c932ac2573d3eea5f5e94",
+      "installedTreeSha256": "cb2323327bef02a79dc6dbf9a172af3b1b5be0be31113618964f14f968a6b73e",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-locate-4.1.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "p-try",
+      "version": "2.2.0",
+      "source": "https://registry.npmjs.org/p-try/-/p-try-2.2.0.tgz",
+      "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ff793c821f36985cde9f9d9ff6297e6c1304f8e597aa2d48dc53eda83c11e54c",
+      "installedTreeSha256": "522bd86db1834c8eb3c847a863c0303ece22e6e324bf8ed67cf90db8475287bd",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-try-2.2.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "p-try",
+      "version": "2.2.0",
+      "source": "https://registry.npmmirror.com/p-try/-/p-try-2.2.0.tgz",
+      "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ff793c821f36985cde9f9d9ff6297e6c1304f8e597aa2d48dc53eda83c11e54c",
+      "installedTreeSha256": "522bd86db1834c8eb3c847a863c0303ece22e6e324bf8ed67cf90db8475287bd",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-p-try-2.2.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "path-exists",
+      "version": "4.0.0",
+      "source": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
+      "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5e258d1a0d185ae469fec34de2af18913421b94181ef61238efcfe0b00d1b2c3",
+      "installedTreeSha256": "eae96c6e3497ca4a6b739fb4e9fb7704870e8544d5acad47036edc49ee3b4eb4",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-path-exists-4.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "path-exists",
+      "version": "4.0.0",
+      "source": "https://registry.npmmirror.com/path-exists/-/path-exists-4.0.0.tgz",
+      "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5e258d1a0d185ae469fec34de2af18913421b94181ef61238efcfe0b00d1b2c3",
+      "installedTreeSha256": "eae96c6e3497ca4a6b739fb4e9fb7704870e8544d5acad47036edc49ee3b4eb4",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-path-exists-4.0.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "pngjs",
+      "version": "5.0.0",
+      "source": "https://registry.npmjs.org/pngjs/-/pngjs-5.0.0.tgz",
+      "integrity": "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "1f3fbe71a51c03470a83044efb2f7dfcca4877f22f1d54f9d952081cb28fbedf",
+      "installedTreeSha256": "b615f6ca945b9740e6abe790e7df9c2b36d3460bfb0e3bc0cc17164252875b0f",
+      "installedFileCount": 60,
+      "notices": [
+        {
+          "path": "notices/npm-pngjs-5.0.0/LICENSE",
+          "sha256": "176b07a18c0bb3836aaeb61088fd0bf11a38f66e6f15e3fbda85faa225250d6e"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "pngjs",
+      "version": "5.0.0",
+      "source": "https://registry.npmmirror.com/pngjs/-/pngjs-5.0.0.tgz",
+      "integrity": "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "1f3fbe71a51c03470a83044efb2f7dfcca4877f22f1d54f9d952081cb28fbedf",
+      "installedTreeSha256": "b615f6ca945b9740e6abe790e7df9c2b36d3460bfb0e3bc0cc17164252875b0f",
+      "installedFileCount": 60,
+      "notices": [
+        {
+          "path": "notices/npm-pngjs-5.0.0/LICENSE",
+          "sha256": "176b07a18c0bb3836aaeb61088fd0bf11a38f66e6f15e3fbda85faa225250d6e"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "qrcode",
+      "version": "1.5.4",
+      "source": "https://registry.npmjs.org/qrcode/-/qrcode-1.5.4.tgz",
+      "integrity": "sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "cbe26d7282c802f4ab9c1f790c5d8450d2b5c82e8bb5f67e3a5c2641ea347d1d",
+      "installedTreeSha256": "a17965dc34dd0dbc793b703d776ed981ff43c4b3c5d7c47fc77d4d5b3da43479",
+      "installedFileCount": 41,
+      "notices": [
+        {
+          "path": "notices/npm-qrcode-1.5.4/license",
+          "sha256": "8df47c6ad9ac2c41eb9b2a72def9908959da0ede8dadd56c7b249c1bdb0c5ce6"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "qrcode",
+      "version": "1.5.4",
+      "source": "https://registry.npmmirror.com/qrcode/-/qrcode-1.5.4.tgz",
+      "integrity": "sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "cbe26d7282c802f4ab9c1f790c5d8450d2b5c82e8bb5f67e3a5c2641ea347d1d",
+      "installedTreeSha256": "a17965dc34dd0dbc793b703d776ed981ff43c4b3c5d7c47fc77d4d5b3da43479",
+      "installedFileCount": 41,
+      "notices": [
+        {
+          "path": "notices/npm-qrcode-1.5.4/license",
+          "sha256": "8df47c6ad9ac2c41eb9b2a72def9908959da0ede8dadd56c7b249c1bdb0c5ce6"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "require-directory",
+      "version": "2.1.1",
+      "source": "https://registry.npmjs.org/require-directory/-/require-directory-2.1.1.tgz",
+      "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5690bdddd6eb4abd795fa5319df7552279508df9d562d571e3132ddff3045a71",
+      "installedTreeSha256": "9f82e22fb843f81de6c94eca498e6d38dfdd364b6b04e3bdf97a4e14f53c0499",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-require-directory-2.1.1/LICENSE",
+          "sha256": "a92e52eb1fa7cd746e3827bf01d3a3589bbc8e1e51348b1da042aad165525ad1"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "require-directory",
+      "version": "2.1.1",
+      "source": "https://registry.npmmirror.com/require-directory/-/require-directory-2.1.1.tgz",
+      "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "5690bdddd6eb4abd795fa5319df7552279508df9d562d571e3132ddff3045a71",
+      "installedTreeSha256": "9f82e22fb843f81de6c94eca498e6d38dfdd364b6b04e3bdf97a4e14f53c0499",
+      "installedFileCount": 7,
+      "notices": [
+        {
+          "path": "notices/npm-require-directory-2.1.1/LICENSE",
+          "sha256": "a92e52eb1fa7cd746e3827bf01d3a3589bbc8e1e51348b1da042aad165525ad1"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "source": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
+      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "c0002f7d4c7d7e2a885cf0f97226344902417c3a0980f2beca41962d2bc1f6d8",
+      "installedTreeSha256": "b49e7d15e5a8500bee8b145a1e08657522604e4030bf243a958556c0ca6f105a",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-require-from-string-2.0.2/license",
+          "sha256": "6ee0feb1f6ef996ff5a68600f8cf98909cf412d39ef3cdceaefd87d636fa1b7f"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "source": "https://registry.npmmirror.com/require-from-string/-/require-from-string-2.0.2.tgz",
+      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "c0002f7d4c7d7e2a885cf0f97226344902417c3a0980f2beca41962d2bc1f6d8",
+      "installedTreeSha256": "b49e7d15e5a8500bee8b145a1e08657522604e4030bf243a958556c0ca6f105a",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-require-from-string-2.0.2/license",
+          "sha256": "6ee0feb1f6ef996ff5a68600f8cf98909cf412d39ef3cdceaefd87d636fa1b7f"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "source": "https://registry.npmjs.org/require-main-filename/-/require-main-filename-2.0.0.tgz",
+      "integrity": "sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "cc3853357a59a82c9a0e5cebbe52221eccc4a52bced4557300b69bbec17fa41b",
+      "installedTreeSha256": "bad51a2b3fcf7b19426cd42b9c05855a804a3e33e965f885e19e0a2acfd11475",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-require-main-filename-2.0.0/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "source": "https://registry.npmmirror.com/require-main-filename/-/require-main-filename-2.0.0.tgz",
+      "integrity": "sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "cc3853357a59a82c9a0e5cebbe52221eccc4a52bced4557300b69bbec17fa41b",
+      "installedTreeSha256": "bad51a2b3fcf7b19426cd42b9c05855a804a3e33e965f885e19e0a2acfd11475",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-require-main-filename-2.0.0/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "set-blocking",
+      "version": "2.0.0",
+      "source": "https://registry.npmjs.org/set-blocking/-/set-blocking-2.0.0.tgz",
+      "integrity": "sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "e0c598215c66f2c35edbc3cb2a3433d45f9d4b726524c095c93e7376d87a3bce",
+      "installedTreeSha256": "74b428562da329af33313735bcd8a2f0d9af9a003092293cbe36637915fe0412",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-set-blocking-2.0.0/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "set-blocking",
+      "version": "2.0.0",
+      "source": "https://registry.npmmirror.com/set-blocking/-/set-blocking-2.0.0.tgz",
+      "integrity": "sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "e0c598215c66f2c35edbc3cb2a3433d45f9d4b726524c095c93e7376d87a3bce",
+      "installedTreeSha256": "74b428562da329af33313735bcd8a2f0d9af9a003092293cbe36637915fe0412",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-set-blocking-2.0.0/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "string-width",
+      "version": "4.2.3",
+      "source": "https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz",
+      "integrity": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "6457a02418f004fe5d3fbbb19c7cbcc1450a8b887ff9a471dc6985ac83a48d36",
+      "installedTreeSha256": "b63dc8c5ee43d6ef2fc144a1094ee8aefa9ce8ad6e0a0caa6d521335a49e200c",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-string-width-4.2.3/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "string-width",
+      "version": "4.2.3",
+      "source": "https://registry.npmmirror.com/string-width/-/string-width-4.2.3.tgz",
+      "integrity": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "6457a02418f004fe5d3fbbb19c7cbcc1450a8b887ff9a471dc6985ac83a48d36",
+      "installedTreeSha256": "b63dc8c5ee43d6ef2fc144a1094ee8aefa9ce8ad6e0a0caa6d521335a49e200c",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-string-width-4.2.3/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "source": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.1.tgz",
+      "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "0130850b9da0584f54cc20d3dab6365c807e9436ac78e016d5009efa99bd0530",
+      "installedTreeSha256": "128f499cd2feac6ca2931366e7c6b9ae2b9e535a4f6e4a720ce0be093a00e80d",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-strip-ansi-6.0.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "source": "https://registry.npmmirror.com/strip-ansi/-/strip-ansi-6.0.1.tgz",
+      "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "0130850b9da0584f54cc20d3dab6365c807e9436ac78e016d5009efa99bd0530",
+      "installedTreeSha256": "128f499cd2feac6ca2931366e7c6b9ae2b9e535a4f6e4a720ce0be093a00e80d",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-strip-ansi-6.0.1/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "tldts",
+      "version": "6.1.86",
+      "source": "https://registry.npmjs.org/tldts/-/tldts-6.1.86.tgz",
+      "integrity": "sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "8fc9dbe6e0a8df99b75822328567cc7d3ab4ef26ddb06147282adf848c68a02a",
+      "installedTreeSha256": "fb5c1ce9b1bf1a49cf66a7339175d316ce84e67cf0aa0082df73cfc950d4c4d6",
+      "installedFileCount": 30,
+      "notices": [
+        {
+          "path": "notices/npm-tldts-6.1.86/LICENSE",
+          "sha256": "c64182d48160db948b6aa97a984f1a32974ce4d2053900361264cd33853796cb"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "tldts-core",
+      "version": "6.1.86",
+      "source": "https://registry.npmjs.org/tldts-core/-/tldts-core-6.1.86.tgz",
+      "integrity": "sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "e21fa7ad451e99f5d383bef1c43f28fe281ec9281902b02970bee0ed1d66dbbf",
+      "installedTreeSha256": "b4df1e6d46e6706ca61e8e3ec1e3515a34c4ea031e7c63b9e3cee483a7642a95",
+      "installedFileCount": 71,
+      "notices": [
+        {
+          "path": "notices/npm-tldts-core-6.1.86/LICENSE",
+          "sha256": "c64182d48160db948b6aa97a984f1a32974ce4d2053900361264cd33853796cb"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "tough-cookie",
+      "version": "5.1.2",
+      "source": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-5.1.2.tgz",
+      "integrity": "sha512-FVDYdxtnj0G6Qm/DhNPSb8Ju59ULcup3tuJxkFb5K8Bv2pUXILbf0xZWU8PX8Ov19OXljbUyveOFwRMwkXzO+A==",
+      "license": "BSD-3-Clause",
+      "installedPackageJsonSha256": "2ad6a529c400c79b160294f1dcfb29731c1d84645fa95adbb4e8485d671e95af",
+      "installedTreeSha256": "e19be25c65f92a1389ecbfc0c12fd15a34c415b278e6bf1188e5883da6d221d9",
+      "installedFileCount": 41,
+      "notices": [
+        {
+          "path": "notices/npm-tough-cookie-5.1.2/LICENSE",
+          "sha256": "22ec6791c91ba42c0516a05f4cbdde019aae4687f8a38c5ca7e8a69ee68f851d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "which-module",
+      "version": "2.0.1",
+      "source": "https://registry.npmjs.org/which-module/-/which-module-2.0.1.tgz",
+      "integrity": "sha512-iBdZ57RDvnOR9AGBhML2vFZf7h8vmBjhoaZqODJBFWHVtKkDmKuHai3cx5PgVMrX5YDNp27AofYbAwctSS+vhQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "02f6f6833d09c32100317a390892888ae44da4f712b2271d4b308bcace09a99f",
+      "installedTreeSha256": "6d3c78d4fc830b554a1d5d684c097b961c9c0e6063f4f982532f6f41ba28b211",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-which-module-2.0.1/LICENSE",
+          "sha256": "852bf81203aa93aa89afc9f881ebb035322dc7334aaceff435c557634c94a815"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "which-module",
+      "version": "2.0.1",
+      "source": "https://registry.npmmirror.com/which-module/-/which-module-2.0.1.tgz",
+      "integrity": "sha512-iBdZ57RDvnOR9AGBhML2vFZf7h8vmBjhoaZqODJBFWHVtKkDmKuHai3cx5PgVMrX5YDNp27AofYbAwctSS+vhQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "02f6f6833d09c32100317a390892888ae44da4f712b2271d4b308bcace09a99f",
+      "installedTreeSha256": "6d3c78d4fc830b554a1d5d684c097b961c9c0e6063f4f982532f6f41ba28b211",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-which-module-2.0.1/LICENSE",
+          "sha256": "852bf81203aa93aa89afc9f881ebb035322dc7334aaceff435c557634c94a815"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "source": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-6.2.0.tgz",
+      "integrity": "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ee3d1495da354ea19d3900e3f28a4e93cc202966623fee4ad6fe54346b385075",
+      "installedTreeSha256": "b88d0be6fdd88dda7968e2627f615882936219bce5cfd25bdfc14c2f9f0fa9a3",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-wrap-ansi-6.2.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "source": "https://registry.npmmirror.com/wrap-ansi/-/wrap-ansi-6.2.0.tgz",
+      "integrity": "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "ee3d1495da354ea19d3900e3f28a4e93cc202966623fee4ad6fe54346b385075",
+      "installedTreeSha256": "b88d0be6fdd88dda7968e2627f615882936219bce5cfd25bdfc14c2f9f0fa9a3",
+      "installedFileCount": 4,
+      "notices": [
+        {
+          "path": "notices/npm-wrap-ansi-6.2.0/license",
+          "sha256": "48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "y18n",
+      "version": "4.0.3",
+      "source": "https://registry.npmjs.org/y18n/-/y18n-4.0.3.tgz",
+      "integrity": "sha512-JKhqTOwSrqNA1NY5lSztJ1GrBiUodLMmIZuLiDaMRJ+itFd+ABVE8XBjOvIWL+rSqNDC74LCSFmlb/U4UZ4hJQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "5995de811ffa1b8a8e9ed9bd0444f60058dba9ce1ccbe12f2d5e12c31a975d9c",
+      "installedTreeSha256": "2eb18c9edd248314d5c6f49161fc337bb9168111e709acd3babb2cb1124377e7",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-y18n-4.0.3/LICENSE",
+          "sha256": "2034cce3b6fafcddd642c4175e01d3ddfc332a53b9f20fdc46b1466dc89ac469"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "y18n",
+      "version": "4.0.3",
+      "source": "https://registry.npmmirror.com/y18n/-/y18n-4.0.3.tgz",
+      "integrity": "sha512-JKhqTOwSrqNA1NY5lSztJ1GrBiUodLMmIZuLiDaMRJ+itFd+ABVE8XBjOvIWL+rSqNDC74LCSFmlb/U4UZ4hJQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "5995de811ffa1b8a8e9ed9bd0444f60058dba9ce1ccbe12f2d5e12c31a975d9c",
+      "installedTreeSha256": "2eb18c9edd248314d5c6f49161fc337bb9168111e709acd3babb2cb1124377e7",
+      "installedFileCount": 5,
+      "notices": [
+        {
+          "path": "notices/npm-y18n-4.0.3/LICENSE",
+          "sha256": "2034cce3b6fafcddd642c4175e01d3ddfc332a53b9f20fdc46b1466dc89ac469"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "yargs",
+      "version": "15.4.1",
+      "source": "https://registry.npmjs.org/yargs/-/yargs-15.4.1.tgz",
+      "integrity": "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "be417ad995e4f608d6f5243ad90b28f3f2604c73abb30d72382ae13358a74949",
+      "installedTreeSha256": "ece48807868c40158c536d7b8c31899940c0da2aafbf438bd3af9a920fbdfe61",
+      "installedFileCount": 62,
+      "notices": [
+        {
+          "path": "notices/npm-yargs-15.4.1/LICENSE",
+          "sha256": "2f1a503bfab84b3ba7393627308b3274501e459e3b5185bbb56bbf16cb1602d4"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "yargs",
+      "version": "15.4.1",
+      "source": "https://registry.npmmirror.com/yargs/-/yargs-15.4.1.tgz",
+      "integrity": "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==",
+      "license": "MIT",
+      "installedPackageJsonSha256": "be417ad995e4f608d6f5243ad90b28f3f2604c73abb30d72382ae13358a74949",
+      "installedTreeSha256": "ece48807868c40158c536d7b8c31899940c0da2aafbf438bd3af9a920fbdfe61",
+      "installedFileCount": 62,
+      "notices": [
+        {
+          "path": "notices/npm-yargs-15.4.1/LICENSE",
+          "sha256": "2f1a503bfab84b3ba7393627308b3274501e459e3b5185bbb56bbf16cb1602d4"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "bilibili",
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "source": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-18.1.3.tgz",
+      "integrity": "sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "2de71e9a1ff3e5bce791f5e3de66e1ad86f4f143d8c3ce4fbaad7a615e5c5e70",
+      "installedTreeSha256": "7a0d5cea4222e0d06906b84d72186adec308f47cb4f4f887d4f6291acddf30aa",
+      "installedFileCount": 6,
+      "notices": [
+        {
+          "path": "notices/npm-yargs-parser-18.1.3/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "npm",
+      "usedBy": "netease",
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "source": "https://registry.npmmirror.com/yargs-parser/-/yargs-parser-18.1.3.tgz",
+      "integrity": "sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==",
+      "license": "ISC",
+      "installedPackageJsonSha256": "2de71e9a1ff3e5bce791f5e3de66e1ad86f4f143d8c3ce4fbaad7a615e5c5e70",
+      "installedTreeSha256": "7a0d5cea4222e0d06906b84d72186adec308f47cb4f4f887d4f6291acddf30aa",
+      "installedFileCount": 6,
+      "notices": [
+        {
+          "path": "notices/npm-yargs-parser-18.1.3/LICENSE.txt",
+          "sha256": "365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d"
+        }
+      ],
+      "retention": "Retain the full license and copyright notices referenced here."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "source": [
+        "Homepage, https://github.com/annotated-types/annotated-types",
+        "Source, https://github.com/annotated-types/annotated-types",
+        "Changelog, https://github.com/annotated-types/annotated-types/releases"
+      ],
+      "integrity": {
+        "metadataSha256": "614985b278f601b8ef863f82783b991cc3ada4b89f592eb71c7c48c5f2ef2298",
+        "recordSha256": [
+          "2b5e93f24aff361ca5cfab15ce1c56b4127675728f11c3eab1e97b113a6250bd"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-annotated-types-0.8.0/LICENSE",
+          "sha256": "fe1049884b1a0d9342901e88e07f32925d24b3121d9972b6a6805fb9824b095d"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "anyio",
+      "version": "4.14.2",
+      "source": [
+        "Documentation, https://anyio.readthedocs.io/en/latest/",
+        "Changelog, https://anyio.readthedocs.io/en/stable/versionhistory.html",
+        "Source code, https://github.com/agronholm/anyio",
+        "Issue tracker, https://github.com/agronholm/anyio/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "c5e6fc4dfd833319913b287be7a30d9935e9208c7ef917630621855aaac4d419",
+        "recordSha256": [
+          "23c8185581c780f5a65ae1c1d9150bc4cddaf8f28b89da674ae5c1d9e7caeef9"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-anyio-4.14.2/LICENSE",
+          "sha256": "5361ac9dc58f2ef5fd2e9b09c68297c17f04950909bbc8023bdb82eacf22c2b0"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "cffi",
+      "version": "2.1.1",
+      "source": [
+        "Documentation, https://cffi.readthedocs.io/",
+        "Changelog, https://cffi.readthedocs.io/en/latest/whatsnew.html",
+        "Download, https://github.com/python-cffi/cffi/releases",
+        "Contact, https://groups.google.com/forum/#!forum/python-cffi",
+        "Source Code, https://github.com/python-cffi/cffi",
+        "Issue Tracker, https://github.com/python-cffi/cffi/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "558bafb9093a8e790175d9ecff9688382981d744877dad86fd6770db0f4dc918",
+        "recordSha256": [
+          "3009dac578703cebf3226bd72aed0765426e8edc155fc57f1f1c0eaed0d3c640"
+        ]
+      },
+      "license": "MIT-0",
+      "notices": [
+        {
+          "path": "notices/python-cffi-2.1.1/LICENSE",
+          "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "charset-normalizer",
+      "version": "3.4.9",
+      "source": [
+        "Changelog, https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
+        "Documentation, https://charset-normalizer.readthedocs.io/",
+        "Code, https://github.com/jawah/charset_normalizer",
+        "Issue tracker, https://github.com/jawah/charset_normalizer/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "0dd3de17609b0db64bd1d4643c5bd0dd35b5eb3c5be77f8b17bc190f2f4a2ac0",
+        "recordSha256": [
+          "907a94d1139ce5a5d33037bf36ce4b60cf795491d9bc5e9d22d91321fddf4322"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-charset-normalizer-3.4.9/LICENSE",
+          "sha256": "18577485d3704f1a479ded8e573c0976cfed315fd2fd17983fa988da4c2f70d1"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "cryptography",
+      "version": "50.0.0",
+      "source": [
+        "changelog, https://cryptography.io/en/latest/changelog/",
+        "documentation, https://cryptography.io/",
+        "homepage, https://github.com/pyca/cryptography",
+        "issues, https://github.com/pyca/cryptography/issues",
+        "source, https://github.com/pyca/cryptography/"
+      ],
+      "integrity": {
+        "metadataSha256": "d4e345f82cb783877d73261f00303577cdf20d13229176c2d03a0a5603cb3ab5",
+        "recordSha256": [
+          "e35e24e31167295cf05843da5eb26f87a6524b020ae4a2dcd602c753da465854"
+        ]
+      },
+      "license": "Apache-2.0 OR BSD-3-Clause",
+      "notices": [
+        {
+          "path": "notices/python-cryptography-50.0.0/LICENSE",
+          "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb"
+        },
+        {
+          "path": "notices/python-cryptography-50.0.0/LICENSE.APACHE",
+          "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe"
+        },
+        {
+          "path": "notices/python-cryptography-50.0.0/LICENSE.BSD",
+          "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "h11",
+      "version": "0.16.0",
+      "source": [
+        "https://github.com/python-hyper/h11"
+      ],
+      "integrity": {
+        "metadataSha256": "28f326098ac09fcba79b8f180f96087c841fe2456215cb7b872a9c7d5cd19d64",
+        "recordSha256": [
+          "bc57fd5ca20507218b26ef9bf46bf03aab2c81e2e53e055741ae9b9f58145751"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-h11-0.16.0/LICENSE.txt",
+          "sha256": "37db5bb85926db28a427a25867f10b1232003aea1be69ccb851138adb8e6f361"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "idna",
+      "version": "3.18",
+      "source": [
+        "Changelog, https://github.com/kjd/idna/blob/master/HISTORY.md",
+        "Issue tracker, https://github.com/kjd/idna/issues",
+        "Source, https://github.com/kjd/idna"
+      ],
+      "integrity": {
+        "metadataSha256": "46dfe6e5ac462d0f680ecd9abcf66e829b6a2334824b4d9e3979b31135caf281",
+        "recordSha256": [
+          "6e3754d23071cd60ed7c7fce02f777eaffd7c8e119a82bef29f7d8923653fc64"
+        ]
+      },
+      "license": "BSD-3-Clause",
+      "notices": [
+        {
+          "path": "notices/python-idna-3.18/LICENSE.md",
+          "sha256": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "jh2",
+      "version": "5.0.13",
+      "source": [
+        "Changelog, https://github.com/jawah/h2/blob/main/CHANGELOG.rst",
+        "Code, https://github.com/jawah/h2",
+        "Issue tracker, https://github.com/jawah/h2/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "5f576c4b59c7ddbc777bef3d61870234da6151a4311fe10975bbd66d34132d88",
+        "recordSha256": [
+          "87f4783404f617e862d42fff09e14f2f9c16562cd266f4c4ec53c67301192973"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-jh2-5.0.13/LICENSE",
+          "sha256": "4bd768391b6e904769026ee74e52148c6a7c8d84e6e77b33234ba4e8fb0cb192"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "jsonpath-ng",
+      "version": "1.8.0",
+      "source": [
+        "https://github.com/h2non/jsonpath-ng"
+      ],
+      "integrity": {
+        "metadataSha256": "a6bce6e55cb926d873c9dfccc023e46c999cf7413983629e5c58eeb6b992b8bb",
+        "recordSha256": [
+          "ab006a3b4bdd36ec0f82d138311ed83e831f464d3cbf8077a890ef8630777589"
+        ]
+      },
+      "license": "Apache 2.0",
+      "notices": [
+        {
+          "path": "notices/python-jsonpath-ng-1.8.0/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "niquests",
+      "version": "3.21.0",
+      "source": [
+        "Changelog, https://github.com/jawah/niquests/blob/main/HISTORY.md",
+        "Documentation, https://niquests.readthedocs.io",
+        "Code, https://github.com/jawah/niquests",
+        "Issue tracker, https://github.com/jawah/niquests/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "1d800769419f51d6d44f97982cb709956054c1170c525b114b5652ad16607f4a",
+        "recordSha256": [
+          "8ec8806f5b9efde5b406f0afd4e53c54fbb8355fc7d9d8b2b53c702efd8814ed"
+        ]
+      },
+      "license": "Apache-2.0",
+      "notices": [
+        {
+          "path": "notices/python-niquests-3.21.0/LICENSE",
+          "sha256": "d6b4f4adb0d2b0f17633fd47432cce10a0bd79beec0717ff7949de0a93ea80be"
+        },
+        {
+          "path": "notices/python-niquests-3.21.0/09e8a9bcec80-LICENSE",
+          "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "orjson",
+      "version": "3.11.9",
+      "source": [
+        "changelog, https://github.com/ijl/orjson/blob/master/CHANGELOG.md",
+        "documentation, https://github.com/ijl/orjson",
+        "source, https://github.com/ijl/orjson"
+      ],
+      "integrity": {
+        "metadataSha256": "288a4d616e68837ef98059bb71059b7910b72159b7b7ad2875c8bb81463c1887",
+        "recordSha256": [
+          "7ae224e21444c5e12dbdb6a82015cfc370bafb8f1cdb719f96007fcf2ef87a84"
+        ]
+      },
+      "license": "MPL-2.0 AND (Apache-2.0 OR MIT)",
+      "notices": [
+        {
+          "path": "notices/python-orjson-3.11.9/LICENSE-APACHE",
+          "sha256": "7cfd738c53d61c79f07e348f622bf7707c9084237054d37fbe07788a75f5881c"
+        },
+        {
+          "path": "notices/python-orjson-3.11.9/LICENSE-MIT",
+          "sha256": "36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9"
+        },
+        {
+          "path": "notices/python-orjson-3.11.9/LICENSE-MPL-2.0",
+          "sha256": "9303ea1cfbf049945652668089d753fb1a7e1f2e52c680615c3d2cea7515c118"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "paho-mqtt",
+      "version": "2.1.0",
+      "source": [
+        "Homepage, http://eclipse.org/paho"
+      ],
+      "integrity": {
+        "metadataSha256": "adc7c23ff41ac76ac558964022dd7502ca9a70c32403859e2c2283e077bfa230",
+        "recordSha256": [
+          "1017b507c96c039d6f17ce767d58132a8db0be661fb1bae43a766a00a2ff96e3"
+        ]
+      },
+      "license": "EPL-2.0 OR BSD-3-Clause",
+      "notices": [
+        {
+          "path": "notices/python-paho-mqtt-2.1.0/LICENSE.txt",
+          "sha256": "66408b049249c3bdb0ba1ed285f5422ce67e371d40151bebd4d806af454ffe7c"
+        },
+        {
+          "path": "notices/python-paho-mqtt-2.1.0/edl-v10",
+          "sha256": "e8cf7d54ea46c19aba793983889b7f7425e1ebfcaaccec764a7db091646e203c"
+        },
+        {
+          "path": "notices/python-paho-mqtt-2.1.0/epl-v20",
+          "sha256": "8c349f80764d0648e645f41ef23772a70c995a0924b5235f735f4a3d09df127c"
+        }
+      ],
+      "supplementalNoticeSources": [
+        {
+          "url": "https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/edl-v10",
+          "gitBlobSha1": "0d500b9839b6a6c2442b0824734487a537d60738"
+        },
+        {
+          "url": "https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/epl-v20",
+          "gitBlobSha1": "e48e0963459bf4c4e175956b657a8f4a91967880"
+        }
+      ],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "pycparser",
+      "version": "3.0",
+      "source": [
+        "Homepage, https://github.com/eliben/pycparser"
+      ],
+      "integrity": {
+        "metadataSha256": "f547a60b0ab54cc2f242213d1f87960ad80df7dd5dfeb98d17a444d48bfb6b93",
+        "recordSha256": [
+          "d73eac8cf0e77ac39291fdf27f958d9424ee801fa108b2e185b57d0c1b4a0be1"
+        ]
+      },
+      "license": "BSD-3-Clause",
+      "notices": [
+        {
+          "path": "notices/python-pycparser-3.0/LICENSE",
+          "sha256": "0c846399369ea76ddd7b5c44fe6d16497415fcf015f5cbb508c24bf98b81c5b1"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "pydantic",
+      "version": "2.13.4",
+      "source": [
+        "Homepage, https://github.com/pydantic/pydantic",
+        "Documentation, https://docs.pydantic.dev",
+        "Funding, https://github.com/sponsors/samuelcolvin",
+        "Source, https://github.com/pydantic/pydantic",
+        "Changelog, https://docs.pydantic.dev/latest/changelog/"
+      ],
+      "integrity": {
+        "metadataSha256": "d1e56c3412492512fb6b59a9dfc25ab7af2a8204585cd7bca000513023133394",
+        "recordSha256": [
+          "b5d30c0f91bb265084b94d66e331c6852b68043dc46c8552d4b833f87fb2a79f"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-pydantic-2.13.4/LICENSE",
+          "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "pydantic_core",
+      "version": "2.46.4",
+      "source": [
+        "Funding, https://github.com/sponsors/samuelcolvin",
+        "Homepage, https://github.com/pydantic",
+        "Source, https://github.com/pydantic/pydantic/tree/main/pydantic-core"
+      ],
+      "integrity": {
+        "metadataSha256": "135fa8b2f89473e9191c7078c2164e3ec6c8927a61c2379c2fddcc07f11f3bae",
+        "recordSha256": [
+          "d48147997ca047e12a3914a370a8686f98224bc0ea72f2fc9d513d8ada24f9ee"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-pydantic_core-2.46.4/LICENSE",
+          "sha256": "fbe7f615f18d135c07000e5a86325db27f42c7729699ef166ac1f7a3f4586bf4"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "qh3",
+      "version": "1.9.4",
+      "source": [
+        "documentation, https://qh3.readthedocs.io/",
+        "homepage, https://github.com/jawah/qh3"
+      ],
+      "integrity": {
+        "metadataSha256": "84675dc89bb5ab9cb33075550d18b326ccb51d5745022683df84873f9bc3eced",
+        "recordSha256": [
+          "193014a45bcbd909387e390bff70a1d560f44a36ba9ac456f45649363d55d2e2"
+        ]
+      },
+      "license": "BSD-3-Clause",
+      "notices": [
+        {
+          "path": "notices/python-qh3-1.9.4/LICENSE",
+          "sha256": "4cfd45fa4f346d6983a8a50cfce7ead228f79941cb255dd1f22b3e068a4b8b4f"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "qqmusic-api-python",
+      "version": "0.8.2",
+      "source": [
+        "documentation, https://l-1124.github.io/QQMusicApi/",
+        "homepage, https://l-1124.github.io/QQMusicApi/",
+        "repository, https://github.com/l-1124/QQMusicApi"
+      ],
+      "integrity": {
+        "metadataSha256": "682b86784d27cc76062e12dff0539202eedd30ba1ef131de8378db5880a64de0",
+        "recordSha256": [
+          "0e22f8db5b02285716bfb3cd92d2c3b332c1b8d540edbdb3daa7e1459453c789"
+        ]
+      },
+      "license": "GPL-3.0-or-later",
+      "notices": [
+        {
+          "path": "notices/python-qqmusic-api-python-0.8.2/LICENSE",
+          "sha256": "c53a65c2fd561c87eaabf1072ef5dcab8653042bc15308465f52413585eb6271"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "typing-inspection",
+      "version": "0.4.3",
+      "source": [
+        "Homepage, https://github.com/pydantic/typing-inspection",
+        "Documentation, https://pydantic.github.io/typing-inspection/dev/",
+        "Source, https://github.com/pydantic/typing-inspection",
+        "Changelog, https://github.com/pydantic/typing-inspection/blob/main/HISTORY.md"
+      ],
+      "integrity": {
+        "metadataSha256": "ef176d5447d365f50a8f2956f91414934eadda4440c9561b86787541f07d7909",
+        "recordSha256": [
+          "414a1c229e66b324e10fc9bc53ee232f8b59991d39f2138501c6fe98dd534dad"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-typing-inspection-0.4.3/LICENSE",
+          "sha256": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "source": [
+        "Bug Tracker, https://github.com/python/typing_extensions/issues",
+        "Changes, https://github.com/python/typing_extensions/blob/main/CHANGELOG.md",
+        "Documentation, https://typing-extensions.readthedocs.io/",
+        "Home, https://github.com/python/typing_extensions",
+        "Q & A, https://github.com/python/typing/discussions",
+        "Repository, https://github.com/python/typing_extensions"
+      ],
+      "integrity": {
+        "metadataSha256": "b05084ca1d50879865178d9fff9fabeab61bdfb1f361bfbde95421ffc8f9be46",
+        "recordSha256": [
+          "d7a220918ed91a6af1abf9508f734fe5d2c2f6b438ee519cc73ee4e60e6e665d"
+        ]
+      },
+      "license": "PSF-2.0",
+      "notices": [
+        {
+          "path": "notices/python-typing_extensions-4.16.0/LICENSE",
+          "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "urllib3-future",
+      "version": "2.24.900",
+      "source": [
+        "Changelog, https://github.com/jawah/urllib3.future/blob/main/CHANGES.rst",
+        "Documentation, https://urllib3future.readthedocs.io",
+        "Code, https://github.com/jawah/urllib3.future",
+        "Issue tracker, https://github.com/jawah/urllib3.future/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "cd679345e7a5a3a845ca18ddba96c072220807fac9e0d17350a09dd52d81ab75",
+        "recordSha256": [
+          "3483c58964ce253c63701a26ca7c15eec00586099d52be95ae33e56bbd69163f"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-urllib3-future-2.24.900/LICENSE.txt",
+          "sha256": "3a387d8ea43ca7ac1edfff291862cb5913feb7949108a46c7154287552293dad"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "python-runtime",
+      "name": "wassima",
+      "version": "2.1.3",
+      "source": [
+        "Changelog, https://github.com/jawah/wassima/blob/main/CHANGELOG.md",
+        "Documentation, https://wassima.readthedocs.io",
+        "Code, https://github.com/jawah/wassima",
+        "Issue tracker, https://github.com/jawah/wassima/issues"
+      ],
+      "integrity": {
+        "metadataSha256": "095c68f841c624ab8d89540822b55ff7f92f1abd91b815a4e5d2f7eb7743a9af",
+        "recordSha256": [
+          "7fe49473d16216b06e1d2aeb3b51f0c21ab4fd5a792a92cdb90b394d4f3f4781"
+        ]
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/python-wassima-2.1.3/LICENSE",
+          "sha256": "3465c55e04631360aaa79364091d41979d78eb5c6c8e6c15b6cd55b62a4711f5"
+        }
+      ],
+      "supplementalNoticeSources": [],
+      "retention": "Retain complete supplied license/copyright texts. Python runtime closure is separate from locked development/build tools."
+    },
+    {
+      "kind": "runtime",
+      "name": "CPython",
+      "version": "3.13.15",
+      "source": "https://www.python.org/",
+      "integrity": {
+        "licenseSha256": "62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120"
+      },
+      "license": "PSF-2.0 AND embedded third-party notices",
+      "notices": [
+        {
+          "path": "notices/CPython/LICENSE.txt",
+          "sha256": "62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120"
+        }
+      ],
+      "retention": "Retain complete Python LICENSE.txt and embedded third-party notices."
+    },
+    {
+      "kind": "runtime",
+      "name": "Node.js",
+      "version": "24.22.2",
+      "source": "https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip",
+      "integrity": {
+        "archiveSha256": "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2",
+        "executableSha256": "1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9"
+      },
+      "license": "MIT AND bundled third-party licenses (see complete Node LICENSE)",
+      "notices": [
+        {
+          "path": "notices/node-24.22.2/LICENSE",
+          "sha256": "ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9"
+        }
+      ],
+      "retention": "Retain complete Node LICENSE, including all embedded third-party texts and notices."
+    },
+    {
+      "kind": "rust-change",
+      "name": "futures-util",
+      "version": "0.3.32",
+      "source": "https://github.com/rust-lang/futures-rs",
+      "integrity": "sha256-389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6",
+      "license": "MIT OR Apache-2.0",
+      "features": [],
+      "previousSpecification": null,
+      "notices": [
+        {
+          "path": "notices/rust-futures-util-0.3.32/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "path": "notices/rust-futures-util-0.3.32/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ],
+      "retention": "Retain full supplied license/notice texts; alternative licenses remain available as stated upstream."
+    },
+    {
+      "kind": "rust-change",
+      "name": "regex",
+      "version": "1.13.0",
+      "source": "https://github.com/rust-lang/regex",
+      "integrity": "sha256-2a0e75113e14dc5acb068cd0786884f214f1312650a3d36d269f5c4f3cdee8a2",
+      "license": "MIT OR Apache-2.0",
+      "features": [],
+      "previousSpecification": null,
+      "notices": [
+        {
+          "path": "notices/rust-regex-1.13.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "notices/rust-regex-1.13.0/LICENSE-MIT",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ],
+      "retention": "Retain full supplied license/notice texts; alternative licenses remain available as stated upstream."
+    },
+    {
+      "kind": "rust-change",
+      "name": "reqwest",
+      "version": "0.12.28",
+      "source": "https://github.com/seanmonstar/reqwest",
+      "integrity": "sha256-eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147",
+      "license": "MIT OR Apache-2.0",
+      "features": [
+        "blocking",
+        "stream"
+      ],
+      "previousSpecification": {
+        "version": "=0.12.28",
+        "features": [
+          "blocking"
+        ]
+      },
+      "notices": [
+        {
+          "path": "notices/rust-reqwest-0.12.28/LICENSE-APACHE",
+          "sha256": "751963a8b88c0e3a9f27e98933079fbcf09b9998b2c13ac49c2e4d58444520d6"
+        },
+        {
+          "path": "notices/rust-reqwest-0.12.28/LICENSE-MIT",
+          "sha256": "47d4e1803702728e03d30f8a848ae2249ba274bbd9f8443e803f7924d83cd371"
+        }
+      ],
+      "retention": "Retain full supplied license/notice texts; alternative licenses remain available as stated upstream."
+    },
+    {
+      "kind": "rust-change",
+      "name": "windows",
+      "version": "0.61.3",
+      "source": "https://github.com/microsoft/windows-rs",
+      "integrity": "sha256-9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893",
+      "license": "MIT OR Apache-2.0",
+      "features": [
+        "Foundation",
+        "Media",
+        "Media_Core",
+        "Media_Playback",
+        "Storage",
+        "Storage_Streams",
+        "Win32_Foundation",
+        "Win32_Media_Audio",
+        "Win32_Security_Credentials",
+        "Win32_Security_Cryptography",
+        "Win32_System_Memory",
+        "Win32_Storage_FileSystem",
+        "Win32_System_Com_StructuredStorage",
+        "Win32_System_Threading",
+        "Win32_System_Variant",
+        "Win32_System_WinRT",
+        "System_Profile"
+      ],
+      "previousSpecification": {
+        "version": "=0.61.3",
+        "features": [
+          "Foundation",
+          "Media",
+          "Media_Core",
+          "Media_Playback",
+          "Storage",
+          "Storage_Streams",
+          "Win32_Foundation",
+          "Win32_Media_Audio",
+          "Win32_Security_Credentials",
+          "Win32_System_Com_StructuredStorage",
+          "Win32_System_Threading",
+          "Win32_System_Variant",
+          "Win32_System_WinRT",
+          "System_Profile"
+        ]
+      },
+      "notices": [
+        {
+          "path": "notices/rust-windows-0.61.3/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "notices/rust-windows-0.61.3/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "retention": "Retain full supplied license/notice texts; alternative licenses remain available as stated upstream."
+    },
+    {
+      "kind": "vendored-frontend",
+      "name": "LBEILC/RhineLabUI",
+      "commit": "3f4b9c9e8fdc9c6aa689e8c0b2faa5c53df93826",
+      "additionalOpeningCommit": "ee5779741c6c0c916e416705fa634c7abf905c73",
+      "source": "https://github.com/LBEILC/RhineLabUI",
+      "integrity": {
+        "licenseSha256": "9129c293e2a6f989d6e648fffc551a3ec914419295e67942b991f7f0f4576163",
+        "provenanceSha256": "e918dff677ea921d812fe54e11bd7f9274c2f52f2e0be4998f8133b523846c55"
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/RhineLabUI/LICENSE",
+          "sha256": "9129c293e2a6f989d6e648fffc551a3ec914419295e67942b991f7f0f4576163"
+        },
+        {
+          "path": "notices/RhineLabUI/README.md",
+          "sha256": "e918dff677ea921d812fe54e11bd7f9274c2f52f2e0be4998f8133b523846c55"
+        }
+      ],
+      "retention": "Copyright (c) 2026 LBEILC. Retain MIT license and resource-rights boundaries in the accompanying provenance README."
+    },
+    {
+      "kind": "vendored-source",
+      "name": "NeteaseCloudMusicApiEnhanced/api-enhanced",
+      "version": "4.41.1",
+      "commit": "984cc021b8598cf94c22134f32a8426887fb2de7",
+      "source": "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced",
+      "integrity": {
+        "algorithm": "sha256",
+        "files": {
+          "LICENSE": "e463bb821c363e6182f16ec1bf24405af3315b4adc72fc1402232fa98b9a0b12",
+          "module/cloudsearch.js": "2c831a3a86413c2747b92970041387fcdb934aba5aabf9a6c2f91816ade80657",
+          "module/likelist.js": "127011717cdf38e00d5e5ec83b191ccd73e6e7a05171fa618c33d27532b582c9",
+          "module/login_qr_check.js": "0b6ced28e872d61882955010b8ca17d0037d8df352d757ced60980893002d1e0",
+          "module/login_qr_create.js": "a804cf5e62f4ba6dded34d57c672d23106c39fde38d613c6ac76f6b059d82fbe",
+          "module/login_qr_key.js": "7065aecd94a73a73231e154b6d4086b93866d580a17bd0cddd009d9679f863aa",
+          "module/login_status.js": "9f69e7bc09e8f7db393b16741b724b72ca8dc6d480e9e76b93e4250f59eb65ff",
+          "module/logout.js": "1a7ed147663b99427afdb6f93ea6e2f2a9fd66aba01f4fad071e05ad911fda70",
+          "module/lyric_new.js": "08a3613292d69ff8cb16b5b650543fc1465464488f97f1732b7e436bfc53ffd3",
+          "module/playlist_detail.js": "24016c435f942e9debd49053cd0d74fa5117f02db8062258583a10ddfe5af6e2",
+          "module/register_xeapikey.js": "603877347b416253497a7f52433ad3c7c142b4ab05abcbfc046067126beb7cd4",
+          "module/search.js": "0272ab7a5620253eefc80708f6116876e8ae0c3745d1028a0062d71d8f689bf4",
+          "module/song_detail.js": "a85e79d888667b645301597a8c755fc468d62be0506fa94ca98e551bf4ee58a9",
+          "module/song_url_v1.js": "623d86b61967dd1f2e1a2facdf1d5cd00850a47a55a09eab74c6d749d081a24f",
+          "module/user_playlist.js": "8f67866eb8ac7306f326511bda66e8b18583d74396ffba2d16ebf52f6166bbb3",
+          "package.json": "7d38de102f9d211b8a221ab5943610473c4b23aeee36e9a9cf0e22848e04b9d4",
+          "util/config.json": "25c30bd41a877b9992e870a457dedd02ac033041adcfb3ca3f9bdc7fdc288665",
+          "util/crypto.js": "45bdb719176d66d864f876da3d7436eab5d99a37f031d1f6fd5025b4191c577c",
+          "util/zstd.js": "b1e45365cba1247bb6b2786bfef659ea5d601f771032a3d34da95a61f2639825",
+          "module/like.js": "475a4f8880ce2fac8c5521533b6e93c045657fe783be2de4bb104bb3de5043d4",
+          "module/playlist_subscribe.js": "1541d0d2ba4062bf51517c9b4a3d9e95682e701688fa2cc2a93f794858f3a089",
+          "module/playlist_tracks.js": "882688ccb3053cf93910d1ab8d80ebacb7e89309145191fcee747b4b12714a8c",
+          "module/playlist_detail_dynamic.js": "20a21bdd4f3361f45879a7be8df580d6de012c49a7f249f5eba568b7daa9a0d9"
+        }
+      },
+      "license": "MIT",
+      "notices": [
+        {
+          "path": "notices/api-enhanced-4.41.1/LICENSE",
+          "sha256": "e463bb821c363e6182f16ec1bf24405af3315b4adc72fc1402232fa98b9a0b12"
+        }
+      ],
+      "retention": "Copyright (c) 2013-2022 Binaryify; retain complete MIT license.",
+      "scope": "23 locked files: 22 fixed upstream files and one local package.json CJS shim (19 from 3b plus four 3d modules). The shim is not an original upstream package manifest. Version/commit come from upstream-lock.json; runtime dependency closure is the dedicated provider package-lock.json, not the upstream whole application."
+    }
+  ],
+  "issues": []
+}

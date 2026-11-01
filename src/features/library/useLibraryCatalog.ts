@@ -22,7 +22,7 @@ export function useLibraryCatalog({ section, query, searchType, discoveryTab, ac
     if (!hasPlaybackTransport()) return;
     const normalized = query.trim();
     const liked = section === "liked";
-    if ((liked && (authRecovering || !authenticated))
+    if ((authRecovering || !authenticated)
       || (!liked && section !== "discover" && section !== "search")
       || (!liked && !normalized && (section === "search" || discoveryTab !== "newSongs"))
       || (!liked && (section === "search" || normalized) && searchType !== "songs")) {

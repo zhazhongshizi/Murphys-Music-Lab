@@ -55,10 +55,14 @@ it("pins the queue without lyrics and restores lyrics when available", () => {
   view.rerender(<StageLyricsPanel hasLyrics><p>歌词内容</p></StageLyricsPanel>);
   expect(screen.queryByRole("list")).not.toBeInTheDocument();
 });
-it("immediately follows the active song after next is triggered elsewhere", () => {
-  const scroll = vi.fn();
+it("immediately follows the active song after next is triggered elsewhere without scrolling outer shell", () => {
+  let shellEl: HTMLDivElement | null = null;
+  const scroll = vi.fn(() => {
+    if (shellEl) shellEl.scrollTop = 140;
+  });
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
-  render(<StageLyricsPanel><p>歌词内容</p></StageLyricsPanel>);
+  const view = render(<div className="app-shell"><StageLyricsPanel><p>歌词内容</p></StageLyricsPanel></div>);
+  shellEl = view.container.querySelector(".app-shell");
   fireEvent.click(screen.getByRole("button", { name: "展开歌曲列表" }));
   scroll.mockClear();
   act(() => playerActions.next());
@@ -66,6 +70,7 @@ it("immediately follows the active song after next is triggered elsewhere", () =
   expect(songs[1]).toHaveAttribute("aria-current", "true");
   expect(songs[0]).not.toHaveAttribute("aria-current");
   expect(scroll).toHaveBeenCalledTimes(1);
+  expect(shellEl?.scrollTop).toBe(0);
   delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
 

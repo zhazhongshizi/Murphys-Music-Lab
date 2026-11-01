@@ -22,7 +22,8 @@ import {
   type WindowSnapshot,
 } from "../backend/windowAdapter";
 import type { AuthSnapshot } from "../contracts/auth";
-import { LoginDialog } from "../features/auth/LoginDialog";
+import { DesktopAccountDialog } from "../features/providers/ProviderAccount";
+import { DesktopProviders } from "../features/providers/DesktopProviders";
 import { NativePlayerBridge } from "../features/player/NativePlayerBridge";
 import { useAccountLikes } from "../features/player/useAccountLikes";
 import { SpectrumBridge } from "../features/spectrum/SpectrumBridge";
@@ -426,7 +427,7 @@ export function App() {
     !accountOpen;
 
   return (
-    <>
+    <DesktopProviders>
     <NativePlayerBridge />
     <SpectrumBridge active={spectrumStageActive} />
     <UpdateNotice />
@@ -482,12 +483,13 @@ export function App() {
       )}
     </div>
     {accountOpen ? (
-      <LoginDialog
+      <DesktopAccountDialog
         auth={authSnapshot}
         onAuthChange={setAuthSnapshot}
         onClose={() => setAccountOpen(false)}
+        variant={uiMode === "rhine" ? "rhine" : "default"}
       />
     ) : null}
-    </>
+    </DesktopProviders>
   );
 }

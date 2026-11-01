@@ -1,0 +1,47 @@
+{
+  "bbplayer": {
+    "repository": "bbplayer-app/BBPlayer",
+    "commit": "e2e7f52759ad8c79f54ab28021b43df473f849ed",
+    "files": {
+      "api.ts.txt": "apps/mobile/src/lib/api/bilibili/api.ts",
+      "wbi.ts.txt": "apps/mobile/src/lib/api/bilibili/wbi.ts",
+      "client.ts.txt": "apps/mobile/src/lib/api/bilibili/client.ts",
+      "types.ts.txt": "apps/mobile/src/types/apis/bilibili.ts"
+    }
+  },
+  "bridge": {
+    "repository": "Jmiao11/bili-music",
+    "commit": "94ef03bb97d9ae3117f2f08c3255f17714b61dc3",
+    "file": "src-tauri/src/proxy.rs"
+  },
+  "files": [
+    {
+      "path": "reference/BBPlayer-LICENSE",
+      "sha256": "76f307f41e66eec2f030dc0e9e19c72b5c7cf689ee618094e969148798ddf51b"
+    },
+    {
+      "path": "reference/api.ts.txt",
+      "sha256": "a32ab08578d50e0768cd6513c6d974cde4d3992c3a0da311a9b0f5c36a5cee79"
+    },
+    {
+      "path": "reference/bili-music-LICENSE",
+      "sha256": "665b197997d5c855f282535e379d7f26ea10dac459ade7c4069ace8b4d02de23"
+    },
+    {
+      "path": "reference/client.ts.txt",
+      "sha256": "bbb74090c57e3655ca165c9cc1c1c9dbbd43d9621b1c51d1778938c08b16177d"
+    },
+    {
+      "path": "reference/proxy.rs.txt",
+      "sha256": "16b36cf52dae8de0617d4816756c1a9d03072610e40e6b23ec0b69e8bf23677c"
+    },
+    {
+      "path": "reference/types.ts.txt",
+      "sha256": "dfbe0707bb0edc6d516febbce42183ecf843d436f1c8979a275c378ea022c0bb"
+    },
+    {
+      "path": "reference/wbi.ts.txt",
+      "sha256": "154aaf6c4395941a29df0d6a88921cf6be6e23176e9612fd896cdbdf6f5690f8"
+    }
+  ]
+}

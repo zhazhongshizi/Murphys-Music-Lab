@@ -14,6 +14,12 @@ vi.mock("../catalog/CatalogDetails",()=>({
 }));
 const songs:CatalogSong[]=[1,2,3,4].map(n=>({id:`song-${n}`,title:`曲目 ${n}`,artist:`歌手 ${n}`,artists:[{id:`artist-${n}`,name:`歌手 ${n}`}],album:`专辑 ${n}`,albumId:`album-${n}`,durationMs:183000,subtitle:"",qualityCandidates:[],availability:{status:"unknown",requiresSubscription:false}}));
 const props={active:true,accountKey:"authenticated:a",onClose:vi.fn(),onDeck:vi.fn()};
+it("shows login/restoring guidance without loading recommendation racks",async()=>{
+ const view=render(<ArchiveDiscovery {...props} accessMessage="请先登录后搜索或发现音乐" />);
+ expect(screen.getByRole("status")).toHaveTextContent("请先登录");expect(mocks.songs).not.toHaveBeenCalled();expect(mocks.lists).not.toHaveBeenCalled();
+ view.rerender(<ArchiveDiscovery {...props} accessMessage="正在恢复账号" />);expect(screen.getByRole("status")).toHaveTextContent("正在恢复账号");expect(mocks.songs).not.toHaveBeenCalled();
+ view.rerender(<ArchiveDiscovery {...props} />);await screen.findByRole("button",{name:"选择歌曲 曲目 1"});expect(mocks.songs).toHaveBeenCalledOnce();
+});
 beforeEach(()=>{
  vi.clearAllMocks();mocks.songs.mockImplementation((_kind:string,generation:number,page:number)=>Promise.resolve({generation,page,hasMore:page===1,warningCount:0,items:page===1?songs:[songs[3]]}));
  mocks.lists.mockImplementation((generation:number,page:number)=>Promise.resolve({generation,page,hasMore:page===1,warningCount:0,items:[{kind:"playlist",id:String(page),title:`歌单 ${page}`,coverCacheKey:`pl_${page}`,songCount:20,listenCount:100,description:"歌单简介"}]}));

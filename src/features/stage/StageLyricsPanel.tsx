@@ -1,4 +1,5 @@
 import { useOutroPreview } from "./useOutroPreview";
+import { SourceBadge } from "../providers/SourceBadge";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { getCurrentTrack, playerActions, usePlayerSelector, type PlayerSnapshot } from "../player/playerStore";
 
@@ -10,7 +11,13 @@ function StageSongList({ nextId, nextLabel }: { nextId?: string | null; nextLabe
   const listRef = useRef<HTMLOListElement>(null);
   const queueKey = JSON.stringify(queue.map((track) => track.id));
   useEffect(() => {
-    listRef.current?.querySelector(nextId ? '[data-up-next="true"]' : '[aria-current="true"]')?.scrollIntoView?.({ block: "center" });
+    const list = listRef.current;
+    const target = list?.querySelector<HTMLElement>(nextId ? '[data-up-next="true"]' : '[aria-current="true"]');
+    target?.scrollIntoView?.({ block: "center" });
+    for (let parent = list?.parentElement ?? null; parent; parent = parent.parentElement) {
+      if (parent.scrollTop !== 0) parent.scrollTop = 0;
+      if (parent.scrollLeft !== 0) parent.scrollLeft = 0;
+    }
   }, [current?.id, queueKey, nextId]);
   return (
     <>
@@ -21,7 +28,7 @@ function StageSongList({ nextId, nextLabel }: { nextId?: string | null; nextLabe
             <button type="button" data-up-next={nextId === track.id ? "true" : undefined} aria-current={current?.id === track.id ? "true" : undefined}
               onClick={() => playerActions.playTrack(track.id)}>
               <span className="stage-song-list__number">{current?.id === track.id ? "♪" : index + 1}</span>
-              <span className="stage-song-list__identity"><strong>{track.title}</strong><small>{nextId === track.id ? `${nextLabel} · ` : ""}{track.artist}</small></span>
+              <span className="stage-song-list__identity"><strong>{track.title}</strong><SourceBadge track={track} /><small>{nextId === track.id ? `${nextLabel} · ` : ""}{track.artist}</small></span>
             </button>
           </li>
         ))}

@@ -3,6 +3,9 @@ import {
   type Dispatch, type SetStateAction, type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Icon } from "../components/Icon";
+import { APP_NAME, APP_SHORT_NAME } from "./branding";
+import { ProviderLibraryActions } from "../features/library/ProviderLibraryActions";
+import { SourceNavigation, useDesktopProviders } from "../features/providers/DesktopProviders";
 import { WindowControls } from "../components/WindowControls";
 import { PlayerBar } from "../features/player/PlayerBar";
 import { ArtistNavigationContext, ArtistNavigationContent, useArtistNavigation } from "../features/artist/ArtistNavigation";
@@ -64,10 +67,13 @@ function TopBar({
   onSettingsToggle,
   onEnterTerminal,
 }: TopBarProps) {
+  const { source, snapshots } = useDesktopProviders();
+  const browseAccount = source === "netease" || source === "bilibili" ? snapshots[source] : null;
   const currentTrack = usePlayerSelector(getCurrentTrack);
   const likedIds = usePlayerSelector(selectLikedIds);
   const nativeMode = usePlayerSelector(selectNativeMode);
   const likesReady = usePlayerSelector(snapshot => snapshot.likesReady);
+  const neteaseLikesReady = usePlayerSelector(snapshot => snapshot.neteaseLikesReady);
   const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
   const likeNotice = usePlayerSelector(snapshot => snapshot.likeNotice);
   const liked = currentTrack ? likedIds.includes(currentTrack.id) : false;
@@ -77,7 +83,7 @@ function TopBar({
       <div className="top-bar__brand" data-tauri-drag-region>
         <span aria-hidden="true" className="brand-mark"><i /><i /><i /></span>
         <div>
-          <strong>QQ Music GUI</strong>
+          <strong className="app-brand-name" title={APP_NAME}><b className="app-brand-name__full">{APP_NAME}</b><b className="app-brand-name__short">{APP_SHORT_NAME}</b></strong>
           <span>VINYL GREENHOUSE</span>
         </div>
       </div>
@@ -86,20 +92,21 @@ function TopBar({
         <nav aria-label="主要导航" className="top-bar__nav">
           <button onClick={() => onNavigate("discover")} type="button"><Icon name="library" size={17} />曲库</button>
           <button onClick={() => onNavigate("search")} type="button"><Icon name="search" size={17} />搜索</button>
-          <button onClick={() => onNavigate("liked")} type="button"><Icon name="heart" size={17} />喜欢</button>
+          {(source === "qqmusic" || source === "netease") && <button onClick={() => onNavigate("liked")} type="button"><Icon name="heart" size={17} />喜欢</button>}
         </nav>
       ) : (
         <button className="back-button" onClick={onBack} type="button"><Icon name="back" size={18} />返回舞台</button>
       )}
 
       <div className="top-bar__actions">
+        <ProviderLibraryActions track={currentTrack} />
         <BackendStatus />
         {view === "stage" && likeNotice ? <span role="status">{likeNotice}</span> : null}
-        {view === "stage" && currentTrack && !localMusicFormatFromId(currentTrack.id) ? (
+        {view === "stage" && currentTrack && !localMusicFormatFromId(currentTrack.id) && !currentTrack.id.startsWith("bilibili:") ? (
           <button
             aria-label={liked ? `取消喜欢《${currentTrack.title}》` : `喜欢《${currentTrack.title}》`}
             aria-pressed={liked}
-            disabled={nativeMode && (!likesReady || likePendingIds?.includes(currentTrack.id))}
+            disabled={nativeMode && (!(currentTrack.id.startsWith("netease:") ? neteaseLikesReady : likesReady) || likePendingIds?.includes(currentTrack.id))}
             title={nativeMode && !likesReady ? "喜欢状态尚未读取，可打开喜欢页重新读取" : undefined}
             className={liked ? "icon-button top-bar__liked" : "icon-button icon-button--quiet"}
             onClick={() => playerActions.toggleLike(currentTrack.id)}
@@ -108,7 +115,7 @@ function TopBar({
             <Icon name="heart" size={18} />
           </button>
         ) : null}
-        <button aria-label="账号" className="account-button" onClick={onAccount} type="button"><Icon name="user" size={17} /><span>{accountLabel}</span></button>
+        <button aria-label="账号" className="account-button" onClick={onAccount} type="button"><Icon name="user" size={17} /><span>{browseAccount?.state === "ready" ? browseAccount.account.displayName : source === "qqmusic" || source === "local" ? accountLabel : "登录此来源"}</span></button>
         <button
           aria-label="进入终端模式"
           className="account-button"
@@ -385,8 +392,10 @@ export function NormalMode({
   glowPaletteKey,
   spectrumPaletteKey
 }: NormalModeProps) {
+  const { source, selectSource } = useDesktopProviders();
   const artistNavigation = useArtistNavigation();
   const blockingStatus = fixtureStatus === "normal" || fixtureStatus === "partial" ? null : fixtureStatus;
+  const showSourceNavigation = view === "library" && !artistNavigation.artist && (librarySection === "playlists" || librarySection === "search");
   return (
     <ArtistNavigationContext.Provider value={artist => { setQueueOpen(false); setSettingsOpen(false); artistNavigation.openArtist(artist); }}>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -403,11 +412,26 @@ export function NormalMode({
         }}
         onBack={() => { artistNavigation.closeArtist(false); setView("stage"); }}
         onEnterTerminal={handleEnterTerminal}
-        onNavigate={(section) => { artistNavigation.closeArtist(false); setSettingsOpen(false); navigateToLibrary(section); }}
+        onNavigate={(section) => {
+          artistNavigation.closeArtist(false);
+          setSettingsOpen(false);
+          if (source === "local") selectSource("qqmusic");
+          navigateToLibrary(section);
+        }}
         view={view}
         settingsOpen={settingsOpen}
         onSettingsToggle={() => { artistNavigation.closeArtist(false); setView("stage"); setFixtureStatus("normal"); setSettingsOpen((open) => !open); }}
       />
+      {showSourceNavigation ? (
+        <SourceNavigation
+          onSelect={id => {
+            artistNavigation.closeArtist(false);
+            setSettingsOpen(false);
+            navigateToLibrary(id === "local" ? "local" : librarySection === "playlists" ? "playlists" : "search");
+          }}
+          onAccount={() => setAccountOpen(true)}
+        />
+      ) : null}
       {fixtureStatus === "partial" ? <PublicState kind="partial" onAction={() => setFixtureStatus("normal")} /> : null}
       <div
         aria-hidden={blockingStatus ? "true" : undefined}
@@ -443,7 +467,9 @@ export function NormalMode({
             <LibraryWorkspace
               authRecovering={authRecovering}
               authSnapshot={authSnapshot}
-              initialSection={librarySection}
+              initialSection={source === "local" ? "local" : librarySection}
+              onSectionChange={navigateToLibrary}
+              onAccount={() => setAccountOpen(true)}
               onBack={() => setView("stage")}
             />
           </Suspense>

@@ -1,6 +1,7 @@
 /** One typed adapter surface, with desktop IPC as the default transport. */
 export type PlaybackTransport = (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
 let remoteTransport: PlaybackTransport | null = null;
+export const isRemotePlayback = () => remoteTransport !== null;
 let revision = 0;
 let sessionIdentity = 0;
 export const playbackSessionIdentity = () => sessionIdentity;

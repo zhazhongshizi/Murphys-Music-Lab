@@ -10,8 +10,9 @@ import type { CatalogEntity, CatalogSearchType } from "../../contracts/catalogBr
 import { Icon } from "../../components/Icon";
 import { SearchHistory, rememberSearch } from "../library/searchHistory";
 import { CatalogSearchInput } from "../catalog/CatalogSearchInput";
+import { ArchiveSearchHeading, ArchiveSearchBody } from "./ArchiveSearchLayout";
 
-export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: () => void }) {
+export function ArchiveSearch({ active, onClose, accessMessage }: { active: boolean; onClose: () => void; accessMessage?: string }) {
   const [type, setType] = useState<CatalogSearchType>("songs");
   const [entity, setEntity] = useState<CatalogEntity | null>(null);
   const [input, setInput] = useState("");
@@ -25,20 +26,20 @@ export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: (
   const pending = useRef(false);
   const actionVersion = useRef(0);
   const visible = useRef(active);
-  visible.current = active;
+  visible.current = active && !accessMessage;
   const currentId = usePlayerSelector(s => getCurrentTrack(s)?.id);
   useEffect(() => {
     const epoch = ++generation.current;
     setResults(null); setError(false); setNotice("");
-    if (!request.query || type !== "songs") { setLoading(false); return; }
+    if (accessMessage || !request.query || type !== "songs") { setLoading(false); return; }
     setLoading(true);
     void searchCatalogSongs(request.query, epoch, request.page).then(result => { if (epoch === generation.current) setResults(result); })
       .catch(() => { if (epoch === generation.current) setError(true); })
       .finally(() => { if (epoch === generation.current) setLoading(false); });
     return () => { generation.current++; };
-  }, [request, type]);
+  }, [request, type, accessMessage]);
   useEffect(() => () => { generation.current++; }, []);
-  useEffect(() => () => { actionVersion.current++; }, [active]);
+  useEffect(() => () => { actionVersion.current++; }, [active, accessMessage]);
   function search(value: string, category: CatalogSearchType = type) {
     const query = value.trim();
     if (!query) return;
@@ -60,17 +61,17 @@ export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: (
     } catch { if (epoch === generation.current) setNotice("操作失败，请重试"); }
     finally { pending.current = false; setBusy(false); }
   }
+  if (accessMessage) return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}><header className="rhine-search-heading"><button onClick={onClose}>← 返回档案</button></header><p className="rhine-search-empty" role="status">{accessMessage}</p></section>;
   if (entity) return <section className="rhine-search rhine-search--detail" aria-label="音乐档案详情" hidden={!active}><CatalogDetails entity={entity} key={`${entity.kind}:${entity.id}`} onBack={() => setEntity(null)} /></section>;
   return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}>
-    <header className="rhine-search-heading"><button onClick={onClose}>← 返回档案</button><span className="rhine-eyebrow">ARCHIVE / 音乐检索</span></header>
+    <ArchiveSearchHeading onClose={onClose} />
     <form className="rhine-search-form" onSubmit={e => { e.preventDefault(); search(input); }}>
       <CatalogSearchInput autoFocus label="搜索歌曲" placeholder="搜索歌曲、歌手或专辑名"
         value={input} onChange={setInput} onSubmit={value => search(value)} active={active} />
       <button disabled={!input.trim()} type="submit">搜索 ↗</button>
     </form>
     <SearchTypeTabs value={type} onChange={next => { generation.current++; setType(next); if(request.query)rememberSearch(request.query,next); setRequest(r => ({ ...r, page: 1 })); }} />
-    <div className="rhine-search-body"><aside className="rhine-search-history"><SearchHistory onSelect={entry=>search(entry.query,entry.type)} /></aside>
-      <div className="rhine-search-results rhine-playlist-document">
+    <ArchiveSearchBody history={<SearchHistory onSelect={entry=>search(entry.query,entry.type)} />}>
         {type !== "songs" ? <CatalogEntityResults kind={type} keyword={request.query} page={request.page} onPageChange={page => setRequest(r => ({ ...r, page }))} onOpen={setEntity} /> : <>
         <div className="rhine-search-summary"><h2>歌曲</h2>{request.query && <span>{`“${request.query}”${results?.total !== undefined ? ` · ${results.total} 首` : ""}`}</span>}</div>
         <p className="rhine-notice" role="status">{notice}</p>
@@ -85,7 +86,6 @@ export function ArchiveSearch({ active, onClose }: { active: boolean; onClose: (
           <nav className="rhine-pages" aria-label="搜索分页"><button disabled={request.page === 1} onClick={() => { generation.current++; setRequest(r => ({ ...r, page: r.page - 1 })); }}>上一页</button><span>第 {request.page} 页</span><button disabled={!results.hasMore || request.page >= 100} onClick={() => { generation.current++; setRequest(r => ({ ...r, page: r.page + 1 })); }}>下一页</button></nav>
         </>}
         </>}
-      </div>
-    </div>
+    </ArchiveSearchBody>
   </section>;
 }

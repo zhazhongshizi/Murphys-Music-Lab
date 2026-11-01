@@ -1,4 +1,5 @@
 import { createSchemaGuards } from "./schemaGuards";
+import { trackSource } from "./trackSource";
 import { hasPlaybackTransport, invokePlayback } from "./playbackTransport";
 import type { PlayerSnapshot, TrackSummary } from "../contracts/appSnapshot";
 
@@ -15,7 +16,8 @@ export const PLAYER_COMMANDS = {
 export type PreferredQuality = "auto" | "flac" | "320k" | "128k";
 
 export interface PlaybackLoadResult {
-  readonly quality: Exclude<PreferredQuality, "auto"> | "local" | "qq-mv";
+  readonly quality: Exclude<PreferredQuality, "auto"> | "local" | "qq-mv" | "aac";
+  readonly bitrate?: number;
   readonly expiresInSeconds: number;
   readonly player: PlayerSnapshot;
 }
@@ -48,7 +50,9 @@ const PUBLIC_ERROR_KEYS = ["code", "retryable", "operation", "correlationId", "u
 const PUBLIC_PLAYBACK_CODES: Record<string, PlaybackFailureReason> = {
   network_unavailable: "network",
   authentication_required: "authentication",
+  verification_required: "authentication",
   playback_entitlement_denied: "entitlement",
+  preview_only: "entitlement",
   playback_device_limit: "device-limit",
   playback_unsafe_media_url: "unsafe-media",
   playback_native_unavailable: "native-player",
@@ -85,10 +89,11 @@ function text(value: unknown, maximum: number): string {
 function parseTrack(value: unknown): TrackSummary | null {
   if (value === null) return null;
   const hasSource = typeof value === "object" && value !== null && "source" in value;
-  const record = exactRecord(value, hasSource ? [...TRACK_KEYS, "source"] : TRACK_KEYS);
+  const record = exactRecord(value, [...TRACK_KEYS, ...(hasSource ? ["source"] : []), ...(typeof value === "object" && value !== null && "providerId" in value ? ["providerId"] : [])]);
   if (hasSource && record.source !== "qq-mv") throw new PlayerAdapterError("QMG-PLAYER-002");
   return {
     id: text(record.id, 128),
+    ...trackSource(record),
     title: text(record.title, 512),
     artist: text(record.artist, 512),
     ...(hasSource ? { source: "qq-mv" as const } : {}),
@@ -137,13 +142,16 @@ export function parsePlayerSnapshot(value: unknown): PlayerSnapshot {
 }
 
 export function parsePlaybackLoadResult(value: unknown): PlaybackLoadResult {
-  const record = exactRecord(value, LOAD_KEYS);
+  const hasBitrate = typeof value === "object" && value !== null && "bitrate" in value;
+  const record = exactRecord(value, [...LOAD_KEYS, ...(hasBitrate ? ["bitrate"] : [])]);
   const quality = record.quality;
-  if (quality !== "flac" && quality !== "320k" && quality !== "128k" && quality !== "local" && quality !== "qq-mv") {
+  if (quality !== "flac" && quality !== "320k" && quality !== "128k" && quality !== "local" && quality !== "qq-mv" && quality !== "aac") {
     throw new PlayerAdapterError("QMG-PLAYER-002");
   }
+  if (quality === "aac" ? !hasBitrate || unsigned(record.bitrate) < 1 || unsigned(record.bitrate) > 100000000 : hasBitrate) throw new PlayerAdapterError("QMG-PLAYER-002");
   return {
     quality,
+    ...(hasBitrate ? { bitrate: unsigned(record.bitrate) } : {}),
     expiresInSeconds: unsigned(record.expiresInSeconds),
     player: parsePlayerSnapshot(record.player),
   };

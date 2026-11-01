@@ -13,6 +13,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow: hidden;
+  overflow: clip;
   background:
     radial-gradient(circle at 18% 38%, rgb(72 126 91 / 10%), transparent 32%),
     var(--vinyl);

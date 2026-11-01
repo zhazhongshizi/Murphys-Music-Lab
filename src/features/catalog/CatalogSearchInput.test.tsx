@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CatalogSearchInput } from "./CatalogSearchInput";
 const { suggestions } = vi.hoisted(() => ({ suggestions: vi.fn() }));
 vi.mock("../../backend/catalogDiscoveryAdapter", () => ({ getSearchSuggestions: suggestions }));
-function Harness({ submit = () => {}, active = true }: { submit?: (value: string) => void; active?: boolean }) {
+function Harness({ submit = () => {}, active = true, enableSuggestions = true }: { submit?: (value: string) => void; active?: boolean; enableSuggestions?: boolean }) {
   const [value, setValue] = useState("");
-  return <CatalogSearchInput value={value} onChange={setValue} onSubmit={submit} active={active} />;
+  return <CatalogSearchInput value={value} onChange={setValue} onSubmit={submit} active={active} suggestions={enableSuggestions} />;
 }
 beforeEach(() => {
   vi.useFakeTimers(); suggestions.mockReset().mockImplementation((keyword: string, generation: number) =>
@@ -19,6 +19,13 @@ async function type(value: string) {
   await act(async () => { vi.advanceTimersByTime(251); });
   return input;
 }
+it("reuses the search input for other sources without requesting QQ suggestions", async () => {
+  const submit = vi.fn(); render(<Harness submit={submit} enableSuggestions={false} />);
+  const input = await type("其他平台");
+  expect(suggestions).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(submit).toHaveBeenCalledWith("其他平台");
+});
 it("debounces requests and selects a suggestion with arrows and Enter", async () => {
   const submit = vi.fn(); render(<Harness submit={submit} />);
   const input = screen.getByRole("combobox"); fireEvent.focus(input);
