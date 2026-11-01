@@ -2,7 +2,7 @@
 
 # Murphy’s Music Lab
 
-**为 Windows 打造的本地音乐实验室，支持 QQ 音乐、网易云、Bilibili 与本地音乐，提供日常界面与莱茵磁带档案界面。**
+**为 Windows 打造的本地音乐播放器，支持 QQ 音乐、网易云、Bilibili 与本地音乐，提供日常界面与莱茵磁带档案界面。**
 
 [![Release](https://img.shields.io/github/v/release/zhazhongshizi/Murphys-Music-Lab)](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D4)](#下载安装)
