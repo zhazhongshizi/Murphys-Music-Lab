@@ -211,6 +211,7 @@
 .rhine-workspace[data-settings="true"] .rhine-empty,
 .rhine-workspace[data-settings="true"] .rhine-deck,
 .rhine-workspace[data-settings="true"] .rhine-lyrics,
+.rhine-workspace[data-settings="true"] .rhine-queue-document,
 .rhine-workspace[data-settings="true"] .queue-drawer,
 .rhine-workspace[data-settings="true"] .queue-scrim { visibility: hidden; pointer-events: none; }
 @media (max-width: 1050px) { .rhine-settings-grid { grid-template-columns: 1fr; } .rhine-settings-grid .rhine-setting-range { grid-template-columns: minmax(120px,1fr) minmax(130px,1.1fr) 48px; } }

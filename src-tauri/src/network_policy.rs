@@ -21,6 +21,10 @@ const COVER_HOSTS: &[&str] = &[
     "i0.hdslb.com",
     "i1.hdslb.com",
     "i2.hdslb.com",
+    "p1.music.126.net",
+    "p2.music.126.net",
+    "p3.music.126.net",
+    "p4.music.126.net",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

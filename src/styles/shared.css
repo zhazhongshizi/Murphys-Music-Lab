@@ -294,9 +294,15 @@
 }
 
 .top-bar__liked {
-  border-color: rgb(184 199 122 / 28%);
-  background: rgb(184 199 122 / 10%);
-  color: var(--lichen);
+  --favorite-color: #ef657a;
+  border-color: rgb(239 101 122 / 30%);
+  background: rgb(239 101 122 / 10%);
+  color: var(--favorite-color);
+}
+
+.top-bar__liked .icon {
+  color: var(--favorite-color);
+  fill: currentColor;
 }
 
 .fixture-menu {

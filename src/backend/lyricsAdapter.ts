@@ -19,7 +19,8 @@ const LINE_KEYS = ["atMs", "original"] as const;
 const LINE_TRANSLATION_KEYS = [...LINE_KEYS, "translation"] as const;
 const LINE_ROMANIZATION_KEYS = [...LINE_KEYS, "romanization"] as const;
 const LINE_ALL_KEYS = [...LINE_KEYS, "translation", "romanization"] as const;
-const TRACK_ID = /^[A-Za-z0-9_-]+$/;
+// Provider-scoped IDs such as `netease:track:123` contain colons.
+const TRACK_ID = /^[A-Za-z0-9_:-]+$/;
 const MAX_LINES = 5_000;
 const encoder = new TextEncoder();
 

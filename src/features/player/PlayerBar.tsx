@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { CommitRange } from "./CommitRange";
 import { PlaybackNotice } from "./PlaybackNotice";
 import { SourceBadge } from "../providers/SourceBadge";
+import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
 
 import { Icon } from "../../components/Icon";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -132,6 +133,7 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
       </div>
 
       <div className="player-bar__tools">
+        <div className="player-bar__library"><ProviderLibraryActions track={track} /></div>
         <div className="player-bar__volume">
           <label className="sr-only" htmlFor="player-volume">音量</label>
           <CommitRange

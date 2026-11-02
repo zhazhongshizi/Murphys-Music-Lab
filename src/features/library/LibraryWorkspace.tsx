@@ -187,16 +187,22 @@ export default function LibraryWorkspace({
   onAccount,
   onBack,
 }: LibraryWorkspaceProps) {
-  const { source: browseSource, selectSource } = useDesktopProviders();
+  const { source: browseSource, selectSource, snapshots } = useDesktopProviders();
   const liveAccountRuntime = isTauriRuntime();
   const currentTrack = usePlayerSelector(getCurrentTrack);
   const likedIds = usePlayerSelector(selectLikedIds);
   const likesReady = usePlayerSelector(snapshot => snapshot.likesReady);
   const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
   const [section, setSection] = useState<LibrarySection>(initialSection);
-  const providerSection = section === "playlists" || section === "search";
-  const providerBrowseActive = !remote && providerSection && (browseSource === "netease" || browseSource === "bilibili");
-  const qqBrowseActive = browseSource === "qqmusic" || !providerSection;
+  const [chosenLikedSource, setChosenLikedSource] = useState<"qqmusic" | "netease" | null>(null);
+  const likedSource = chosenLikedSource ?? (
+    browseSource === "netease" || (!authRecovering && authSnapshot.state !== "authenticated" && snapshots.netease?.state === "ready")
+      ? "netease" : "qqmusic"
+  );
+  const catalogSource = !remote && section === "liked" ? likedSource : browseSource;
+  const providerSection = section === "playlists" || section === "search" || section === "liked";
+  const providerBrowseActive = !remote && providerSection && (catalogSource === "netease" || catalogSource === "bilibili");
+  const qqBrowseActive = remote || catalogSource === "qqmusic" || !providerSection;
   const [query, setQuery] = useState("");
   const [searchType, setSearchType] = useState<CatalogSearchType>("songs");
   const [discoveryTab, setDiscoveryTab] = useState<DiscoveryTab>("newSongs");
@@ -326,6 +332,17 @@ export default function LibraryWorkspace({
     ? createdPlaylistsState.page.items
     : [];
   const activeArtist = openedEntity;
+  const likedNavigation = !remote && section === "liked" ? (
+    <nav className="catalog-type-tabs" aria-label="喜欢的音乐来源">
+      {(["qqmusic", "netease"] as const).map(id => (
+        <button key={id} type="button" aria-pressed={likedSource === id} onClick={() => {
+          setChosenLikedSource(id);
+          setQuery("");
+          setOpenedEntity(null);
+        }}>{id === "qqmusic" ? "QQ 音乐" : "网易云音乐"}</button>
+      ))}
+    </nav>
+  ) : null;
 
   function openArtist(artist: ArtistRef) {
     setOpenedEntity({ kind: "artist", ...artist });
@@ -497,14 +514,14 @@ export default function LibraryWorkspace({
                 type="button"
               >
                 <span>{item.label}</span>
-                {item.id === "liked" && !remote ? <small>{likedIds.length}</small> : null}
+                {item.id === "liked" && !remote && likedSource === "qqmusic" && authSnapshot.state === "authenticated" ? <small>{likedIds.length}</small> : null}
               </button>
             </div>
           ))}
         </nav>
         <div className="library-sidebar__foot">
           <span>{section === "history" ? "本机播放记录" : providerBrowseActive ? "多平台只读与受控曲库" : liveCatalog.state === "preview" ? "本地预览" : "真实只读目录"}</span>
-          <strong>{section === "history" ? "LOCAL / HISTORY" : providerBrowseActive && browseSource === "netease" ? "NETEASE / CLOUD" : providerBrowseActive && browseSource === "bilibili" ? "BILIBILI / VIDEO" : liveCatalog.state === "preview" ? "FIXTURE / 01" : "QQ / LIVE"}</strong>
+          <strong>{section === "history" ? "LOCAL / HISTORY" : providerBrowseActive && catalogSource === "netease" ? "NETEASE / CLOUD" : providerBrowseActive && catalogSource === "bilibili" ? "BILIBILI / VIDEO" : liveCatalog.state === "preview" ? "FIXTURE / 01" : "QQ / LIVE"}</strong>
         </div>
       </aside>
 
@@ -520,9 +537,12 @@ export default function LibraryWorkspace({
         <ListeningStatistics />
       ) : providerBrowseActive ? (
         <ProviderWorkspace
+          key={section}
           embedded
-          initialSection={section === "playlists" ? "created" : "search"}
-          onAccount={onAccount ?? (() => {})}
+          source={catalogSource === "netease" || catalogSource === "bilibili" ? catalogSource : undefined}
+          likesNavigation={likedNavigation}
+          initialSection={section === "liked" ? "likes" : section === "playlists" ? "created" : "search"}
+          onAccount={() => { selectSource(catalogSource); onAccount?.(); }}
         />
       ) : (
         <>
@@ -553,6 +573,8 @@ export default function LibraryWorkspace({
             </div>
           ) : null}
         </header>
+
+        {likedNavigation}
 
         {section !== "playlists" && section !== "organizer" && !(remote && section === "liked") ?
           section === "discover" || section === "search" ? <CatalogSearchInput value={query}

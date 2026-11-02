@@ -6,6 +6,10 @@ import { invalidatePlaylistSongs } from "./readPlaylistSongs";
 import LibraryWorkspace from "./LibraryWorkspace";
 import { resetPlayerFixture } from "../player/playerStore";
 import type { AuthSnapshot } from "../../contracts/auth";
+import type { ProviderPage, ProviderSnapshot, ProviderTrack } from "../../contracts/providers";
+import constants from "../../../contracts/protocol-v2.constants.json";
+import { DesktopProviders } from "../providers/DesktopProviders";
+import * as providers from "../../backend/providersAdapter";
 
 const {
   discoverMock,
@@ -47,6 +51,11 @@ vi.mock("../../backend/catalogAdapter", () => ({
   discoverCatalogSongs: discoverMock,
   searchCatalogSongs: searchMock,
   getPlaylistSongs: playlistSongsMock,
+}));
+vi.mock("../../backend/providersAdapter", async original => ({
+  ...await original<typeof import("../../backend/providersAdapter")>(),
+  nativeProviderStatus: vi.fn(),
+  nativeProviderLibraryLikes: vi.fn(),
 }));
 vi.mock("../artist/ArtistPage", () => ({
   ArtistPage: ({ artist, onBack }: { artist: { id: string; name: string }; onBack: () => void }) => (
@@ -406,6 +415,107 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     await user.click(screen.getByRole("button", { name: "重新读取喜欢的音乐" }));
     await waitFor(() => expect(likedMock).toHaveBeenCalledTimes(2));
     expect(playlistsMock).not.toHaveBeenCalled();
+  });
+
+  describe("多来源喜欢页", () => {
+    const neteaseSong: ProviderTrack = {
+      providerId: "netease", id: "netease:track:123", title: "网易喜欢歌曲", artist: "网易歌手",
+      creatorKind: "artist", album: "网易专辑", durationMs: 123000, availability: "unknown",
+    };
+    beforeEach(() => {
+      localStorage.clear();
+      vi.mocked(providers.nativeProviderStatus).mockImplementation(async id => id === "netease" ? {
+        providerId: id, state: "ready", account: { providerId: id, id: "42", displayName: "网易账号" },
+        persistence: "saved", capabilities: constants.capabilities.netease,
+      } as ProviderSnapshot : {
+        providerId: id, state: "disabled", capabilities: constants.capabilities.bilibili,
+      } as ProviderSnapshot);
+      vi.mocked(providers.nativeProviderLibraryLikes).mockReset().mockResolvedValue({
+        page: 1, hasMore: false, total: 1, items: [neteaseSong],
+      });
+    });
+    function openLikes(auth: AuthSnapshot = { state: "signedOut" }, onAccount = vi.fn()) {
+      return render(<DesktopProviders><LibraryWorkspace authSnapshot={auth} authRecovering={false}
+        initialSection="liked" onBack={() => {}} onAccount={onAccount} /></DesktopProviders>);
+    }
+    function sources() { return within(screen.getByRole("navigation", { name: "喜欢的音乐来源" })); }
+
+    it("仅登录网易时自动读取网易喜欢，不显示QQ数量；可显式切到未登录的QQ再切回", async () => {
+      const user = userEvent.setup();
+      openLikes();
+      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect(sources().getByRole("button", { name: "网易云音乐" })).toHaveAttribute("aria-pressed", "true");
+      expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledWith("netease", 1, 50);
+      expect(likedMock).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "喜欢" }).querySelector("small")).toBeNull();
+      expect(screen.queryByRole("navigation", { name: "此来源功能" })).not.toBeInTheDocument();
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      expect(await screen.findByText("请先登录后读取账号曲库")).toBeInTheDocument();
+      expect(sources().getByRole("button", { name: "QQ 音乐" })).toHaveAttribute("aria-pressed", "true");
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect(enqueueMock).not.toHaveBeenCalled(); expect(playMock).not.toHaveBeenCalled();
+    });
+
+    it("双登录时可从QQ切到网易，分页和只读刷新只读取网易", async () => {
+      const user = userEvent.setup();
+      vi.mocked(providers.nativeProviderLibraryLikes).mockImplementation(async (_id, page = 1) => ({
+        page, hasMore: page === 1, total: 51, items: [{ ...neteaseSong, title: `网易喜欢第${page}页` }],
+      }));
+      openLikes(AUTHENTICATED);
+      await screen.findAllByText(SONG.title);
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      await screen.findByText("网易喜欢第1页");
+      const qqReads = likedMock.mock.calls.length;
+      await user.click(screen.getByRole("button", { name: "下一页" }));
+      await screen.findByText("网易喜欢第2页");
+      await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
+      await waitFor(() => expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(3));
+      expect(providers.nativeProviderLibraryLikes).toHaveBeenLastCalledWith("netease", 2, 50);
+      expect(likedMock).toHaveBeenCalledTimes(qqReads);
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      await screen.findAllByText(SONG.title);
+      expect(screen.queryByText("网易喜欢第2页")).not.toBeInTheDocument();
+    });
+
+    it("切回QQ后丢弃迟到的网易喜欢回复", async () => {
+      const user = userEvent.setup();
+      let resolve!: (value: ProviderPage<ProviderTrack>) => void;
+      vi.mocked(providers.nativeProviderLibraryLikes).mockReturnValue(new Promise(done => { resolve = done; }));
+      openLikes(AUTHENTICATED);
+      await screen.findAllByText(SONG.title);
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      await waitFor(() => expect(providers.nativeProviderLibraryLikes).toHaveBeenCalled());
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      await act(async () => { resolve({ page: 1, hasMore: false, total: 1, items: [neteaseSong] }); });
+      await screen.findAllByText(SONG.title);
+      expect(screen.queryByText(neteaseSong.title)).not.toBeInTheDocument();
+    });
+
+    it("网易未登录仍保留切换按钮，账号入口指向网易", async () => {
+      const user = userEvent.setup(); const account = vi.fn();
+      vi.mocked(providers.nativeProviderStatus).mockImplementation(async id => ({
+        providerId: id, state: "disabled", capabilities: constants.capabilities[id as "netease" | "bilibili"],
+      } as ProviderSnapshot));
+      openLikes({ state: "signedOut" }, account);
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      expect(await screen.findByText(/登录此来源后访问曲库/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "打开此来源账号" }));
+      expect(account).toHaveBeenCalledOnce();
+      await waitFor(() => expect(localStorage.getItem("qqmusic_browse_source_v1")).toBe("netease"));
+      expect(providers.nativeProviderLibraryLikes).not.toHaveBeenCalled(); expect(likedMock).not.toHaveBeenCalled();
+    });
+
+    it("网易读取失败可以手动重试，恢复后显示歌曲", async () => {
+      const user = userEvent.setup();
+      vi.mocked(providers.nativeProviderLibraryLikes).mockRejectedValueOnce(new Error("offline"));
+      openLikes();
+      await screen.findByText("读取失败；请手动刷新，应用没有重放写入");
+      expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(1);
+      await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
+      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(2);
+    });
   });
   it("播放超过队列上限的歌单时只载入前 1000 首", async () => {
     let queue = { generation: 2, selectedIndex: 0, items: [] as Array<{ id: string; title: string; artist: string; album: string; durationMs: number }> };

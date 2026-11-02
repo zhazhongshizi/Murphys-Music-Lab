@@ -28,6 +28,7 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   text-align: left;
+  white-space: normal;
 }
 
 .provider-library-form__title {
@@ -46,6 +47,7 @@
 }
 
 .provider-library-fieldset {
+  min-inline-size: 0;
   margin: 4px 0 0;
   padding: 12px;
   border: 1px solid rgba(241, 235, 221, 0.14);
@@ -68,6 +70,7 @@
 }
 
 .provider-library-field {
+  min-width: 0;
   flex: 1 1 160px;
   display: grid;
   gap: 5px;
@@ -153,4 +156,36 @@
   border-color: #272727;
   background: #272727;
   color: #f0f0f0;
+}
+
+.player-bar:has(.provider-library-actions),
+.app-shell.app-shell--normal .player-bar:has(.provider-library-actions) {
+  grid-template-columns: minmax(120px, 1fr) minmax(280px, 1.5fr) auto;
+  column-gap: 16px;
+}
+
+.player-bar__library {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.player-bar__library:empty {
+  display: none;
+}
+
+.player-bar__library .provider-library-trigger {
+  min-height: 44px;
+  min-width: 164px;
+  padding: 10px 16px;
+  border-radius: 12px;
+}
+
+.player-bar__library .provider-library-form {
+  top: auto;
+  bottom: calc(100% + 12px);
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  width: min(26rem, calc(100vw - 32px));
+  max-height: min(68vh, calc(100dvh - 180px));
+  overscroll-behavior: contain;
 }

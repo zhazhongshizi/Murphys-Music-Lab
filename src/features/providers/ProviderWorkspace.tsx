@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as api from "../../backend/providersAdapter";
 import { providerSessionRevision } from "../../backend/providerSessions";
 import type {
@@ -79,6 +79,8 @@ export interface RhineProviderSceneState {
 }
 
 export function ProviderWorkspace({
+  source: selectedSource,
+  likesNavigation,
   variant = "default",
   embedded = false,
   onAccount,
@@ -91,6 +93,8 @@ export function ProviderWorkspace({
   openContainerTrigger = 0,
   onRhineSceneChange,
 }: {
+  source?: NewProviderId;
+  likesNavigation?: ReactNode;
   variant?: "default" | "rhine";
   embedded?: boolean;
   onAccount: () => void;
@@ -103,7 +107,9 @@ export function ProviderWorkspace({
   openContainerTrigger?: number;
   onRhineSceneChange?: (scene: RhineProviderSceneState) => void;
 }) {
-  const { source, snapshots, refresh } = useDesktopProviders();
+  const { source: browseSource, snapshots, refresh } = useDesktopProviders();
+  const source = selectedSource ?? browseSource;
+  const likesOnly = embedded && initialSection === "likes";
   const isNewSource = source === "netease" || source === "bilibili";
   const status = isNewSource ? snapshots[source] : undefined;
   const isReady = status?.state === "ready";
@@ -150,10 +156,11 @@ export function ProviderWorkspace({
           <header className="catalog-pane__header">
             <div>
               <span className="section-label">{source === "netease" ? "NETEASE CLOUD MUSIC" : "BILIBILI AUDIO / VIDEO"}</span>
-              <h1>{SOURCE_LABELS[source]}</h1>
-              <p>此来源搜索与个人曲库 · 切换来源不会打断当前播放</p>
+              <h1>{likesOnly ? "喜欢的音乐" : SOURCE_LABELS[source]}</h1>
+              <p>{likesOnly ? `随当前 ${SOURCE_LABELS[source]}账号同步` : "此来源搜索与个人曲库 · 切换来源不会打断当前播放"}</p>
             </div>
           </header>
+          {likesNavigation}
           <div className="catalog-empty provider-empty-card">
             <p role="status">{statusMessage}</p>
             <span>在平台账号面板完成扫码或恢复登录后，即可浏览与管理此来源曲库。</span>
@@ -184,6 +191,7 @@ export function ProviderWorkspace({
       status={status}
       variant={variant}
       embedded={embedded}
+      likesNavigation={likesNavigation}
       onAccount={onAccount}
       onDeck={onDeck}
       onArchive={onArchive}
@@ -202,6 +210,7 @@ function ReadyWorkspace({
   status,
   variant,
   embedded,
+  likesNavigation,
   onAccount,
   onDeck,
   onArchive,
@@ -216,6 +225,7 @@ function ReadyWorkspace({
   status: Extract<ProviderSnapshot, { state: "ready" }>;
   variant: "default" | "rhine";
   embedded: boolean;
+  likesNavigation?: ReactNode;
   onAccount: () => void;
   onDeck?: () => void;
   onArchive?: () => void;
@@ -227,9 +237,13 @@ function ReadyWorkspace({
   onRhineSceneChange?: (scene: RhineProviderSceneState) => void;
 }) {
   const caps = status.capabilities;
-  const tabs = ([...caps.searchKinds, ...caps.libraryKinds] as string[]).filter((t): t is Tab => t in label);
+  const likesOnly = embedded && initialSection === "likes";
+  const availableTabs: readonly string[] = likesOnly
+    ? caps.libraryKinds.filter(kind => kind === "likes")
+    : [...caps.searchKinds, ...caps.libraryKinds];
+  const tabs = availableTabs.filter((t): t is Tab => t in label);
   const [tab, setTab] = useState<Tab>(
-    initialSection !== "search" && tabs.includes(initialSection) ? initialSection : tabs[0] ?? "created",
+    likesOnly ? "likes" : initialSection !== "search" && tabs.includes(initialSection) ? initialSection : tabs[0] ?? "created",
   );
   const prevSection = useRef(initialSection);
   const prevSectionTrigger = useRef(sectionTrigger);
@@ -958,13 +972,13 @@ function ReadyWorkspace({
         <header className="catalog-pane__header">
           <div>
             <span className="section-label">{id === "netease" ? "NETEASE CLOUD CATALOG" : "BILIBILI MEDIA CATALOG"}</span>
-            <h1>{SOURCE_LABELS[id]} · {status.account.displayName}</h1>
+            <h1>{likesOnly ? "喜欢的音乐" : `${SOURCE_LABELS[id]} · ${status.account.displayName}`}</h1>
             <p>
               {container
                 ? `${container.title} · ${container.id} · ${container.itemCount} 项`
                 : video
                   ? `${video.title} · UP：${video.uploader} · ${video.bvid}`
-                  : "此来源搜索与个人曲库"}
+                  : likesOnly ? `随当前 ${SOURCE_LABELS[id]}账号同步 · ${status.account.displayName}` : "此来源搜索与个人曲库"}
             </p>
           </div>
           <div className="playlist-detail__actions">
@@ -979,13 +993,17 @@ function ReadyWorkspace({
           </div>
         </header>
 
-        <nav className="catalog-type-tabs provider-tabs" aria-label="此来源功能">
+        {likesNavigation}
+
+        {!likesOnly && <nav className="catalog-type-tabs provider-tabs" aria-label="此来源功能">
           {tabs.map(t => (
             <button key={t} type="button" aria-pressed={t === tab} onClick={() => navigate(t)}>
               {label[t]}
             </button>
           ))}
-        </nav>
+        </nav>}
+
+        {likesOnly && !tabs.includes("likes") && <p role="status">此来源暂不支持读取喜欢的歌曲。</p>}
 
         {((!container && ["songs", "playlists", "videos"].includes(tab)) || id === "bilibili") && (
           <div className="provider-search-stack">

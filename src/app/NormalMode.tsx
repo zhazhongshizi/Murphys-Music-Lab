@@ -4,7 +4,6 @@ import {
 } from "react";
 import { Icon } from "../components/Icon";
 import { APP_NAME, APP_SHORT_NAME } from "./branding";
-import { ProviderLibraryActions } from "../features/library/ProviderLibraryActions";
 import { SourceNavigation, useDesktopProviders } from "../features/providers/DesktopProviders";
 import { WindowControls } from "../components/WindowControls";
 import { PlayerBar } from "../features/player/PlayerBar";
@@ -77,6 +76,7 @@ function TopBar({
   const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
   const likeNotice = usePlayerSelector(snapshot => snapshot.likeNotice);
   const liked = currentTrack ? likedIds.includes(currentTrack.id) : false;
+  const currentLikesReady = currentTrack?.id.startsWith("netease:") ? neteaseLikesReady : likesReady;
 
   return (
     <header className="top-bar" data-tauri-drag-region>
@@ -99,15 +99,14 @@ function TopBar({
       )}
 
       <div className="top-bar__actions">
-        <ProviderLibraryActions track={currentTrack} />
         <BackendStatus />
         {view === "stage" && likeNotice ? <span role="status">{likeNotice}</span> : null}
         {view === "stage" && currentTrack && !localMusicFormatFromId(currentTrack.id) && !currentTrack.id.startsWith("bilibili:") ? (
           <button
             aria-label={liked ? `取消喜欢《${currentTrack.title}》` : `喜欢《${currentTrack.title}》`}
             aria-pressed={liked}
-            disabled={nativeMode && (!(currentTrack.id.startsWith("netease:") ? neteaseLikesReady : likesReady) || likePendingIds?.includes(currentTrack.id))}
-            title={nativeMode && !likesReady ? "喜欢状态尚未读取，可打开喜欢页重新读取" : undefined}
+            disabled={nativeMode && (!currentLikesReady || likePendingIds?.includes(currentTrack.id))}
+            title={nativeMode && !currentLikesReady ? "喜欢状态尚未读取，可打开喜欢页重新读取" : undefined}
             className={liked ? "icon-button top-bar__liked" : "icon-button icon-button--quiet"}
             onClick={() => playerActions.toggleLike(currentTrack.id)}
             type="button"

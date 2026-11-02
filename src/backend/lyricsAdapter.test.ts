@@ -63,4 +63,10 @@ describe("timed lyrics adapter", () => {
       new LyricsAdapterError("QMG-LYRICS-001"),
     );
   });
+
+  it("accepts provider-scoped NetEase track IDs", async () => {
+    const netease = { ...TIMELINE, trackId: "netease:track:186016" };
+    invokeMock.mockResolvedValue(netease);
+    await expect(getTimedLyrics(netease.trackId, 8)).resolves.toEqual(netease);
+  });
 });

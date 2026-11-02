@@ -29,6 +29,7 @@ enum CoverKind {
     Artist,
     Playlist,
     Bilibili,
+    Netease,
 }
 
 impl CoverKind {
@@ -38,6 +39,7 @@ impl CoverKind {
             Self::Artist => "artist",
             Self::Playlist => "playlist",
             Self::Bilibili => "bilibili",
+            Self::Netease => "netease",
         }
     }
 
@@ -45,7 +47,7 @@ impl CoverKind {
         match self {
             Self::Album => ALBUM_COVER_URL_PREFIX,
             Self::Artist => ARTIST_COVER_URL_PREFIX,
-            Self::Playlist | Self::Bilibili => "",
+            Self::Playlist | Self::Bilibili | Self::Netease => "",
         }
     }
 }
@@ -192,6 +194,9 @@ impl CoverService {
                 lookup(bvid)
             });
         }
+        if raw_key.starts_with("ne_") {
+            return self.get_with_kind(CoverKind::Netease, raw_key);
+        }
         self.get_with_kind(CoverKind::Album, raw_key)
     }
 
@@ -217,6 +222,22 @@ impl CoverService {
             .playlist_urls
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if urls.len() >= 2048 && !urls.contains_key(&key) {
+            urls.pop_first();
+        }
+        urls.insert(key.clone(), url.to_owned());
+        Some(key)
+    }
+
+    /// Registers a NetEase album image URL; only *.music.126.net over https is accepted.
+    pub fn register_netease(&self, url: &str) -> Option<String> {
+        let parsed = Url::parse(url).ok()?;
+        let host = parsed.host_str()?;
+        if parsed.scheme() != "https" || !host.ends_with(".music.126.net") {
+            return None;
+        }
+        let key = format!("ne_{:x}", Sha256::digest(url.as_bytes()));
+        let mut urls = self.playlist_urls.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if urls.len() >= 2048 && !urls.contains_key(&key) {
             urls.pop_first();
         }
@@ -312,7 +333,7 @@ impl CoverService {
     }
 
     fn trusted_url(&self, kind: CoverKind, key: &str) -> Result<TrustedRemoteUrl, CoverError> {
-        let value = if kind == CoverKind::Playlist {
+        let value = if matches!(kind, CoverKind::Playlist | CoverKind::Netease) {
             self.playlist_urls
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -596,6 +617,23 @@ mod tests {
         assert!(service
             .register_playlist("http://qpic.y.qq.com/cover")
             .is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn netease_cover_registers_only_music_126_net_and_fetches_through_get() {
+        let root = root("netease-kind");
+        let transport = Arc::new(FakeTransport::new(vec![jpeg_response()]));
+        let service =
+            CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone())
+                .unwrap();
+        let url = "https://p1.music.126.net/fixture/300.jpg";
+        let key = service.register_netease(url).unwrap();
+        assert!(key.starts_with("ne_"));
+        assert!(service.get(&key).is_ok());
+        assert_eq!(*transport.calls.lock().unwrap(), vec![url.to_owned()]);
+        assert!(service.register_netease("https://evil.example/a.jpg").is_none());
+        assert!(service.register_netease("http://p1.music.126.net/a.jpg").is_none());
         let _ = fs::remove_dir_all(root);
     }
 

@@ -15,9 +15,10 @@ pub fn registration(root: &Path, node: &Path) -> Result<Registration, Error> {
     Registration::with_profile(OnlineProviderId::Netease,"0.1.0".into(),METHODS.iter().map(|m|m.to_string()).collect(),
         ProviderLaunch::new(node).map_err(|_| Error::Unavailable)?.args([main.as_os_str()]).current_dir(root).map_err(|_| Error::Unavailable)?,profile)
 }
-pub struct NeteaseService { pub registry: Arc<ProviderRegistry> }
+pub struct NeteaseService { pub registry: Arc<ProviderRegistry>, covers: std::sync::OnceLock<Arc<crate::cover::CoverService>> }
 impl NeteaseService {
-    pub fn new(registry: Arc<ProviderRegistry>) -> Self { Self {registry} }
+    pub fn new(registry: Arc<ProviderRegistry>) -> Self { Self {registry, covers: std::sync::OnceLock::new()} }
+    pub fn with_covers(self, covers: Option<Arc<crate::cover::CoverService>>) -> Self { if let Some(c)=covers {let _=self.covers.set(c);} self }
     pub fn ready_generation(&self) -> Result<u64, Error> {
         self.registry.ready_generation(OnlineProviderId::Netease)
     }
@@ -40,9 +41,9 @@ impl NeteaseService {
         if let Some(t)=params.get_mut("songId") {*t=Value::String(raw_song(t.as_str().ok_or(Error::Schema)?)?.into());}
         let v=self.call(generation,method,params)?;
         if method=="library.container" {return public_container(&v);}
-        if method=="song.detail" { return public_track(&v); }
+        if method=="song.detail" { return public_track(&v,self.covers.get().map(|c|c.as_ref())); }
         let tracks=matches!(method,"search.songs"|"library.tracks"|"library.likes");
-        let items:Result<Vec<_>,_>=v["items"].as_array().ok_or(Error::Schema)?.iter().map(|item|if tracks{public_track(item)}else{public_container(item)}).collect();
+        let items:Result<Vec<_>,_>=v["items"].as_array().ok_or(Error::Schema)?.iter().map(|item|if tracks{public_track(item,self.covers.get().map(|c|c.as_ref()))}else{public_container(item)}).collect();
         let page = v["page"].as_u64().filter(|p| *p >= 1).ok_or(Error::Schema)?;
         let has_more = v["hasMore"].as_bool().ok_or(Error::Schema)?;
         let total = if v["total"].is_null() {
@@ -135,7 +136,7 @@ pub fn queue_track_from_provider_track(v: &Value) -> Result<crate::queue::QueueT
     crate::queue::validate_items(std::slice::from_ref(&track)).map_err(|_| Error::Schema)?;
     Ok(track)
 }
-fn public_track(v:&Value)->Result<Value,Error> {
+fn public_track(v:&Value,covers:Option<&crate::cover::CoverService>)->Result<Value,Error> {
     let id=v["ref"]["songId"].as_str().ok_or(Error::Schema)?;
     let id=identity::TrackRef::netease(id).map_err(|_|Error::Schema)?;
     let title=v["title"].as_str().filter(|s|!s.is_empty()&&s.chars().count()<=512).ok_or(Error::Schema)?;
@@ -143,7 +144,9 @@ fn public_track(v:&Value)->Result<Value,Error> {
     let album=v["album"].as_str().filter(|s|s.chars().count()<=512).ok_or(Error::Schema)?;
     let duration_ms=v["durationMs"].as_u64().filter(|d|*d<=86_400_000).ok_or(Error::Schema)?;
     let availability=v["availability"].as_str().filter(|s|matches!(*s,"unknown"|"unavailable"|"authenticationRequired"|"deleted"|"permissionDenied"|"processing"|"noAudio")).ok_or(Error::Schema)?;
-    Ok(json!({"providerId":"netease","id":id.id(),"title":title,"artist":artist,"creatorKind":"artist","album":album,"durationMs":duration_ms,"availability":availability}))
+    let mut out=json!({"providerId":"netease","id":id.id(),"title":title,"artist":artist,"creatorKind":"artist","album":album,"durationMs":duration_ms,"availability":availability});
+    if let Some(key)=v["coverUrl"].as_str().and_then(|u|covers?.register_netease(u)) {out["coverCacheKey"]=Value::String(key);}
+    Ok(out)
 }
 fn public_container(v:&Value)->Result<Value,Error> {
     let id=format!("netease:playlist:{}",v["id"].as_str().ok_or(Error::Schema)?);
