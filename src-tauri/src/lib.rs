@@ -9,6 +9,8 @@ pub mod diagnostics;
 mod file_logging;
 #[cfg(windows)]
 mod global_shortcuts;
+#[cfg(windows)]
+mod windows_app_identity;
 pub mod library;
 mod listening_analytics;
 pub mod listening_stats;
@@ -1092,6 +1094,17 @@ pub fn run() {
             window.create = false;
         }
     }
+    #[cfg(windows)]
+    let shell_identity = windows_app_identity::AppIdentity::new(
+        &context.config().identifier,
+        context.config().product_name.as_deref().unwrap_or("Music Lab"),
+        cfg!(debug_assertions),
+    );
+    // The process identity must precede both the first window and MediaPlayer.
+    #[cfg(windows)]
+    if shell_identity.set_process().is_err() {
+        eprintln!("windows_app_identity_process_failed");
+    }
     let builder = tauri::Builder::default();
     #[cfg(windows)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -1107,6 +1120,9 @@ pub fn run() {
             file_logging::initialize();
             #[cfg(windows)]
             {
+                if !release_smoke::active() && shell_identity.ensure_shortcut().is_err() {
+                    file_logging::event("windows_app_identity_shortcut_failed");
+                }
                 app.manage(AppState::initialize(app.handle()));
                 desktop::install_tray(app.handle())?;
                 if !release_smoke::active() {

@@ -14,7 +14,7 @@ export async function playHistoryEntry(entry: HistoryEntry): Promise<void> {
   await playerActions.hydrateNative(queue);
   const index = queue.items.findIndex((track) => track.id === entry.id);
   if (index < 0) throw new Error("历史歌曲未能入队");
-  const result = await nativeQueuePlay(index);
+  const result = await nativeQueuePlay(entry.id, queue.generation);
   if (result) {
     if (result.playback.bitrate === undefined) await playerActions.hydrateNative(result.queue, result.playback.player, result.playback.quality);
     else await playerActions.hydrateNative(result.queue, result.playback.player, result.playback.quality, result.playback.bitrate);

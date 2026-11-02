@@ -1,0 +1,15 @@
+{
+  "state": "playing",
+  "generation": 8,
+  "positionMs": 1200,
+  "durationMs": 240000,
+  "volume": 1.0,
+  "muted": false,
+  "currentTrack": {
+    "id": "bilibili:video:BV17x411w7KC:123",
+    "providerId": "bilibili",
+    "title": "Bilibili regression track",
+    "artist": "Fixture uploader"
+  },
+  "failure": null
+}

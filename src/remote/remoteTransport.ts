@@ -310,13 +310,13 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
       break;
     }
     case "queue_play": {
-      const track = latest.queue.items[Number(payload.index)];
-      if (!track) throw new Error("队列已变化");
+      const track = latest.queue.items.find(item => item.id === payload.trackId);
+      if (!track || payload.queueGeneration !== latest.queue.generation) throw new Error("队列已变化");
       const inferred = trackProvider(track.id);
       body =
         inferred === "netease" || inferred === "bilibili"
-          ? { action: "playTrack", providerId: track.providerId ?? inferred, id: track.id, queue_generation: latest.queue.generation }
-          : { action: "playTrack", id: track.id, queue_generation: latest.queue.generation };
+          ? { action: "playTrack", providerId: track.providerId ?? inferred, id: track.id, queue_generation: payload.queueGeneration }
+          : { action: "playTrack", id: track.id, queue_generation: payload.queueGeneration };
       break;
     }
     default: throw new Error("此操作请在电脑端完成");

@@ -73,7 +73,7 @@ it("enqueues by catalog ID and uses the returned queue generation for immediate 
   await invokeRemote("queue_enqueue", { item });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ command: "queue_enqueue", id: "songB" });
   fetcher.mockResolvedValueOnce(new Response("null"));
-  await invokeRemote("queue_play", { index: 1 });
+  await invokeRemote("queue_play", { trackId: "songB", queueGeneration: 8 });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ action: "playTrack", id: "songB", queue_generation: 8 });
 });
 
@@ -84,7 +84,7 @@ it("saved queue switching updates remote state before the next track command", a
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify(switched)));
   await invokeRemote("personal_library",{request:{action:"loadQueue",name:"work"}});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"personal_library",request:{action:"loadQueue",name:"work"}});
-  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:0});
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{trackId:"savedSong",queueGeneration:12});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"savedSong",queue_generation:12});
 });
 it("radar start uses the native session once and updates stable IDs for following controls",async()=>{
@@ -97,7 +97,7 @@ it("radar start uses the native session once and updates stable IDs for followin
   expect(fetcher.mock.calls.at(-1)![0]).toBe("/api/library");
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"radar_start"});
   expect(fetcher).toHaveBeenCalledTimes(2);
-  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:9});
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{trackId:"radar-10",queueGeneration:15});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"radar-10",queue_generation:15});
 });
 
@@ -109,7 +109,7 @@ it("batch enqueue sends stable IDs once and updates the queue used for playback"
   await invokeRemote("queue_enqueue_many",{items:[queue.items.at(-1)!]});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"queue_enqueue_many",ids:["batchSong"]});
   expect(fetcher).toHaveBeenCalledTimes(2);
-  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:queue.items.length-1});
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{trackId:queue.items.at(-1)!.id,queueGeneration:queue.generation});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"batchSong",queue_generation:13});
 });
 
@@ -119,7 +119,7 @@ it("memory tape enqueue updates the stable queue used by immediate playback",asy
   const queue={generation:14,selectedIndex:0,items:[...state.queue.items,{id:"tapeSong",title:"Tape song",artist:"Artist",album:"",durationMs:0}]};
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify({queue,acceptedIds:["tapeSong"],skippedIds:[]})));
   await invokeRemote("personal_library",{request:{action:"memoryTapeEnqueue",month:"2026-10",ids:["tapeSong"]}});
-  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{index:queue.items.length-1});
+  fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{trackId:queue.items.at(-1)!.id,queueGeneration:queue.generation});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"tapeSong",queue_generation:14});
 });
 
@@ -131,9 +131,19 @@ it("uses stable queue IDs and player generations for writes", async () => {
   await invokeRemote("player_seek", { positionMs: 99 });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ action: "seek", position_ms: 99, generation: 4 });
   fetcher.mockResolvedValue(new Response("null"));
-  await invokeRemote("queue_play", { index: 0 });
+  await invokeRemote("queue_play", { trackId: "songA", queueGeneration: 7 });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ action: "playTrack", id: "songA", queue_generation: 7 });
   await expect(invokeRemote("auth_logout")).rejects.toThrow("此操作请在电脑端完成");
+});
+
+it("rejects a stale queue target without replacing its identity with the current index", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(state)));
+  vi.stubGlobal("fetch", fetcher);
+  await connectRemote("test-code");
+  const before = fetcher.mock.calls.length;
+  await expect(invokeRemote("queue_play", { trackId: "songA", queueGeneration: 6 })).rejects.toThrow("队列已变化");
+  await expect(invokeRemote("queue_play", { trackId: "removed", queueGeneration: 7 })).rejects.toThrow("队列已变化");
+  expect(fetcher).toHaveBeenCalledTimes(before);
 });
 
 it("never replays a failed write, and rejects controls until state recovers", async () => {
@@ -344,7 +354,7 @@ it("routes multi-provider read-only commands with explicit providerId and reject
   });
 
   fetcher.mockResolvedValueOnce(new Response("null"));
-  await invokeRemote("queue_play", { index: 2 });
+  await invokeRemote("queue_play", { trackId: "bilibili:video:BV17x411w7KC:124", queueGeneration: 9 });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({
     action: "playTrack",
     providerId: "bilibili",

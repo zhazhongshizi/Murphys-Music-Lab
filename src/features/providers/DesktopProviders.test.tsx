@@ -116,10 +116,76 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     await open(variant, "bilibili");
     fireEvent.change(screen.getByLabelText("BV/AV 或视频链接"), { target: { value: video.bvid } }); fireEvent.click(screen.getByRole("button", { name: "读取视频分 P" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: part.title }));
-    expect(screen.getAllByText(/Bilibili.*P2.*第二 P/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bilibili · P2").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("Bilibili · P2 · 第二 P").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /选中加入队列/ }));
     await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([part])); expect(nativeQueuePlay).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "喜欢的歌曲" })).not.toBeInTheDocument();
+  });
+  async function searchVideo() {
+    await open(variant, "bilibili");
+    fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "视频" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    return screen.findByRole("button", { name: "播放视频" });
+  }
+  it.each([true, false])("single-part video acts directly without a part picker (play=%s)", async play => {
+    const single: ProviderTrack = { ...part, video: { ...part.video!, partNumber: 1 } };
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([single]));
+    vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [single] });
+    await searchVideo();
+    fireEvent.click(screen.getByRole("button", { name: play ? "播放视频" : "加入队列" }));
+    await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([single]));
+    if (play) await waitFor(() => expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(single.id, 1));
+    else expect(nativeQueuePlay).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "全部分 P 加入队列" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "播放视频" })).toBeInTheDocument();
+    expect(api.nativeProviderVideoParts).toHaveBeenCalledExactlyOnceWith(video.bvid, 1, 100);
+  });
+  it.each([false, true])("multiple or paginated parts open the picker without queueing (hasMore=%s)", async hasMore => {
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page(hasMore ? [part] : [part, { ...part, id: "bilibili:video:BV17x411w7KC:125" }], hasMore));
+    const button = await searchVideo();
+    fireEvent.click(button);
+    await screen.findByRole("button", { name: "全部分 P 加入队列" });
+    expect(api.nativeProviderVideoParts).toHaveBeenCalledExactlyOnceWith(video.bvid, 1, 100);
+    expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+  });
+  it("single-part favorite videos play directly from the folder", async () => {
+    vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [part] });
+    await open(variant, "bilibili");
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    fireEvent.click(await screen.findByRole("button", { name: "播放视频" }));
+    await waitFor(() => expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(part.id, 1));
+    expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([part]);
+    expect(screen.queryByRole("button", { name: "全部分 P 加入队列" })).not.toBeInTheDocument();
+  });
+  it("unavailable single-part videos do not play or queue", async () => {
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([{ ...part, availability: "deleted" }]));
+    fireEvent.click(await searchVideo());
+    await screen.findByText("此视频当前不可播放或入队");
+    expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+  });
+  it("video read failure stays in the list and does not queue", async () => {
+    vi.mocked(api.nativeProviderVideoParts).mockRejectedValue(new Error("read failed"));
+    fireEvent.click(await searchVideo());
+    await screen.findByText("视频读取失败，请重试；未播放或入队");
+    expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "播放视频" })).toBeEnabled();
+  });
+  it("leaving the video list discards a delayed single-part playback request", async () => {
+    const d = deferred<ProviderPage<ProviderTrack>>();
+    vi.mocked(api.nativeProviderVideoParts).mockReturnValue(d.promise);
+    const button = await searchVideo();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(api.nativeProviderVideoParts).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    await act(async () => { d.resolve(page([part])); });
+    expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
   });
   it("a later link input invalidates an earlier video resolution", async () => {
     const d = deferred<typeof video>(); vi.mocked(api.nativeProviderResolveVideo).mockReturnValueOnce(d.promise);
@@ -140,7 +206,9 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
   it("whole playlist collection is bounded and commits once after complete pagination", async () => {
     vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _c, n = 1, size) => size === 100 ? { ...page([n === 1 ? song : { ...song, id: "netease:track:2", title: "第二首" }], n === 1, n), total: 2 } : page([song]));
     await open(variant); fireEvent.click(screen.getByRole("button", { name: "自建" })); fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
-    fireEvent.click(await screen.findByRole("button", { name: "全部歌曲加入队列" }));
+    const enqueueAll = await screen.findByRole("button", { name: "全部歌曲加入队列" });
+    await waitFor(() => expect(enqueueAll).toBeEnabled());
+    fireEvent.click(enqueueAll);
     await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledTimes(1)); expect(vi.mocked(api.nativeProviderEnqueueTracks).mock.calls[0]![0]).toHaveLength(2);
   });
   it("QR returned after closing is cancelled and never polled", async () => {
@@ -253,10 +321,11 @@ it("Remote does not expose desktop source navigation or query desktop accounts",
   expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument(); expect(api.nativeProviderStatus).not.toHaveBeenCalled();
 });
 it("Rhine returns from a favorite video to its folder without duplicating the back row", async () => {
+  vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part, { ...part, id: "bilibili:video:BV17x411w7KC:125" }]));
   await open("rhine", "bilibili");
   fireEvent.click(screen.getByRole("button", { name: "自建" }));
   fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
-  fireEvent.click(await screen.findByRole("button", { name: "选择分 P" }));
+  fireEvent.click(await screen.findByRole("button", { name: "播放视频" }));
   await screen.findByRole("button", { name: "全部分 P 加入队列" });
   expect(screen.queryByRole("button", { name: "返回视频列表" })).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "自建容器" })).not.toBeInTheDocument();
@@ -276,4 +345,121 @@ it("a concurrent session observation gets one bounded local snapshot reread and 
 it("source labels preserve four platform identities and video part labels", () => {
   render(<><SourceBadge track={song} /><SourceBadge track={part} /><SourceBadge track={{ id: "qqSong" }} /><SourceBadge track={{ id: `local_${"a".repeat(64)}_mp3` }} /></>);
   expect(screen.getByText("网易云")).toBeInTheDocument(); expect(screen.getByText(/Bilibili.*P2/)).toBeInTheDocument(); expect(screen.getByText("QQ 音乐")).toBeInTheDocument(); expect(screen.getByText("本地音乐")).toBeInTheDocument();
+});
+
+async function openRhinePlaylist(id: NewProviderId) {
+  await open("rhine", id);
+  fireEvent.click(screen.getByRole("button", { name: "自建" }));
+  fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+  return screen.findByRole("region", { name: "歌单详情" });
+}
+it("Rhine Netease uses the QQ detail layout and searches every page before selecting results", async () => {
+  const second = { ...song, id: "netease:track:2", title: "第二首", artist: "目标歌手" };
+  vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _container, n=1, size) =>
+    size === 50 ? { ...page([n === 1 ? song : second], n === 1, n), total: 2 } : page([song]));
+  const detail = await openRhinePlaylist("netease");
+  expect(detail).toHaveClass("rhine-document", "rhine-playlist-document");
+  expect(detail.querySelector(".provider-rhine-results")).toBeNull();
+  const input = within(detail).getByRole("searchbox", { name: "在歌单内搜索" });
+  fireEvent.change(input, { target: { value: "目标歌手" } }); fireEvent.submit(input.closest("form")!);
+  await within(detail).findByText("第二首");
+  expect(within(detail).queryByText("网易歌曲")).not.toBeInTheDocument();
+  expect(api.nativeProviderLibraryTracks).toHaveBeenCalledWith("netease", "netease:playlist:7", 2, 50);
+  expect(within(detail).getByText("第二首").closest("li")).toHaveAttribute("value", "2");
+  fireEvent.click(within(detail).getByRole("checkbox", { name: "全选本页" }));
+  expect(within(detail).getByText("已选 1 首")).toBeInTheDocument();
+  fireEvent.click(within(detail).getByRole("button", { name: "清空选择" }));
+  expect(within(detail).getByText("已选 0 首")).toBeInTheDocument();
+  fireEvent.click(within(detail).getByRole("button", { name: "清除" }));
+  await within(detail).findByText("网易歌曲");
+  expect(api.nativeProviderSearchSongs).not.toHaveBeenCalled();
+});
+it("Rhine favorite search finds videos by UP on later pages without a global search", async () => {
+  const second = { ...video, bvid: "BV17x411w7KD", title: "后页视频", uploader: "目标 UP" };
+  vi.mocked(api.nativeProviderLibraryVideos).mockImplementation(async (_container, n=1) => ({ ...page([n === 1 ? video : second], n === 1, n), total: 2 }));
+  const detail = await openRhinePlaylist("bilibili");
+  const input = within(detail).getByRole("searchbox", { name: "在歌单内搜索" });
+  fireEvent.change(input, { target: { value: "目标 UP" } }); fireEvent.submit(input.closest("form")!);
+  await within(detail).findByText("后页视频");
+  expect(within(detail).queryByRole("button", { name: "从当前容器移出选中" })).not.toBeInTheDocument();
+  expect(api.nativeProviderSearchVideos).not.toHaveBeenCalled();
+  fireEvent.click(within(detail).getByRole("button", { name: "播放视频" }));
+  await waitFor(() => expect(api.nativeProviderVideoParts).toHaveBeenCalledWith(second.bvid, 1, 100));
+  expect(detail.querySelector(".rhine-song-actions button")?.textContent).toBe("");
+});
+it("Rhine full-playlist search failure exposes retry without actionable partial results", async () => {
+  vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _container, n=1, size) => {
+    if (size !== 50) return page([song]);
+    if (n === 1) return page([song], true);
+    throw new Error("page failed");
+  });
+  const detail = await openRhinePlaylist("netease");
+  const input = within(detail).getByRole("searchbox", { name: "在歌单内搜索" });
+  fireEvent.change(input, { target: { value: "网易" } }); fireEvent.submit(input.closest("form")!);
+  await within(detail).findByRole("alert");
+  expect(within(detail).queryByRole("button", { name: "播放此项" })).not.toBeInTheDocument();
+  vi.mocked(api.nativeProviderLibraryTracks).mockResolvedValue(page([song]));
+  fireEvent.click(within(detail).getByRole("button", { name: "重试" }));
+  await within(detail).findByText("网易歌曲");
+  expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+});
+it("Rhine Netease play-all reads the complete playlist once before starting its first track", async () => {
+  const detail = await openRhinePlaylist("netease");
+  const button = await within(detail).findByRole("button", { name: "播放全部" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  await waitFor(() => expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(song.id, 1));
+  expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([song]);
+});
+
+it.each(["read", "enqueue", "hydrate"] as const)("leaving a playlist cancels play-all after %s and releases its busy state", async phase => {
+  const detail = await openRhinePlaylist("netease");
+  const button = await within(detail).findByRole("button", { name: "播放全部" });
+  await waitFor(() => expect(button).toBeEnabled());
+  const gate = deferred<void>();
+  const queue = { generation: 1, selectedIndex: 0, items: [api.providerTrackToQueueTrack(song)] };
+  if (phase === "read") vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _container, _page, size) => {
+    if (size === 100) await gate.promise;
+    return page([song]);
+  });
+  if (phase === "enqueue") vi.mocked(api.nativeProviderEnqueueTracks).mockImplementation(async () => { await gate.promise; return queue; });
+  if (phase === "hydrate") vi.mocked(playerActions.hydrateNative).mockImplementation(async () => { await gate.promise; });
+  fireEvent.click(button);
+  await waitFor(() => {
+    if (phase === "read") expect(api.nativeProviderLibraryTracks).toHaveBeenCalledWith("netease", "netease:playlist:7", 1, 100);
+    else if (phase === "enqueue") expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledTimes(1);
+    else expect(playerActions.hydrateNative).toHaveBeenCalledTimes(1);
+  });
+  fireEvent.click(within(detail).getByRole("button", { name: "返回容器列表" }));
+  await screen.findByRole("button", { name: "打开此容器" });
+  await act(async () => { gate.resolve(); });
+  expect(nativeQueuePlay).not.toHaveBeenCalled();
+  if (phase === "read") expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "打开此容器" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "播放全部" })).toBeEnabled());
+});
+
+it("Rhine playlist refresh invalidates searched content and clears selection", async () => {
+  const detail = await openRhinePlaylist("netease");
+  const input = within(detail).getByRole("searchbox", { name: "在歌单内搜索" });
+  fireEvent.change(input, { target: { value: "网易" } }); fireEvent.submit(input.closest("form")!);
+  await within(detail).findByText("网易歌曲");
+  fireEvent.click(within(detail).getByRole("checkbox", { name: "网易歌曲" }));
+  vi.mocked(api.nativeProviderLibraryTracks).mockResolvedValue(page([{ ...song, id: "netease:track:3", title: "网易刷新歌曲" }]));
+  fireEvent.click(within(detail).getByRole("button", { name: "刷新歌单" }));
+  await within(detail).findByText("网易刷新歌曲");
+  expect(within(detail).queryByText("网易歌曲")).not.toBeInTheDocument();
+  expect(within(detail).getByText("已选 0 首")).toBeInTheDocument();
+});
+it("leaving a Rhine playlist discards a delayed complete-search response", async () => {
+  const d = deferred<ProviderPage<ProviderTrack>>();
+  vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _container, _n, size) => size === 50 ? d.promise : page([song]));
+  const detail = await openRhinePlaylist("netease");
+  const input = within(detail).getByRole("searchbox", { name: "在歌单内搜索" });
+  fireEvent.change(input, { target: { value: "网易" } }); fireEvent.submit(input.closest("form")!);
+  fireEvent.click(within(screen.getByRole("navigation", { name: "音乐来源" })).getByRole("button", { name: "Bilibili" }));
+  await act(async () => { d.resolve(page([song])); });
+  expect(screen.queryByText("网易歌曲")).not.toBeInTheDocument();
+  expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+  expect(api.nativeProviderWrite).not.toHaveBeenCalled();
 });

@@ -115,13 +115,14 @@ describe("native queue adapter", () => {
       queue: SNAPSHOT,
       playback: { quality: "320k", expiresInSeconds: 7_200, player: PLAYER },
     });
-    const result = await nativeQueuePlay(0);
+    const result = await nativeQueuePlay(TRACK.id, SNAPSHOT.generation);
     expect(result).not.toBeNull();
     if (!result) throw new Error("expected queue play result");
     expect(result.playback.quality).toBe("320k");
     expect(JSON.stringify(result)).not.toContain("url");
     expect(invokeMock).toHaveBeenCalledWith(QUEUE_COMMANDS.play, {
-      index: 0,
+      trackId: TRACK.id,
+      queueGeneration: SNAPSHOT.generation,
       preferredQuality: "auto",
     });
   });

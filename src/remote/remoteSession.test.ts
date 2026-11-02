@@ -40,7 +40,7 @@ it("preserves an enqueued track when an older poll finishes", async () => {
   resolve(new Response(JSON.stringify(initial)));
   expect((await poll as ReturnType<typeof state>).queue.generation).toBe(8);
   fetcher.mockResolvedValueOnce(new Response("null"));
-  await expect(invokeRemote("queue_play", { index: 1 })).resolves.toBeNull();
+  await expect(invokeRemote("queue_play", { trackId: "b", queueGeneration: 8 })).resolves.toBeNull();
 });
 
 it("rejects an old library body before it can overwrite a new connection", async () => {
@@ -57,7 +57,7 @@ it("rejects an old library body before it can overwrite a new connection", async
   resolve({ ...state(8, "a").queue, items: [item("a"), item("b")] });
   await rejected;
   fetcher.mockResolvedValueOnce(new Response("null"));
-  await invokeRemote("queue_play", { index: 0 });
+  await invokeRemote("queue_play", { trackId: "new", queueGeneration: 1 });
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ action: "playTrack", id: "new", queue_generation: 1 });
 });
 

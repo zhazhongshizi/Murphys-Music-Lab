@@ -866,6 +866,15 @@ impl PlaybackSession {
         id: &str,
         generation: u64,
     ) -> Result<SessionPlayResult, PlaybackSessionError> {
+        self.play_track_checked(id, generation, PlaybackQuality::Auto)
+    }
+
+    pub(crate) fn play_track_checked(
+        &self,
+        id: &str,
+        generation: u64,
+        quality: PlaybackQuality,
+    ) -> Result<SessionPlayResult, PlaybackSessionError> {
         let (intent, track) = {
             let _operation = self
                 .operation
@@ -878,7 +887,7 @@ impl PlaybackSession {
                 .ok_or(PlaybackSessionError::Superseded)?;
             (self.new_play_intent(), track)
         };
-        self.play_selected(intent, track, PlaybackQuality::Auto)
+        self.play_selected(intent, track, quality)
     }
 
     pub fn previous(&self) -> Result<Option<SessionPlayResult>, PlaybackSessionError> {
@@ -3230,6 +3239,31 @@ mod tests {
         );
         assert_eq!(test.session.snapshot(), before);
         assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn checked_desktop_play_rejects_reordered_or_replaced_queues_before_resolving() {
+        let (test, _) = failure_session(&[]);
+        let old = test.session.snapshot().queue;
+        test.session.queue.move_item(1, 0).unwrap();
+        let moved = test.session.snapshot();
+        assert_eq!(
+            test.session.play_track_checked("two", old.generation, PlaybackQuality::Kbps320),
+            Err(PlaybackSessionError::Superseded)
+        );
+        assert_eq!(test.session.snapshot(), moved);
+        assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+        let played = test.session.play_track_checked("two", moved.queue.generation, PlaybackQuality::Kbps320).unwrap();
+        assert_eq!(played.playback.player.current_track.unwrap().id, "two");
+        assert_eq!(played.requested_quality, "320k");
+        assert_eq!(test.requests.load(Ordering::SeqCst), 1);
+        let old = test.session.snapshot().queue;
+        test.session.replace_queue(vec![queue_track("three")]).unwrap();
+        let replaced = test.session.snapshot();
+        assert_eq!(test.session.play_track_checked("two", old.generation, PlaybackQuality::Kbps320), Err(PlaybackSessionError::Superseded));
+        assert_eq!(test.session.play_track_checked("two", replaced.queue.generation, PlaybackQuality::Kbps320), Err(PlaybackSessionError::Superseded));
+        assert_eq!(test.session.snapshot(), replaced);
+        assert_eq!(test.requests.load(Ordering::SeqCst), 1);
     }
 
     #[test]

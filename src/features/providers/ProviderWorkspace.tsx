@@ -19,6 +19,8 @@ import { SongCover } from "../rhine/SongCover";
 import { AlbumArtwork, type ArtworkTrack } from "../stage/AlbumArtwork";
 import { SOURCE_LABELS, useDesktopProviders } from "./DesktopProviders";
 import { SourceBadge } from "./SourceBadge";
+import { ProviderPlaylistDetail } from "./ProviderPlaylistDetail";
+import { RhinePlaylistSelection } from "../rhine/RhinePlaylistView";
 import { ArchiveSearchHeading, ArchiveSearchBody } from "../rhine/ArchiveSearchLayout";
 import { CatalogSearchInput } from "../catalog/CatalogSearchInput";
 import { SearchHistoryList } from "../library/searchHistory";
@@ -249,7 +251,9 @@ function ReadyWorkspace({
   const [container, setContainer] = useState<ProviderContainer | null>(null);
   const [video, setVideo] = useState<ProviderVideo | null>(null);
   const [partsPage, setPartsPage] = useState(1);
+  const [partsError, setPartsError] = useState(false);
   const [parts, setParts] = useState<ProviderPage<ProviderTrack> | null>(null);
+  const initialParts = useRef<{ bvid: string; data: ProviderPage<ProviderTrack> } | null>(null);
   const [selected, setSelected] = useState<Map<string, ProviderTrack>>(new Map());
   const [activeTrackId, setActiveTrackId] = useState("");
   const [localContainerIdx, setLocalContainerIdx] = useState(0);
@@ -287,7 +291,7 @@ function ReadyWorkspace({
     setLoading(true);
     const read = container
       ? id === "netease"
-        ? api.nativeProviderLibraryTracks(id, container.id, page, 50)
+        ? api.nativeProviderLibraryTracks(id, container.id, page, variant === "rhine" ? 20 : 50)
         : api.nativeProviderLibraryVideos(container.id, page, 20)
       : tab === "songs" && id === "netease"
         ? api.nativeProviderSearchSongs(id, query, page, 50)
@@ -319,14 +323,21 @@ function ReadyWorkspace({
   useEffect(() => {
     let active = true;
     setParts(null);
+    setPartsError(false);
     if (!video) return;
+    const seed = initialParts.current;
+    initialParts.current = null;
+    if (seed?.bvid === video.bvid && partsPage === 1) {
+      setParts(seed.data);
+      return;
+    }
     void api
       .nativeProviderVideoParts(video.bvid, partsPage, 100)
       .then(data => {
         if (active && current()) setParts(data);
       })
       .catch(() => {
-        if (active && current()) setNotice("分 P 读取失败，请手动刷新");
+        if (active && current()) { setPartsError(true); setNotice("分 P 读取失败，请手动刷新"); }
       });
     return () => {
       active = false;
@@ -399,19 +410,56 @@ function ReadyWorkspace({
     }
   }
 
+  async function openVideo(row: ProviderVideo, play: boolean) {
+    if (pending.current || !current()) return;
+    const token = ++selection.current;
+    pending.current = true;
+    setBusy(true);
+    setNotice("正在读取视频…");
+    let single: ProviderTrack | undefined;
+    try {
+      const data = await api.nativeProviderVideoParts(row.bvid, 1, 100);
+      if (!current() || token !== selection.current) return;
+      if (data.page !== 1 || !data.items.length) throw new Error("video_parts");
+      if (!data.hasMore && data.items.length === 1 && (data.total === null || data.total === 1)) {
+        single = data.items[0];
+        if (!single || !usable(single)) {
+          setNotice("此视频当前不可播放或入队");
+          return;
+        }
+      } else {
+        initialParts.current = { bvid: row.bvid, data };
+        setSelected(new Map());
+        setLastWrite(null);
+        setPartsPage(1);
+        setVideo(row);
+        setNotice(play ? "此视频有多个分 P，请选择要播放的内容" : "此视频有多个分 P，请选择要加入队列的内容");
+      }
+    } catch {
+      if (current() && token === selection.current) setNotice("视频读取失败，请重试；未播放或入队");
+    } finally {
+      pending.current = false;
+      if (current()) setBusy(false);
+    }
+    if (single && current() && token === selection.current) await enqueue([single], play);
+  }
+
   async function enqueue(tracks: readonly ProviderTrack[], play: boolean) {
     if (pending.current || !current() || !tracks.length || tracks.some(t => !usable(t))) return;
+    const token = selection.current;
+    const active = () => current() && token === selection.current;
     pending.current = true;
     setBusy(true);
     try {
       const queue = await api.nativeProviderEnqueueTracks(tracks);
-      if (!current()) return;
+      if (!active()) return;
       await playerActions.hydrateNative(queue);
+      if (!active()) return;
       if (play) {
         const index = queue.items.findIndex(t => t.id === tracks[0]!.id);
         if (index < 0) throw new Error("queue_target");
-        const playback = await nativeQueuePlay(index);
-        if (playback && current()) {
+        const playback = await nativeQueuePlay(tracks[0]!.id, queue.generation);
+        if (playback && active()) {
           await playerActions.hydrateNative(
             playback.queue,
             playback.playback.player,
@@ -420,11 +468,11 @@ function ReadyWorkspace({
           );
         }
       }
-      if (current()) {
+      if (active()) {
         setNotice(play ? `已请求播放：${tracks[0]!.title}` : `已将 ${tracks.length} 项加入混合队列`);
       }
     } catch {
-      if (current()) setNotice("播放或入队失败，请检查此来源登录与队列容量");
+      if (active()) setNotice("播放或入队失败，请检查此来源登录与队列容量");
     } finally {
       pending.current = false;
       if (current()) setBusy(false);
@@ -433,24 +481,29 @@ function ReadyWorkspace({
 
   async function enqueueAll() {
     if (!video || pending.current || !current()) return;
+    const token = selection.current;
+    const active = () => current() && token === selection.current;
     const target = video;
     pending.current = true;
     setBusy(true);
     try {
       const queue = await api.nativeProviderEnqueueVideo(target.bvid, "all");
-      if (!current()) return;
+      if (!active()) return;
       await playerActions.hydrateNative(queue);
+      if (!active()) return;
       setNotice(`已将“${target.title}”全部分 P 加入队列`);
     } catch {
-      if (current()) setNotice("整组读取或入队失败；整组最多1000项，不会部分入队");
+      if (active()) setNotice("整组读取或入队失败；整组最多1000项，不会部分入队");
     } finally {
       pending.current = false;
       if (current()) setBusy(false);
     }
   }
 
-  async function enqueueContainer() {
+  async function enqueueContainer(play = false) {
     if (id !== "netease" || !container || pending.current || !current()) return;
+    const token = selection.current;
+    const active = () => current() && token === selection.current;
     const target = container;
     pending.current = true;
     setBusy(true);
@@ -458,7 +511,7 @@ function ReadyWorkspace({
       const tracks: ProviderTrack[] = [];
       for (let n = 1; n <= 10; n++) {
         const response = await api.nativeProviderLibraryTracks(id, target.id, n, 100);
-        if (!current()) return;
+        if (!active()) return;
         if (response.page !== n || (response.total !== null && response.total > 1000)) {
           throw new Error("container_capacity");
         }
@@ -470,12 +523,19 @@ function ReadyWorkspace({
         throw new Error("container_unavailable");
       }
       const queue = await api.nativeProviderEnqueueTracks(tracks);
-      if (current()) {
+      if (active()) {
         await playerActions.hydrateNative(queue);
-        setNotice(`已将“${target.title}”的 ${tracks.length} 首歌曲加入队列`);
+        if (!active()) return;
+        if (play) {
+          const index = queue.items.findIndex(item => item.id === tracks[0]!.id);
+          if (index < 0) throw new Error("queue_target");
+          const playback = await nativeQueuePlay(tracks[0]!.id, queue.generation);
+          if (playback && active()) await playerActions.hydrateNative(playback.queue, playback.playback.player, playback.playback.quality, playback.playback.bitrate);
+        }
+        if (active()) setNotice(play ? `已请求播放：${target.title}` : `已将“${target.title}”的 ${tracks.length} 首歌曲加入队列`);
       }
     } catch {
-      if (current()) setNotice("整单未入队：最多1000首，须完整读取且条目可用；请分页选择所需歌曲");
+      if (active()) setNotice("整单未入队：最多1000首，须完整读取且条目可用；请分页选择所需歌曲");
     } finally {
       pending.current = false;
       if (current()) setBusy(false);
@@ -523,7 +583,7 @@ function ReadyWorkspace({
   const inspectedTrack = trackRows.find(t => t.id === activeTrackId) ?? trackRows[0] ?? null;
 
   const isRhineShelf = variant === "rhine" && (tab === "created" || tab === "favorite") && !container && !video;
-  const isRhineDetail = variant === "rhine" && container !== null && !video;
+  const isRhineDetail = variant === "rhine" && (container !== null || video !== null);
   const safeContainerIdx = containerRows.length ? Math.min(containerIdx, containerRows.length - 1) : 0;
   const activeContainer = containerRows[safeContainerIdx] ?? null;
 
@@ -564,6 +624,27 @@ function ReadyWorkspace({
     }
     setSelected(new Map());
     setLastWrite(null);
+  }
+
+  if (variant === "rhine" && (container || video)) {
+    return <section className="provider-workspace provider-workspace--rhine" data-variant="rhine" data-rhine-view="detail" aria-label={`${SOURCE_LABELS[id]}曲库`}>
+      <ProviderPlaylistDetail key={video?.bvid ?? container!.id} id={id} container={container} video={video}
+        data={(video ? parts : result) as ProviderPage<ProviderTrack | ProviderVideo> | null}
+        loading={video ? !parts && !partsError : loading} failed={video ? partsError : !loading && result === null}
+        page={video ? partsPage : page} pageSize={video ? 100 : 20} reload={reload} busy={busy} notice={notice} selected={selected} activeTrackId={activeTrackId}
+        onBack={handleBack} onPage={n => { selection.current++; if (video) setPartsPage(n); else setPage(n); }}
+        onRefresh={() => { selection.current++; setSelected(new Map()); setPage(1); setPartsPage(1); setReload(r => r + 1); }}
+        onCheck={check} onClear={() => setSelected(new Map())}
+        onEnqueue={(tracks, play) => { if (play && tracks[0]) setActiveTrackId(tracks[0].id); void enqueue(tracks, play); }}
+        onVideo={(row, play) => void openVideo(row, play)} onEnqueueAll={play => video ? void enqueueAll() : void enqueueContainer(play)}
+        canRemove={!lastWrite && caps.writeActions.includes(removeAction) && !!container?.allowedActions.includes(removeAction)}
+        onRemove={() => { if (container) void write({ providerId: id, accountId: status.account.id, operation: { kind: "removeItems", containerId: container.id, trackIds: [...selected.keys()] } }); }}
+        verification={lastWrite ? { disabled: busy, onVerify: () => void write(lastWrite, true) } : undefined}
+        subscriptions={container && id === "netease" && container.allowedActions.some(action => action === "playlist.subscribe" || action === "playlist.unsubscribe") ? <RhinePlaylistSelection>
+          {([true, false] as const).filter(subscribed => container.allowedActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe")).map(subscribed => <button key={String(subscribed)} disabled={busy || !!lastWrite || !caps.writeActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe")}
+            onClick={() => void write({ providerId: id, accountId: status.account.id, operation: { kind: "setSubscribed", containerId: container.id, subscribed } })}>{subscribed ? "收藏此歌单" : "取消收藏此歌单"}</button>)}
+        </RhinePlaylistSelection> : undefined} />
+    </section>;
   }
 
   if (variant === "rhine") {
@@ -621,27 +702,19 @@ function ReadyWorkspace({
             <p className="rhine-shelf-notice" role="status" aria-live="polite">{notice}</p>
           </>
         ) : (
-          <div className={isRhineDetail ? "rhine-document rhine-playlist-document provider-rhine-document" : "rhine-search provider-rhine-search"}
+          <div className="rhine-search provider-rhine-search"
             onKeyDown={event => {
               if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
               event.stopPropagation();
               if (container || video) handleBack();
               else if (onArchive) onArchive();
             }}>
-            {isRhineDetail && (
-              <div className="provider-rhine-back-row">
-                <button type="button" className="rhine-back" onClick={handleBack}>
-                  返回{video ? "视频列表" : "容器列表"}
-                </button>
-              </div>
-            )}
-
-            {!isRhineDetail && <ArchiveSearchHeading onClose={() => {
+            <ArchiveSearchHeading onClose={() => {
               if (video) handleBack();
               else if (onArchive) onArchive();
               else navigate(tabs.includes("created") ? "created" : "favorite");
-            }} />}
-            {!isRhineDetail && <div className="provider-search-forms">
+            }} />
+            <div className="provider-search-forms">
             {["songs", "playlists", "videos"].includes(tab) && (
               <form className="rhine-search-form" onSubmit={event => { event.preventDefault(); submitSearch(input); }}>
                 <CatalogSearchInput autoFocus suggestions={false} label="搜索关键词"
@@ -681,16 +754,16 @@ function ReadyWorkspace({
               </details>
             )}
 
-            </div>}
-            {!isRhineDetail && <div className="catalog-type-tabs" aria-label="搜索类型">
+            </div>
+            <div className="catalog-type-tabs" aria-label="搜索类型">
               {tabs.filter(t => ["songs", "playlists", "videos", "likes"].includes(t)).map(t => (
                 <button key={t} type="button" aria-pressed={t === tab} onClick={() => {
                   if (query && t !== "likes") submitSearch(input || query, t);
                   else navigate(t);
                 }}>{t === "songs" ? "歌曲" : t === "playlists" ? "歌单" : t === "videos" ? "视频" : label[t]}</button>
               ))}
-            </div>}
-            <ArchiveSearchBody history={isRhineDetail ? undefined : <SearchHistoryList
+            </div>
+            <ArchiveSearchBody history={<SearchHistoryList
               entries={searchHistory.entries.filter(entry => tabs.includes(entry.type))}
               labels={{songs: "歌曲", playlists: "歌单", videos: "视频"}}
               onSelect={entry => submitSearch(entry.query, entry.type)} onClear={searchHistory.clear}
@@ -699,57 +772,6 @@ function ReadyWorkspace({
               <h2>{tab === "songs" ? "歌曲" : tab === "playlists" ? "歌单" : tab === "videos" ? "视频" : label[tab]}</h2>
               {query && <span>“{query}”{result?.total != null ? ' · 共 ' + result.total + ' 项' : ''}</span>}
             </div>}
-
-            {video && (
-              <header className="provider-rhine-context">
-                <div>
-                  <p className="rhine-eyebrow">VIDEO MULTIPART / {video.bvid}</p>
-                  <h2>{video.title}</h2>
-                  <p>UP：{video.uploader} · {video.bvid} · {parts?.total ?? "未知"} P · 无歌词为正常状态</p>
-                </div>
-                <div className="rhine-document-actions">
-                  <span>共 {parts?.total ?? trackRows.length} 个分 P</span>
-                  <button type="button" disabled={busy} onClick={() => void enqueueAll()}>全部分 P 加入队列</button>
-                </div>
-              </header>
-            )}
-
-            {container && !video && (
-              <header className="provider-rhine-context">
-                <div>
-                  <p className="rhine-eyebrow">PLAYLIST / {container.id}</p>
-                  <h2>{container.title}</h2>
-                  <p>{container.description || `${container.itemCount} 项 · ${container.ownership === "created" ? "自建" : "收藏"}`}</p>
-                </div>
-                {id === "netease" && (
-                  <div className="rhine-document-actions provider-buttons">
-                    <span>{container.itemCount} 首歌曲</span>
-                    <button type="button" disabled={busy} onClick={() => void enqueueContainer()}>全部歌曲加入队列</button>
-                    {([true, false] as const).map(subscribed => (
-                      <button
-                        type="button"
-                        key={String(subscribed)}
-                        disabled={
-                          busy ||
-                          Boolean(lastWrite) ||
-                          !caps.writeActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe") ||
-                          !container.allowedActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe")
-                        }
-                        onClick={() =>
-                          void write({
-                            providerId: id,
-                            accountId: status.account.id,
-                            operation: { kind: "setSubscribed", containerId: container.id, subscribed },
-                          })
-                        }
-                      >
-                        {subscribed ? "收藏此歌单" : "取消收藏此歌单"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </header>
-            )}
 
             {(rows.length > 0 || lastWrite) && <div className="rhine-playlist-selection provider-buttons">
               <button type="button" disabled={busy || !selected.size} onClick={() => void enqueue([...selected.values()], false)}>
@@ -801,6 +823,7 @@ function ReadyWorkspace({
                   {rows.map(row => (
                     <li
                       key={isTrack(row) || isContainer(row) ? row.id : row.bvid}
+                      className={!isTrack(row) && !isContainer(row) ? "provider-rhine-video-row" : undefined}
                       data-playing={isTrack(row) && activeTrackId === row.id ? "true" : undefined}
                     >
                       {isTrack(row) ? (
@@ -827,7 +850,9 @@ function ReadyWorkspace({
                           <span className="rhine-song-actions provider-rhine-actions">
                             <button
                               type="button"
-                              className="rhine-action-pill"
+                              className="rhine-playlist-icon-button"
+                              title="播放"
+                              aria-label="播放此项"
                               disabled={busy || !usable(row)}
                               onClick={() => {
                                 setActiveTrackId(row.id);
@@ -835,16 +860,16 @@ function ReadyWorkspace({
                               }}
                             >
                               <PlaylistActionIcon kind="play" />
-                              <span>播放此项</span>
                             </button>
                             <button
                               type="button"
-                              className="rhine-action-pill"
+                              className="rhine-playlist-icon-button"
+                              title="加入队列"
+                              aria-label="加入队列"
                               disabled={busy || !usable(row)}
                               onClick={() => void enqueue([row], false)}
                             >
                               <PlaylistActionIcon kind="queueAdd" />
-                              <span>加入队列</span>
                             </button>
                             <ProviderLibraryActions
                               track={row}
@@ -882,8 +907,11 @@ function ReadyWorkspace({
                             </span>
                           </div>
                           <span className="rhine-song-actions provider-rhine-actions">
-                            <button type="button" className="rhine-action-pill" onClick={() => void resolveVideo(row.bvid)}>
-                              选择分 P
+                            <button type="button" className="rhine-playlist-icon-button" title="播放" aria-label="播放视频" disabled={busy} onClick={() => void openVideo(row, true)}>
+                              <PlaylistActionIcon kind="play" />
+                            </button>
+                            <button type="button" className="rhine-playlist-icon-button" title="加入队列" aria-label="加入队列" disabled={busy} onClick={() => void openVideo(row, false)}>
+                              <PlaylistActionIcon kind="queueAdd" />
                             </button>
                           </span>
                         </>
@@ -1202,12 +1230,17 @@ function ReadyWorkspace({
                   <h3>{row.title}</h3>
                   <p>
                     UP：{row.uploader} · {row.bvid} · {formatDuration(row.durationMs)} ·{" "}
-                    {row.availability === "unknown" ? "可展开分 P" : row.availability}
+                    {row.availability === "unknown" ? "可尝试播放" : row.availability}
                   </p>
                 </div>
-                <button className="text-button text-button--primary" type="button" onClick={() => void resolveVideo(row.bvid)}>
-                  选择分 P
-                </button>
+                <div className="provider-buttons">
+                  <button className="text-button text-button--primary" type="button" disabled={busy} onClick={() => void openVideo(row, true)}>
+                    <Icon name="play" size={15} />播放视频
+                  </button>
+                  <button className="text-button" type="button" disabled={busy} onClick={() => void openVideo(row, false)}>
+                    加入队列
+                  </button>
+                </div>
               </article>
             ))}
           </div>

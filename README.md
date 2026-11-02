@@ -14,7 +14,7 @@
 
 ![莱茵音乐档案界面](docs/screenshots/rhine-archive.png)
 
-> 当前源码与构建版本：**2.0.0**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
+> 当前源码与构建版本：**2.0.1**。截图使用实际应用前端与隔离的虚构演示数据生成；曲目、账号、封面及统计均不来自真实用户。它们展示界面，不代表真实账号权益或播放验收。
 
 ## 功能
 
@@ -70,7 +70,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 2.0.0；线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 2.0.1；线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider`、`node`、`providers`、`contracts`、`licenses` 及资源清单。
 3. 新构建的 portable 包使用 `Murphys-Music-Lab` 名称前缀，运行包内的 `Music-Lab.exe`；历史发行包的启动文件仍为 `qqmusic-gui.exe`。现有数据目录沿用原标识。多来源构建包含 Python Provider、固定 Node 24.22.2 和全部运行依赖，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。

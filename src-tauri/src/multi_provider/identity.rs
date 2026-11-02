@@ -6,10 +6,13 @@ pub(crate) fn public_track(mut v: serde_json::Value) -> serde_json::Value {
     let id = v["id"].as_str().unwrap_or("").to_owned();
     let source = track_provider(&id).ok();
     let o = v.as_object_mut().unwrap();
+    // Only cover-bearing DTOs (queue/catalog/history) opt into cover backfill.
+    // Player TrackSummary has a strict, smaller renderer contract.
+    let has_cover_field = o.contains_key("coverCacheKey");
     o.retain(|_, v| !v.is_null());
     if let Some(p) = source {
         o.insert("providerId".into(), serde_json::to_value(p).unwrap());
-        if p == ProviderId::Bilibili {
+        if p == ProviderId::Bilibili && has_cover_field {
             o.entry("coverCacheKey").or_insert_with(|| serde_json::Value::String(format!("bili_{}", id.split(':').nth(2).unwrap())));
         }
     }

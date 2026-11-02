@@ -186,7 +186,8 @@ pub(crate) async fn queue_move(
 
 #[tauri::command]
 pub(crate) async fn queue_play(
-    index: usize,
+    track_id: String,
+    queue_generation: u64,
     preferred_quality: String,
     state: State<'_, AppState>,
 ) -> Result<Option<SessionPlayResult>, PublicError> {
@@ -195,9 +196,11 @@ pub(crate) async fn queue_play(
         .clone()
         .ok_or_else(playback_unavailable)?;
     let quality = PlaybackQuality::parse(&preferred_quality).map_err(public_playback_error)?;
-    match tauri::async_runtime::spawn_blocking(move || session.play_index(index, quality))
-        .await
-        .map_err(|_| playback_unavailable())?
+    match tauri::async_runtime::spawn_blocking(move || {
+        session.play_track_checked(&track_id, queue_generation, quality)
+    })
+    .await
+    .map_err(|_| playback_unavailable())?
     {
         Ok(result) => Ok(Some(result)),
         Err(PlaybackSessionError::Superseded) => Ok(None),

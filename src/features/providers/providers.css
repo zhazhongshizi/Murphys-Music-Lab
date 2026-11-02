@@ -413,7 +413,6 @@
 
 .provider-workspace--rhine .rhine-browse-content,
 .provider-workspace--rhine .rhine-catalog,
-.provider-workspace--rhine .provider-rhine-document,
 .provider-workspace--rhine .provider-rhine-search,
 .provider-workspace--rhine .rhine-empty {
   pointer-events: auto;
@@ -461,84 +460,14 @@
 .provider-workspace--rhine .provider-rhine-search .provider-pagination { margin-top: auto; padding-top: 16px; }
 .provider-workspace--rhine .provider-rhine-search .provider-pagination:has(button:disabled:first-child):has(button:disabled:last-child) { display: none; }
 
-.provider-workspace--rhine .provider-rhine-document {
-  position: absolute;
-  top: 40px;
-  bottom: 54px;
-  right: 28px;
-  width: min(46%, 680px);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 22px;
-  border: 1px solid #93939370;
-  border-top: 3px solid #272727;
-  background: linear-gradient(120deg, #f2f1ede8, #e4e2dce0);
-  backdrop-filter: blur(20px) saturate(0.85);
-  -webkit-backdrop-filter: blur(20px) saturate(0.85);
-  box-shadow: -14px 0 42px #1f1f1d18, inset 0 1px #ffffffbd;
-  overflow: hidden;
-}
+.provider-workspace--rhine > .rhine-playlist-document { pointer-events: auto; }
 
-.provider-workspace--rhine .provider-rhine-back-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: 0 0 auto;
-}
-
-.provider-workspace--rhine .provider-rhine-back-row .rhine-back {
-  border: 1px solid #8f8f8f6b;
-  border-radius: 2px;
-  background: #ffffffb3;
-  padding: 5px 12px;
-  color: var(--rh-ink, #1f1f1d);
-}
-
-.provider-workspace--rhine .provider-rhine-context {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  flex: 0 0 auto;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #8f8f8f45;
-}
-
-.provider-workspace--rhine .provider-rhine-context .rhine-document-actions {
-  border-top: 0;
-  padding-top: 0;
-  gap: 10px;
-}
-
-.provider-workspace--rhine .provider-rhine-context .rhine-document-actions button {
-  border: 1px solid #272727;
-  border-radius: 2px;
-  padding: 6px 14px;
-  background: #272727;
-  color: #f0f0f0;
-  font-size: var(--rh-size-body, 12px);
-}
-
-.provider-workspace--rhine .provider-rhine-context h2 {
-  margin: 4px 0 4px;
-  font-size: 20px;
-  font-weight: 500;
-}
-
-.provider-workspace--rhine .provider-rhine-context p {
-  margin: 0;
-  color: var(--rh-ink-3, #5c5953);
-  font-size: var(--rh-size-body, 12px);
-}
-
-.provider-workspace--rhine .rhine-playlist-selection {
+.provider-workspace--rhine .provider-rhine-search .rhine-playlist-selection {
   flex: 0 0 auto;
   padding: 4px 0;
 }
 
-.provider-workspace--rhine .rhine-playlist-selection button {
+.provider-workspace--rhine .provider-rhine-search .rhine-playlist-selection button {
   border: 1px solid #8f8f8f6b;
   border-radius: 2px;
   padding: 5px 11px;
@@ -547,7 +476,7 @@
   font-size: var(--rh-size-body, 12px);
 }
 
-.provider-workspace--rhine .rhine-notice {
+.provider-workspace--rhine .provider-rhine-search .rhine-notice {
   flex: 0 0 auto;
   margin: 0;
   min-height: 18px;
@@ -601,15 +530,6 @@
   gap: 6px;
 }
 
-.provider-workspace--rhine .provider-rhine-document .provider-rhine-songs li {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.provider-workspace--rhine .provider-rhine-document .provider-rhine-songs li > .provider-rhine-actions {
-  justify-self: end;
-}
-
 .provider-workspace--rhine .rhine-pages {
   flex: 0 0 auto;
 }
@@ -620,11 +540,6 @@
   }
   .provider-inspector {
     display: none;
-  }
-  .provider-workspace--rhine .provider-rhine-document {
-    left: 18px;
-    right: 18px;
-    width: auto;
   }
 }
 
@@ -642,3 +557,14 @@
 
 .provider-dialog .provider-account__summary { display: grid; justify-items: center; gap: 12px; }
 .provider-account__summary p { max-width: 100%; overflow-wrap: anywhere; }
+
+/* Match the QQ playlist's compact, transparent row controls. */
+.provider-workspace--rhine .provider-rhine-songs .rhine-playlist-icon-button {
+  border: 0;
+  background: transparent;
+}
+
+.provider-workspace--rhine .provider-rhine-video-row > .provider-rhine-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}

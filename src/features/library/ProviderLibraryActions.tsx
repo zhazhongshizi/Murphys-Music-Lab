@@ -6,6 +6,7 @@ import type { NewProviderId, ProviderContainer, ProviderWriteAction, ProviderWri
 import { trackProvider } from "../../contracts/providerIdentity";
 import { playerActions } from "../player/playerStore";
 import PlaylistPicker from "./PlaylistPicker";
+import { Icon } from "../../components/Icon";
 import "./providerLibraryActions.css";
 
 type Track = { id: string; title: string };
@@ -146,12 +147,13 @@ function Form({ track, providerId, variant, initialContainer }: { track: Track; 
     <p className="provider-library-status" role="status">{notice || "请选择目标后确认；每次操作均重新核对账号与权限。"}</p>
   </div>;
 }
-export function ProviderLibraryActions({ track, variant = "default", initialContainer }: { track: Track | null | undefined; variant?: "default" | "rhine"; initialContainer?: ProviderContainer }) {
+export function ProviderLibraryActions({ track, variant = "default", initialContainer, iconOnly = false }: { track: Track | null | undefined; variant?: "default" | "rhine"; initialContainer?: ProviderContainer; iconOnly?: boolean }) {
   const [captured, setCaptured] = useState<Track | null>(null);
   const providerId = captured ? trackProvider(captured.id) : track ? trackProvider(track.id) : null;
   if (isRemotePlayback() || (providerId !== "netease" && providerId !== "bilibili")) return null;
+  const label = captured ? "关闭云端操作" : providerId === "bilibili" ? "添加到收藏夹 / 移出" : "网易喜欢 / 歌单操作";
   return <div className="provider-library-actions" data-variant={variant}>
-    <button className={variant === "rhine" ? "rhine-action-pill provider-library-trigger" : "text-button provider-library-trigger"} type="button" aria-expanded={Boolean(captured)} onClick={() => setCaptured(captured ? null : track ? { ...track } : null)}>{captured ? "关闭云端操作" : providerId === "bilibili" ? "添加到收藏夹 / 移出" : "网易喜欢 / 歌单操作"}</button>
+    <button className={iconOnly ? "rhine-playlist-icon-button provider-library-trigger" : variant === "rhine" ? "rhine-action-pill provider-library-trigger" : "text-button provider-library-trigger"} type="button" aria-label={label} title={iconOnly ? label : undefined} aria-expanded={Boolean(captured)} onClick={() => setCaptured(captured ? null : track ? { ...track } : null)}>{iconOnly ? <Icon name="folder-music" size={20} /> : label}</button>
     {captured && <Form key={captured.id} track={captured} providerId={providerId} variant={variant} initialContainer={initialContainer} />}
   </div>;
 }

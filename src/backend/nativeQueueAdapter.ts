@@ -235,12 +235,14 @@ export async function nativeQueueMove(fromIndex: number, toIndex: number): Promi
 }
 
 export async function nativeQueuePlay(
-  index: number,
+  trackId: string,
+  queueGeneration: number,
   preferredQuality: PreferredQuality = "auto",
 ): Promise<QueuePlayResult | null> {
   if (!["auto", "flac", "320k", "128k"].includes(preferredQuality)) return invalid();
   return parseOptionalPlayResult(await invoke(QUEUE_COMMANDS.play, {
-    index: unsigned(index),
+    trackId: stableText(trackId),
+    queueGeneration: unsigned(queueGeneration),
     preferredQuality,
   }));
 }

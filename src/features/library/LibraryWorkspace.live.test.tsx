@@ -220,7 +220,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
 
     await user.click(screen.getByRole("button", { name: "原生播放" }));
     await waitFor(() => expect(enqueueMock).toHaveBeenCalled());
-    expect(playMock).toHaveBeenCalledWith(0);
+    expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
     expect(await screen.findByText("已交给 Windows 原生播放器")).toBeInTheDocument();
   });
 
@@ -339,7 +339,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       { id: SONG.id, title: SONG.title, artist: SONG.artist, album: SONG.album, durationMs: SONG.durationMs },
       { id: SONG_TWO.id, title: SONG_TWO.title, artist: SONG_TWO.artist, album: SONG_TWO.album, durationMs: SONG_TWO.durationMs },
     ]);
-    await waitFor(() => expect(playMock).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(playMock).toHaveBeenCalledWith(SONG.id, 2));
     expect(await screen.findByText("已载入 2 首并开始播放")).toBeInTheDocument();
   });
 
@@ -410,9 +410,9 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
   it("播放超过队列上限的歌单时只载入前 1000 首", async () => {
     let queue = { generation: 2, selectedIndex: 0, items: [] as Array<{ id: string; title: string; artist: string; album: string; durationMs: number }> };
     replaceMock.mockImplementation(async items => queue = { ...queue, items });
-    playMock.mockImplementation(async index => ({ queue, playback: { quality: "320k", expiresInSeconds: 300, player: {
-      state: "playing", generation: 7, positionMs: 0, durationMs: queue.items[index]!.durationMs, volume: .72, muted: false,
-      currentTrack: queue.items[index], failure: null,
+    playMock.mockImplementation(async id => ({ queue, playback: { quality: "320k", expiresInSeconds: 300, player: {
+      state: "playing", generation: 7, positionMs: 0, durationMs: queue.items.find(item => item.id === id)!.durationMs, volume: .72, muted: false,
+      currentTrack: queue.items.find(item => item.id === id), failure: null,
     } } }));
     const user = userEvent.setup();
     playlistSongsMock.mockImplementation((_id: string, generation: number, page: number, pageSize: number) => {

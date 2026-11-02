@@ -575,6 +575,25 @@ mod tests {
     }
 
     #[test]
+    fn bilibili_player_snapshot_matches_renderer_contract_without_queue_cover_fields() {
+        let mut snapshot = PlayerSnapshot::idle();
+        snapshot.state = PlayerState::Playing;
+        snapshot.generation = 8;
+        snapshot.position_ms = 1_200;
+        snapshot.duration_ms = Some(240_000);
+        snapshot.current_track = Some(TrackSummary {
+            id: "bilibili:video:BV17x411w7KC:123".into(),
+            title: "Bilibili regression track".into(),
+            artist: "Fixture uploader".into(),
+            source: None,
+        });
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/provider-v2/bilibili-player-snapshot.json"
+        )).unwrap();
+        assert_eq!(serde_json::to_value(snapshot).unwrap(), expected);
+    }
+
+    #[test]
     fn smtc_metadata_is_internal_and_does_not_expand_renderer_track_summary() {
         let metadata = SmtcMetadata::from_queue_track("Album".to_owned(), 123_000);
         assert_eq!(metadata.album(), Some("Album"));

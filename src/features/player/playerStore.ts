@@ -349,9 +349,10 @@ function retryCurrentNativeTrack(): Promise<void> {
   if (!snapshot.nativeMode || snapshot.queue.length === 0) return Promise.resolve();
   const track = currentTrackFrom(snapshot);
   const index = track ? snapshot.queue.findIndex((item) => item.id === track.id) : -1;
-  if (index < 0) return Promise.resolve();
+  if (index < 0 || !track || !lastNativeQueue) return Promise.resolve();
+  const queueGeneration = lastNativeQueue.generation;
   return runNative("source", async (isCurrent) => {
-    const playback = await nativeQueuePlay(index);
+    const playback = await nativeQueuePlay(track.id, queueGeneration);
     if (!playback) return;
     await refreshNative(
       playback.queue,
@@ -449,8 +450,9 @@ export const playerActions = {
       }
       if (!snapshot.nativeLoaded) {
         runNative("source", async (isCurrent) => {
-          if (snapshot.queue.length === 0) return;
-          const playback = await nativeQueuePlay(snapshot.currentIndex);
+          const track = currentTrackFrom(snapshot);
+          if (!track || !lastNativeQueue) return;
+          const playback = await nativeQueuePlay(track.id, lastNativeQueue.generation);
           if (!playback) return;
           await refreshNative(playback.queue, playback.playback, isCurrent, playback.requestedQuality);
         });
@@ -632,10 +634,11 @@ export const playerActions = {
   async playTrack(trackId: string): Promise<boolean> {
     if (snapshot.nativeMode) {
       const index = snapshot.queue.findIndex((track) => track.id === trackId);
-      if (index < 0) return false;
+      if (index < 0 || !lastNativeQueue) return false;
+      const queueGeneration = lastNativeQueue.generation;
       let started = false;
       await runNative("source", async (isCurrent) => {
-        const playback = await nativeQueuePlay(index);
+        const playback = await nativeQueuePlay(trackId, queueGeneration);
         if (!playback) return;
         await refreshNative(playback.queue, playback.playback, isCurrent, playback.requestedQuality);
         started = isCurrent();
@@ -797,7 +800,7 @@ export const playerActions = {
         if (removingCurrent) await nativeStop();
         const queue = await nativeQueueRemove(index);
         if (removingCurrent && queue.selectedIndex !== null) {
-          const playback = await nativeQueuePlay(queue.selectedIndex);
+          const playback = await nativeQueuePlay(queue.items[queue.selectedIndex]!.id, queue.generation);
           if (!playback) return;
           await refreshNative(playback.queue, playback.playback, isCurrent, playback.requestedQuality);
           return;

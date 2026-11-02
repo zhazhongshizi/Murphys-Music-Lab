@@ -1,6 +1,6 @@
 {
   "name": "qqmusic-gui",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Murphy’s Music Lab — a local-first Windows music player.",
   "license": "GPL-3.0-or-later",
   "private": true,

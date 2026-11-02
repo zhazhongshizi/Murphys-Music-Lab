@@ -12,7 +12,7 @@ it("plays the ID's actual queue position and hydrates the resulting native state
   const result = { queue, playback: { player: { generation: 2 }, quality: "320k" } };
   mocks.play.mockResolvedValue(result);
   await playHistoryEntry(entry);
-  expect(mocks.play).toHaveBeenCalledWith(1);
+  expect(mocks.play).toHaveBeenCalledWith(entry.id, 1);
   expect(mocks.hydrate).toHaveBeenLastCalledWith(queue, result.playback.player, "320k");
 });
 

@@ -470,3 +470,7 @@
 @media (prefers-reduced-motion: reduce) {
   .rhine-workspace[data-page-transition] :is(.rhine-browse-content, .rhine-catalog, .rhine-history-heading, .rhine-history-selection, .rhine-history-document, .rhine-now, .rhine-index), .rhine-page-entry-clock { animation-duration: 1ms; transition-duration: 1ms; }
 }
+
+.rhine-playlist-heading-actions { display: inline-flex; align-items: center; gap: 8px; }
+.rhine-playlist-heading-actions .rhine-playlist-icon-button,
+.rhine-playlist-selection .rhine-playlist-icon-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; width: 34px; height: 34px; padding: 7px; border: 0; background: transparent; color: inherit; }

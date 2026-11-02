@@ -504,7 +504,7 @@ impl QueueService {
             .map_err(map_persistence_error)
     }
 
-    /// Resolve a remote selection under the same lock as queue edits.
+    /// Resolve a desktop or remote selection under the same lock as queue edits.
     pub(crate) fn select_remote(
         &self,
         id: &str,

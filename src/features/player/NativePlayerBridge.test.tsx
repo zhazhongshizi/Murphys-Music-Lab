@@ -581,7 +581,7 @@ describe("native player bridge", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("当前歌曲暂时无法播放");
     await user.click(screen.getByRole("button", { name: "重试播放" }));
 
-    await waitFor(() => expect(mocks.queuePlay).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(mocks.queuePlay).toHaveBeenCalledWith(QUEUE.items[0].id, QUEUE.generation));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
@@ -617,7 +617,7 @@ describe("native player bridge", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试播放" }));
     await waitFor(() => expect(mocks.queuePlay).toHaveBeenCalledTimes(2));
-    expect(mocks.queuePlay).toHaveBeenLastCalledWith(0);
+    expect(mocks.queuePlay).toHaveBeenLastCalledWith(QUEUE.items[0].id, QUEUE.generation);
     expect(mocks.seek).toHaveBeenCalledTimes(1);
     expect(mocks.play).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
