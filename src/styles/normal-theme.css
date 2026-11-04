@@ -224,6 +224,10 @@ body:has(.app-shell.app-shell--normal) > .playlist-picker__menu {
   box-shadow: 0 16px 40px rgb(0 0 0 / 28%);
 }
 .app-shell.app-shell--normal[data-cover-tone="light"] :is(.fixture-menu__popover, .stage__quality-menu) { background: var(--cover-surface-raised); color: var(--paper); }
+.app-shell.app-shell--normal[data-cover-tone="light"] :is(.catalog-suggestions, .playlist-picker__trigger, .playlist-create input, .organizer-controls select) { background: var(--cover-surface-raised, var(--glass-fill)); color: var(--paper); }
+.app-shell.app-shell--normal[data-cover-tone="light"] .catalog-suggestions [aria-selected="true"] button,
+.app-shell.app-shell--normal[data-cover-tone="light"] .catalog-suggestions button:hover { background: color-mix(in srgb, var(--paper) 10%, transparent); }
+body:has(.app-shell.app-shell--normal[data-cover-tone="light"]) > .playlist-picker__menu { background: var(--glass-fill); color: var(--paper); border-color: var(--line); }
 
 .stage-lyrics-panel { min-width: 0; height: 100%; min-height: 0; }
 .stage-lyrics-panel__lyrics { height: 100%; }
@@ -255,7 +259,7 @@ body:has(.app-shell.app-shell--normal) > .playlist-picker__menu {
 .stage-song-list__items button[data-up-next="true"] strong { font-weight: 650; }
 
 /* Portals do not inherit app-shell variables. Scope them to Normal mode explicitly. */
-body:has(.app-shell.app-shell--normal) > :is(.login-overlay, .queue-drag-preview, .playlist-picker__menu) {
+body:has(.app-shell.app-shell--normal) > :is(.login-overlay, .queue-drag-preview, .playlist-picker__menu, .local-manager, .update-dialog, .update-toast) {
   --font-display: var(--normal-font-display);
   --paper: var(--normal-paper);
   --paper-muted: var(--normal-muted);
@@ -272,7 +276,7 @@ body:has(.app-shell.app-shell--normal) > :is(.login-overlay, .queue-drag-preview
   color: var(--paper);
   font-family: var(--font-body);
 }
-body:has(.app-shell.app-shell--normal[data-cover-tone="light"]) > :is(.login-overlay, .queue-drag-preview, .playlist-picker__menu) {
+body:has(.app-shell.app-shell--normal[data-cover-tone="light"]) > :is(.login-overlay, .queue-drag-preview, .playlist-picker__menu, .local-manager, .update-dialog, .update-toast) {
   --paper: #202d3d;
   --paper-muted: #4d5d70;
   --patina: #5c6c7e;
@@ -397,14 +401,16 @@ body:has(.app-shell.app-shell--normal) > .playlist-picker__menu { background: va
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
 }
-.stage-settings__content.fixture-menu__popover button {
+:where(.stage-settings__content.fixture-menu__popover) > button,
+.stage-settings__content.fixture-menu__popover .fixture-menu__item {
   min-height: 42px;
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 15px;
   gap: 16px;
 }
-.stage-settings__content.fixture-menu__popover button i { flex-shrink: 0; }
+:where(.stage-settings__content.fixture-menu__popover) > button i,
+.stage-settings__content.fixture-menu__popover .fixture-menu__item i { flex-shrink: 0; }
 .stage-settings__content .fixture-menu__divider { margin: 18px 12px; }
 .stage-settings__content > .fixture-menu__divider:first-child { display: none; }
 .stage-settings__content .section-label { padding: 6px 14px 10px; font-family: var(--font-body); font-size: 12px; line-height: 1.5; letter-spacing: .04em; }

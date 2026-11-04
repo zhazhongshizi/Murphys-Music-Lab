@@ -80,7 +80,7 @@ export interface RhineProviderSceneState {
 
 export function ProviderWorkspace({
   source: selectedSource,
-  likesNavigation,
+  sourceNavigation,
   variant = "default",
   embedded = false,
   onAccount,
@@ -94,7 +94,7 @@ export function ProviderWorkspace({
   onRhineSceneChange,
 }: {
   source?: NewProviderId;
-  likesNavigation?: ReactNode;
+  sourceNavigation?: ReactNode;
   variant?: "default" | "rhine";
   embedded?: boolean;
   onAccount: () => void;
@@ -160,7 +160,7 @@ export function ProviderWorkspace({
               <p>{likesOnly ? `随当前 ${SOURCE_LABELS[source]}账号同步` : "此来源搜索与个人曲库 · 切换来源不会打断当前播放"}</p>
             </div>
           </header>
-          {likesNavigation}
+          {sourceNavigation}
           <div className="catalog-empty provider-empty-card">
             <p role="status">{statusMessage}</p>
             <span>在平台账号面板完成扫码或恢复登录后，即可浏览与管理此来源曲库。</span>
@@ -191,7 +191,7 @@ export function ProviderWorkspace({
       status={status}
       variant={variant}
       embedded={embedded}
-      likesNavigation={likesNavigation}
+      sourceNavigation={sourceNavigation}
       onAccount={onAccount}
       onDeck={onDeck}
       onArchive={onArchive}
@@ -210,7 +210,7 @@ function ReadyWorkspace({
   status,
   variant,
   embedded,
-  likesNavigation,
+  sourceNavigation,
   onAccount,
   onDeck,
   onArchive,
@@ -225,7 +225,7 @@ function ReadyWorkspace({
   status: Extract<ProviderSnapshot, { state: "ready" }>;
   variant: "default" | "rhine";
   embedded: boolean;
-  likesNavigation?: ReactNode;
+  sourceNavigation?: ReactNode;
   onAccount: () => void;
   onDeck?: () => void;
   onArchive?: () => void;
@@ -888,6 +888,7 @@ function ReadyWorkspace({
                             <ProviderLibraryActions
                               track={row}
                               variant={variant}
+                              iconOnly
                               initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
                             />
                           </span>
@@ -993,7 +994,7 @@ function ReadyWorkspace({
           </div>
         </header>
 
-        {likesNavigation}
+        {sourceNavigation}
 
         {!likesOnly && <nav className="catalog-type-tabs provider-tabs" aria-label="此来源功能">
           {tabs.map(t => (
@@ -1286,7 +1287,8 @@ function ReadyWorkspace({
                       className={isActive ? "catalog-table__active" : checked ? "playlist-songs__selected" : undefined}
                       onClick={() => setActiveTrackId(row.id)}
                     >
-                      <td className="playlist-songs__check" onClick={e => e.stopPropagation()}>
+                      <td onClick={e => e.stopPropagation()}>
+                        <label className="playlist-songs__check">
                         <input
                           type="checkbox"
                           aria-label={row.title}
@@ -1294,6 +1296,7 @@ function ReadyWorkspace({
                           disabled={!usable(row) || busy || (selected.size >= 100 && !checked)}
                           onChange={e => check(row, e.target.checked)}
                         />
+                        </label>
                       </td>
                       <td>
                         <span className={isActive ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
@@ -1392,6 +1395,7 @@ function ReadyWorkspace({
         />
         {inspectedTrack ? (
           <>
+            <h2>{inspectedTrack.title}</h2>
             <p className="provider-inspector__creator">
               {inspectedTrack.creatorKind === "uploader" ? `UP 主 · ${inspectedTrack.artist}` : `艺人 · ${inspectedTrack.artist}`}
             </p>

@@ -20,3 +20,20 @@
 @media (max-width: 640px) {
   .playback-notice { right: 16px; bottom: 148px; max-width: calc(100vw - 32px); }
 }
+
+body:has(.app-shell--rhine) > .playback-notice {
+  border-radius: 2px;
+  background: rgba(31, 31, 29, 0.95);
+  border: 1px solid rgba(139, 137, 131, 0.45);
+  border-left: 3px solid var(--rh-accent, #b96e2d);
+  color: #f4f3ef;
+  font-family: var(--font-data);
+}
+
+body:has(.app-shell--terminal) > .playback-notice {
+  border-radius: 0;
+  background: #0d120f;
+  border: 1px solid rgba(184, 199, 122, 0.45);
+  font-family: var(--font-data);
+  font-size: 11px;
+}

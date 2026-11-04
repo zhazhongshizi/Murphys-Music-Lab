@@ -232,10 +232,10 @@ export function RhineSettingsPanel({
         </section>}
 
         {section === "account" && <section className="rhine-settings-section">
-          <MvFallbackSetting />
           <div className="rhine-settings-section-heading">
             <div><p className="rhine-eyebrow">04 / ACCOUNT & NAVIGATION</p><h2 id={titleId}>账号与界面</h2></div>
           </div>
+          <MvFallbackSetting />
           <p className="rhine-settings-note">账号管理沿用主界面的现有流程；切换界面会返回主模式。</p>
           <div className="rhine-settings-account-actions">
             <button type="button" onClick={onAccount}><span>账号设置</span><small>登录状态与账号管理 ↗</small></button>

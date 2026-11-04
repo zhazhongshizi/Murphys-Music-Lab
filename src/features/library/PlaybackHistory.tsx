@@ -4,6 +4,7 @@ import { SongArtistLinks } from "../artist/SongArtistLinks";
 import { getPlaybackHistory, type HistoryEntry } from "../../backend/historyAdapter";
 import { playHistoryEntry } from "../player/historyPlayback";
 import { usePlayerSelector } from "../player/playerStore";
+import { Icon } from "../../components/Icon";
 import "./playback-history.css";
 
 const PAGE_SIZE = 20;
@@ -59,7 +60,7 @@ export default function PlaybackHistory() {
     <header className="catalog-pane__header"><div><h1>最近播放</h1><p>仅保存在这台设备 · 同一首歌显示最近一次播放</p></div>
       <button type="button" className="text-button" disabled={!native} onClick={() => setRetry((value) => value + 1)}>刷新历史</button>
     </header>
-    <label className="catalog-search"><span className="sr-only">搜索本地历史</span><input type="search" placeholder="搜索历史歌曲或歌手" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} /></label>
+    <label className="catalog-search"><Icon name="search" size={18} /><span className="sr-only">搜索本地历史</span><input type="search" placeholder="搜索历史歌曲或歌手" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} /></label>
     {notice && <p role="alert">{notice}</p>}
     {!native ? <div className="catalog-empty"><p>请在桌面版查看本地播放历史</p></div>
       : failed ? <div className="catalog-empty" role="alert"><p>本地历史读取失败</p><button className="text-button" onClick={() => setRetry((value) => value + 1)} type="button">重新读取历史</button></div>

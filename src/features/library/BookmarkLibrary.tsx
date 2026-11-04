@@ -27,7 +27,7 @@ export function PersonalLibrary() {
   }
   function open(b: Bookmark) { setEntity(b.kind === "artist" ? { kind: "artist", id: b.id, name: b.title, ...(b.coverCacheKey ? { avatarCacheKey: b.coverCacheKey } : {}) } : { kind: "album", id: b.id, title: b.title, description: "", publishDate: "", ...(b.coverCacheKey ? { coverCacheKey: b.coverCacheKey } : {}) }); }
   if (entity) return <Suspense fallback={<p role="status">正在打开详情…</p>}><CatalogDetails key={`${entity.kind}:${entity.id}`} entity={entity} onBack={() => setEntity(null)} /></Suspense>;
-  return <section className="personal-library catalog-pane" aria-label="我的资料库"><header><span className="section-label">MY COLLECTION</span><h1>我的资料库</h1><p>保存在这台电脑的专辑、歌手和播放队列</p></header><SavedQueues />
+  return <section className="personal-library catalog-pane" aria-label="我的资料库"><header className="catalog-pane__header"><div><span className="section-label">MY COLLECTION</span><h1>我的资料库</h1><p>保存在这台电脑的专辑、歌手和播放队列</p></div></header><SavedQueues />
     <h2>专辑与歌手书签</h2><div className="personal-actions"><input type="search" aria-label="搜索资料库" placeholder="搜索书签" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }} />
       <select aria-label="资料库排序" value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}><option value="newest">最近收藏</option><option value="oldest">最早收藏</option><option value="name">名称排序</option></select></div>
     <nav className="personal-actions" aria-label="书签分类">{([['all', '全部'], ['album', '专辑'], ['artist', '歌手']] as const).map(([id, label]) => <button type="button" key={id} aria-pressed={kind === id} onClick={() => { setKind(id); setPage(1); }}>{label}</button>)}</nav>

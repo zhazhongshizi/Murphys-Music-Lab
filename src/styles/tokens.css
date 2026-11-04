@@ -15,7 +15,15 @@
   --patina: #909e94;
   --clay: #c97a62;
   --line: rgb(130 144 134 / 25%);
+  --line-soft: rgb(130 144 134 / 18%);
   --surface: rgb(241 235 221 / 4%);
+  --surface-raised: rgb(241 235 221 / 8%);
+  --surface-deep: var(--vinyl-raised);
+  --text: var(--paper);
+  --text-muted: var(--paper-muted);
+  --accent: var(--lichen);
+  --accent-warm: var(--lichen);
+  --forest-deep: var(--canopy);
   --shadow: 0 24px 70px rgb(0 0 0 / 32%);
 
   --font-display: Georgia, FangSong, STFangsong, "Songti SC", SimSun, serif;

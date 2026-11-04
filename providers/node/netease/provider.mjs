@@ -140,8 +140,8 @@ export class NeteaseProvider {
       return pageResult(list.slice(offset,offset+pageSize+1),null);
     }
     if(method==='library.likes'||method==='library.tracks') {
-      const b=ok(await this.transport.call(method==='library.likes'?'likelist':'playlist_detail',method==='library.likes'?{uid:this.account.id}:{id:p.containerId}),method==='library.tracks'?'playlist':'');
-      const raw=method==='library.likes'?b.ids:b.playlist?.trackIds?.map(t=>t.id);
+      const playlist=method==='library.likes'?await this.likedPlaylist():ok(await this.transport.call('playlist_detail',{id:p.containerId}),'playlist').playlist;
+      const raw=playlist?.trackIds?.map(t=>t.id);
       if(!Array.isArray(raw))fail('upstream_schema_changed');
       const ids=raw.slice(offset,offset+pageSize).map(id);
       return pageResult(ids.length?await this.details(ids):[],raw.length);
@@ -164,6 +164,20 @@ export class NeteaseProvider {
       return {track:p.track,quality:codec==='flac'?'flac':bitrate>=256000?'320k':'128k',codec,bitrate,url:u.href,headers:{},expiresInSeconds:int(r.expi,86400),durationMs};
     }
     fail('unsupported_capability');
+  }
+  async likedPlaylist() {
+    // likelist is an unordered membership set. Display the account's special
+    // liked playlist in trackIds order, just like the playlist-detail screen.
+    let offset=0;
+    for(let n=0;n<100;n++) {
+      const b=ok(await this.transport.call('user_playlist',{uid:this.account.id,limit:100,offset}));
+      if(!Array.isArray(b.playlist)||typeof b.more!=='boolean')fail('upstream_schema_changed');
+      const liked=b.playlist.find(p=>p.specialType===5&&id(p.creator?.userId??p.userId)===this.account.id&&p.subscribed!==true);
+      if(liked)return this.playlist(id(liked.id));
+      if(!b.more||b.playlist.length===0)break;
+      offset+=b.playlist.length;
+    }
+    fail('upstream_schema_changed');
   }
   async playlist(containerId) {
     const b=ok(await this.transport.call('playlist_detail',{id:containerId}),'playlist');

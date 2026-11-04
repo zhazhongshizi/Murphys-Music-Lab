@@ -17,6 +17,7 @@
 *.zip binary
 
 # Locked upstream sources and license notices are verified byte-for-byte.
+providers/node/fixtures/upstream/** -text
 providers/node/netease/upstream/** -text
 providers/node/bilibili/reference/** -text
 providers/node/*/licenses/** -text

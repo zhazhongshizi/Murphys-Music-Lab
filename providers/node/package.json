@@ -1,0 +1,8 @@
+{
+  "name": "qqmusic-gui-node-probes",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": "24.22.2" },
+  "scripts": { "test": "node --test tests/*.test.mjs" }
+}

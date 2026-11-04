@@ -343,6 +343,17 @@ export default function LibraryWorkspace({
       ))}
     </nav>
   ) : null;
+  const sourceNavigation = !remote && section === "playlists" ? (
+    <nav className="catalog-type-tabs" aria-label="歌单音乐来源">
+      {(["qqmusic", "netease", "bilibili"] as const).map(id => (
+        <button key={id} type="button" aria-pressed={browseSource === id} onClick={() => {
+          selectSource(id);
+          setQuery("");
+          setOpenedEntity(null);
+        }}>{id === "qqmusic" ? "QQ 音乐" : id === "netease" ? "网易云音乐" : "Bilibili"}</button>
+      ))}
+    </nav>
+  ) : likedNavigation;
 
   function openArtist(artist: ArtistRef) {
     setOpenedEntity({ kind: "artist", ...artist });
@@ -540,7 +551,7 @@ export default function LibraryWorkspace({
           key={section}
           embedded
           source={catalogSource === "netease" || catalogSource === "bilibili" ? catalogSource : undefined}
-          likesNavigation={likedNavigation}
+          sourceNavigation={sourceNavigation}
           initialSection={section === "liked" ? "likes" : section === "playlists" ? "created" : "search"}
           onAccount={() => { selectSource(catalogSource); onAccount?.(); }}
         />
@@ -574,7 +585,7 @@ export default function LibraryWorkspace({
           ) : null}
         </header>
 
-        {likedNavigation}
+        {sourceNavigation}
 
         {section !== "playlists" && section !== "organizer" && !(remote && section === "liked") ?
           section === "discover" || section === "search" ? <CatalogSearchInput value={query}

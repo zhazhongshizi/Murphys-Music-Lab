@@ -479,7 +479,7 @@ export function RemoteProviderLibrary({
             <span>可尝试更换搜索词或切换其他歌单与分 P。</span>
           </div>
         ) : (
-          <table className="catalog-table" aria-label={`${SOURCE_LABELS[providerId]}曲目列表`}>
+          <table className="catalog-table provider-tracks-table remote-provider-tracks-table" aria-label={`${SOURCE_LABELS[providerId]}曲目列表`}>
             <thead>
               <tr>
                 <th scope="col">封面</th>
@@ -899,7 +899,7 @@ export function RemoteProviderLibrary({
                 </div>
               ) : (
                 <>
-                  <table className="catalog-table" aria-label="Bilibili 视频列表">
+                  <table className="catalog-table provider-tracks-table remote-provider-videos-table" aria-label="Bilibili 视频列表">
                     <thead>
                       <tr>
                         <th scope="col">视频标题</th>
@@ -968,7 +968,7 @@ export function RemoteProviderLibrary({
                   </div>
                 ) : (
                   <>
-                    <table className="catalog-table" aria-label="Bilibili 搜索结果">
+                    <table className="catalog-table provider-tracks-table remote-provider-videos-table" aria-label="Bilibili 搜索结果">
                       <thead>
                         <tr>
                           <th scope="col">视频标题</th>

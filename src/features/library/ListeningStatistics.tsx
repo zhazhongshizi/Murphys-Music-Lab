@@ -101,9 +101,14 @@ export function ListeningRecords() {
     document.addEventListener("visibilitychange",visibleRefresh);
     return () => { alive = false;window.clearInterval(timer);document.removeEventListener("visibilitychange",visibleRefresh); };
   }, [revision,days]);
-  return <section className="listening-statistics catalog-pane" aria-label="听歌统计">
-    <header><span className="section-label">LISTENING RECORD</span><h1>听歌统计</h1>
-      <button type="button" onClick={() => setRevision(r => r + 1)}>刷新统计</button></header>
+  return <div className="listening-records" aria-label="听歌统计">
+    <header className="catalog-pane__header">
+      <div>
+        <span className="section-label">LISTENING RECORD</span>
+        <h1>听歌统计</h1>
+      </div>
+      <button type="button" onClick={() => setRevision(r => r + 1)}>刷新统计</button>
+    </header>
     <p>从此版本开始累计实际播放进度；暂停、拖动和休眠跳变不计入。累计听满 30 秒，或短曲的一半（至少 1 秒），记为一次有效收听。</p>
     <nav className="personal-actions" aria-label="统计日期范围">{([1,7,30] as const).map(value=><button type="button" key={value} aria-pressed={days===value} onClick={()=>{if(value!==days){setData(null);setDays(value);}else setRevision(r=>r+1);}}>{value===1?"今天":`近 ${value} 天`}</button>)}</nav>
     <p>常听榜和有效收听记录按本地日期筛选，页面可见时自动更新。日期时长从本次升级开始记录，累计时长保留全部历史数据。</p>
@@ -120,7 +125,7 @@ export function ListeningRecords() {
           <button type="button" key={id} aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>)}</nav>
         <StatisticsRows data={data} view={view} days={days} busy={busy} onAction={(row,action)=>void act(row,action)} />
       </>}
-  </section>;
+  </div>;
 }
 
 export function ListeningStatistics() {

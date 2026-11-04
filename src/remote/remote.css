@@ -43,8 +43,16 @@ body:has(.remote-shell) [hidden] { display:none!important; }
  .remote-shell.app-shell .catalog-inspector > h2 { width:100%; font-size:15px; margin:0; }
  .remote-shell.app-shell .catalog-inspector .text-button { padding:8px 10px; margin:0; min-height:36px; }
  .remote-shell.app-shell .catalog-inspector .catalog-inspector__notice { display:block; width:100%; margin:0; }
- .remote-shell.app-shell .catalog-table { min-width:0; }
- .remote-shell.app-shell .catalog-table th:nth-child(2),.remote-shell.app-shell .catalog-table td:nth-child(2) { display:none; }
+ .remote-shell.app-shell .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) th:nth-child(2),
+ .remote-shell.app-shell .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) td:nth-child(2) { display:none; }
+ .remote-shell.app-shell .remote-provider-tracks-table th:nth-child(4),
+ .remote-shell.app-shell .remote-provider-tracks-table td:nth-child(4),
+ .remote-shell.app-shell .remote-provider-tracks-table th:nth-child(5),
+ .remote-shell.app-shell .remote-provider-tracks-table td:nth-child(5),
+ .remote-shell.app-shell .remote-provider-videos-table th:nth-child(3),
+ .remote-shell.app-shell .remote-provider-videos-table td:nth-child(3) {
+   display: none;
+ }
  .remote-shell .catalog-pane__header h1 { font-size:24px; }
  .remote-shell.app-shell .playlist-grid { grid-template-columns:minmax(0,1fr); }
  .remote-shell.app-shell .stage { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); padding:8px 20px; gap:16px; }
@@ -105,4 +113,12 @@ body:has(.remote-shell) [hidden] { display:none!important; }
 }
 @media (max-width:600px), (max-width:850px) and (orientation:portrait) {
  .remote-shell.app-shell .remote-provider-workspace.library-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:76px minmax(0,1fr); }
+}
+
+@media (max-width: 700px) {
+  .remote-provider-workspace .library-sidebar nav > div + div {
+    border-left: 1px solid var(--line);
+    padding-left: 8px;
+    margin-left: 4px;
+  }
 }

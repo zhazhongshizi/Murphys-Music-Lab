@@ -6,7 +6,7 @@ import { invalidatePlaylistSongs } from "./readPlaylistSongs";
 import LibraryWorkspace from "./LibraryWorkspace";
 import { resetPlayerFixture } from "../player/playerStore";
 import type { AuthSnapshot } from "../../contracts/auth";
-import type { ProviderPage, ProviderSnapshot, ProviderTrack } from "../../contracts/providers";
+import type { ProviderContainer, ProviderPage, ProviderSnapshot, ProviderTrack } from "../../contracts/providers";
 import constants from "../../../contracts/protocol-v2.constants.json";
 import { DesktopProviders } from "../providers/DesktopProviders";
 import * as providers from "../../backend/providersAdapter";
@@ -56,6 +56,7 @@ vi.mock("../../backend/providersAdapter", async original => ({
   ...await original<typeof import("../../backend/providersAdapter")>(),
   nativeProviderStatus: vi.fn(),
   nativeProviderLibraryLikes: vi.fn(),
+  nativeProviderLibraryContainers: vi.fn(),
 }));
 vi.mock("../artist/ArtistPage", () => ({
   ArtistPage: ({ artist, onBack }: { artist: { id: string; name: string }; onBack: () => void }) => (
@@ -417,6 +418,74 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     expect(playlistsMock).not.toHaveBeenCalled();
   });
 
+  describe("歌单页内来源切换", () => {
+    const folder = (id: "netease" | "bilibili"): ProviderContainer => ({
+      providerId: id, id: id === "netease" ? "netease:playlist:7" : "bilibili:favorite:7",
+      kind: id === "netease" ? "playlist" : "favoriteFolder", ownership: "created",
+      owner: { providerId: id, id: "42" }, title: `${id} 合成歌单`, description: "", itemCount: 2, allowedActions: [],
+    });
+    beforeEach(() => {
+      localStorage.clear();
+      vi.mocked(providers.nativeProviderStatus).mockImplementation(async id => ({
+        providerId: id, state: "ready", account: { providerId: id, id: "42", displayName: "合成账号" },
+        persistence: "saved", capabilities: constants.capabilities[id as "netease" | "bilibili"],
+      } as ProviderSnapshot));
+      vi.mocked(providers.nativeProviderLibraryContainers).mockReset().mockImplementation(async (id, kind) => ({
+        page: 1, hasMore: false, total: kind === "created" ? 1 : 0, items: kind === "created" ? [folder(id)] : [],
+      }));
+    });
+    function openPlaylists(auth: AuthSnapshot = AUTHENTICATED) {
+      return render(<DesktopProviders><LibraryWorkspace authSnapshot={auth} authRecovering={false}
+        initialSection="playlists" onBack={() => {}} /></DesktopProviders>);
+    }
+    function sources() { return within(screen.getByRole("navigation", { name: "歌单音乐来源" })); }
+
+    it("QQ、网易和B站都在标题下保留同一组按钮，切换不触发播放", async () => {
+      const user = userEvent.setup();
+      openPlaylists();
+      await screen.findByRole("heading", { name: "我喜欢" });
+      expect(screen.getByRole("navigation", { name: "歌单音乐来源" }).closest(".catalog-pane")).toContainElement(screen.getByRole("heading", { name: "我的歌单" }));
+      for (const [label, id] of [["网易云音乐", "netease"], ["Bilibili", "bilibili"]] as const) {
+        await user.click(sources().getByRole("button", { name: label }));
+        await screen.findByRole("heading", { name: folder(id).title });
+        expect(sources().getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+        expect(providers.nativeProviderLibraryContainers).toHaveBeenCalledWith(id, "created", 1, 50);
+        expect(screen.getAllByRole("navigation", { name: "歌单音乐来源" })).toHaveLength(1);
+      }
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      await screen.findByRole("heading", { name: "我喜欢" });
+      expect(sources().getByRole("button", { name: "QQ 音乐" })).toHaveAttribute("aria-pressed", "true");
+      expect(enqueueMock).not.toHaveBeenCalled(); expect(playMock).not.toHaveBeenCalled();
+    });
+
+    it("网易未登录时仍可从页内切回QQ，未登录来源不读取歌单", async () => {
+      const user = userEvent.setup();
+      vi.mocked(providers.nativeProviderStatus).mockImplementation(async id => ({
+        providerId: id, state: "disabled", capabilities: constants.capabilities[id as "netease" | "bilibili"],
+      } as ProviderSnapshot));
+      openPlaylists();
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      await screen.findByText(/登录此来源后访问曲库/);
+      expect(screen.getByRole("navigation", { name: "歌单音乐来源" }).closest(".catalog-pane")).toBeInTheDocument();
+      expect(providers.nativeProviderLibraryContainers).not.toHaveBeenCalled();
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      await screen.findByRole("heading", { name: "我的歌单" });
+    });
+
+    it("切回QQ后忽略迟到的网易歌单响应", async () => {
+      const user = userEvent.setup();
+      let resolve!: (value: ProviderPage<ProviderContainer>) => void;
+      vi.mocked(providers.nativeProviderLibraryContainers).mockReturnValue(new Promise(done => { resolve = done; }));
+      openPlaylists();
+      await user.click(sources().getByRole("button", { name: "网易云音乐" }));
+      await waitFor(() => expect(providers.nativeProviderLibraryContainers).toHaveBeenCalled());
+      await user.click(sources().getByRole("button", { name: "QQ 音乐" }));
+      await act(async () => resolve({ page: 1, hasMore: false, total: 1, items: [folder("netease")] }));
+      expect(screen.getByRole("heading", { name: "我的歌单" })).toBeInTheDocument();
+      expect(screen.queryByText(folder("netease").title)).not.toBeInTheDocument();
+    });
+  });
+
   describe("多来源喜欢页", () => {
     const neteaseSong: ProviderTrack = {
       providerId: "netease", id: "netease:track:123", title: "网易喜欢歌曲", artist: "网易歌手",
@@ -443,7 +512,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     it("仅登录网易时自动读取网易喜欢，不显示QQ数量；可显式切到未登录的QQ再切回", async () => {
       const user = userEvent.setup();
       openLikes();
-      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect((await screen.findAllByText(neteaseSong.title)).length).toBeGreaterThan(0);
       expect(sources().getByRole("button", { name: "网易云音乐" })).toHaveAttribute("aria-pressed", "true");
       expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledWith("netease", 1, 50);
       expect(likedMock).not.toHaveBeenCalled();
@@ -453,7 +522,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       expect(await screen.findByText("请先登录后读取账号曲库")).toBeInTheDocument();
       expect(sources().getByRole("button", { name: "QQ 音乐" })).toHaveAttribute("aria-pressed", "true");
       await user.click(sources().getByRole("button", { name: "网易云音乐" }));
-      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect((await screen.findAllByText(neteaseSong.title)).length).toBeGreaterThan(0);
       expect(enqueueMock).not.toHaveBeenCalled(); expect(playMock).not.toHaveBeenCalled();
     });
 
@@ -465,10 +534,10 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       openLikes(AUTHENTICATED);
       await screen.findAllByText(SONG.title);
       await user.click(sources().getByRole("button", { name: "网易云音乐" }));
-      await screen.findByText("网易喜欢第1页");
+      await screen.findAllByText("网易喜欢第1页");
       const qqReads = likedMock.mock.calls.length;
       await user.click(screen.getByRole("button", { name: "下一页" }));
-      await screen.findByText("网易喜欢第2页");
+      await screen.findAllByText("网易喜欢第2页");
       await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
       await waitFor(() => expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(3));
       expect(providers.nativeProviderLibraryLikes).toHaveBeenLastCalledWith("netease", 2, 50);
@@ -513,7 +582,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       await screen.findByText("读取失败；请手动刷新，应用没有重放写入");
       expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(1);
       await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
-      expect(await screen.findByText(neteaseSong.title)).toBeInTheDocument();
+      expect((await screen.findAllByText(neteaseSong.title)).length).toBeGreaterThan(0);
       expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(2);
     });
   });

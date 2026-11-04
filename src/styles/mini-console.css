@@ -305,3 +305,24 @@
     min-height: 28px;
   }
 }
+
+.app-shell--terminal .provider-badge,
+.terminal-mini .provider-badge {
+  border-radius: 0;
+  padding: 1px 4px;
+  font-family: var(--font-data);
+  font-size: 7.5px;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgb(139 163 145 / 32%);
+  background: rgb(184 199 122 / 8%);
+  color: var(--lichen);
+  width: fit-content;
+}
+
+.terminal-queue-list button .provider-badge {
+  font-size: 7px;
+  padding: 0 3px;
+  opacity: 0.85;
+}

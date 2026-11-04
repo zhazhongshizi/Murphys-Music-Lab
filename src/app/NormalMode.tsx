@@ -394,7 +394,7 @@ export function NormalMode({
   const { source, selectSource } = useDesktopProviders();
   const artistNavigation = useArtistNavigation();
   const blockingStatus = fixtureStatus === "normal" || fixtureStatus === "partial" ? null : fixtureStatus;
-  const showSourceNavigation = view === "library" && !artistNavigation.artist && (librarySection === "playlists" || librarySection === "search");
+  const showSourceNavigation = view === "library" && !artistNavigation.artist && librarySection === "search";
   return (
     <ArtistNavigationContext.Provider value={artist => { setQueueOpen(false); setSettingsOpen(false); artistNavigation.openArtist(artist); }}>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -426,7 +426,7 @@ export function NormalMode({
           onSelect={id => {
             artistNavigation.closeArtist(false);
             setSettingsOpen(false);
-            navigateToLibrary(id === "local" ? "local" : librarySection === "playlists" ? "playlists" : "search");
+            navigateToLibrary(id === "local" ? "local" : "search");
           }}
           onAccount={() => setAccountOpen(true)}
         />

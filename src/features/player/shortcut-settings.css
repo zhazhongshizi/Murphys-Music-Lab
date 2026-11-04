@@ -22,3 +22,6 @@
 .shortcut-settings :is(button,select,input,summary):focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .shortcut-settings__error { color: #bc7259; overflow-wrap: anywhere; }
 .shortcut-settings--rhine { margin: 0; }
+.shortcut-settings--rhine input[type=checkbox] { accent-color: var(--rh-accent, #b96e2d); }
+.shortcut-settings--rhine :is(button, select, .shortcut-settings__key, .shortcut-settings__edit) { border-radius: 2px; }
+.shortcut-settings--rhine option { color: #1f1f1d; background: #f4f3ef; }

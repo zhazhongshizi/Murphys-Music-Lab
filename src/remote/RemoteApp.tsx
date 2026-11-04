@@ -85,11 +85,11 @@ export function RemoteApp() {
     <NativePlayerBridge />
     <div className="app-shell app-shell--normal remote-shell" data-cover-tone={palette.tone} data-glow-intensity="standard" data-glow-renderer="original" style={style}>
       <header className="remote-header"><span title={APP_NAME}>{APP_SHORT_NAME} <small>遥控 · 声音在电脑</small></span>
-        <nav className="top-bar__nav remote-nav" aria-label="音乐导航">
+        <nav className="top-bar__nav remote-nav" aria-label="远程导航">
           {([['discover', 'library', '曲库'], ['search', 'search', '搜索'], ['liked', 'heart', '喜欢']] as const).map(([id, icon, label]) =>
-            <button key={id} type="button" aria-pressed={section === id && (remoteSource === "qqmusic" || remoteSource === "local")} onClick={() => { artistNavigation.closeArtist(false); if (remoteSource === "local") setRemoteSource("qqmusic"); setSection(id); }}><Icon name={icon} size={18} />{label}</button>)}
+            <button key={id} type="button" aria-pressed={section === id && (remoteSource === "qqmusic" || remoteSource === "local")} onClick={() => { artistNavigation.closeArtist(false); if (remoteSource === "local") setRemoteSource("qqmusic"); setSection(id); }}><Icon name={icon} size={18} /><span>{label}</span></button>)}
           {([['netease', '网易云'], ['bilibili', 'Bilibili']] as const).map(([sourceId, label]) =>
-            <button key={sourceId} type="button" aria-pressed={section !== null && remoteSource === sourceId} onClick={() => selectRemoteSource(sourceId)}>{label}</button>)}
+            <button key={sourceId} type="button" aria-pressed={section !== null && remoteSource === sourceId} onClick={() => selectRemoteSource(sourceId)}><Icon name="folder-music" size={16} /><span>{label}</span></button>)}
         </nav>
         <span role="status">{connection === "online" ? "已连接" : "连接中断，正在重连…"}</span>
         <button onClick={() => { artistNavigation.closeArtist(false); setQueueOpen(false); disconnectRemote(); }}>断开</button>

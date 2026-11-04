@@ -9,6 +9,7 @@ dist/
 .vite/
 coverage/
 *.tsbuildinfo
+/.playwright-cli/
 
 # Rust / Tauri
 target/

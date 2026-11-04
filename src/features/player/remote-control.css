@@ -3,3 +3,7 @@
 .remote-settings label { display: grid; gap: 5px; color: var(--normal-muted); font-size: 12px; }
 .remote-settings input { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px; border: 1px solid var(--normal-edge); border-radius: 7px; background: rgb(0 0 0 / 18%); color: var(--normal-paper); font: 12px var(--font-data); user-select: text; }
 .remote-settings input:focus-visible { outline: 2px solid var(--normal-paper); outline-offset: 2px; }
+
+.remote-control-settings--rhine :is(.remote-control-panel, .remote-control-actions button, .remote-control-qr, .remote-control-pin strong) {
+  border-radius: 2px;
+}

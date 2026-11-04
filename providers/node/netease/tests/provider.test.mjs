@@ -36,8 +36,8 @@ class Fake {
       login_status:{data:{code:200,account:{id:1},profile:{userId:1,nickname:'fixture'}}},
       logout:{code:200},
       cloudsearch:{result:{songCount:3,songs:[track(1),track(2)]}},search:{result:{playlistCount:1,playlists:[playlist(1)]}},
-      user_playlist:{more:false,playlist:[playlist(1),playlist(2,'2',true),playlist(3)]},
-      playlist_detail:{playlist:{trackIds:[{id:1},{id:2},{id:3}]}},likelist:{ids:[1,2,3]},
+      user_playlist:{more:false,playlist:[{...playlist(1),specialType:5},playlist(2,'2',true),playlist(3)]},
+      playlist_detail:{playlist:{...playlist(p.id??1),trackIds:[{id:1},{id:2},{id:3}]}},likelist:{ids:[1,2,3]},
       song_detail:{songs:(p.ids??'1').split(',').filter(n=>n!=='3').map(n=>n==='99'?{id:99,name:null,dt:0}:track(n))},
       lyric_new:{lrc:{lyric:'[00:01.00]line'},tlyric:{lyric:'[00:01.00]翻译'},romalrc:{lyric:'   '}},
       song_url_v1:{data:[{id:1,url:'https://m801.music.126.net/a.mp3',type:'mp3',br:320000,time:120000,expi:1200,fee:0,freeTrialInfo:this.mode==='trial'?{}:null}]},
@@ -101,6 +101,63 @@ test('filtered container pagination and likes preserve ID identity/order and >53
   const {p}=await ready();const page=await p.handle('library.containers',{kind:'favorite',page:1,pageSize:1});
   assert.deepEqual(page.items.map(p=>p.id),['2']);assert.equal(page.total,1);
   assert.equal(parseUpstreamJson('{"id":9999999999999999999}').id,'9999999999999999999');
+});
+test('likes display matches the liked playlist across pages, refresh and reordered/missing song details; membership stays separate',async()=>{
+  const {p,t}=await ready(),call=t.call.bind(t);
+  let ordered=[9,3,7,1];
+  t.call=async(name,q)=>{
+    if(name==='user_playlist')return {body:{code:200,more:false,playlist:[
+      {...playlist(8),name:'我喜欢的音乐'},
+      {...playlist(6,'2'),specialType:5},
+      {...playlist(5),name:'Renamed liked playlist',specialType:5},
+    ]}};
+    if(name==='playlist_detail'){
+      assert.equal(q.id,'5');
+      return {body:{code:200,playlist:{...playlist(5),trackCount:ordered.length,trackIds:ordered.map(id=>({id}))}}};
+    }
+    if(name==='song_detail')return {body:{code:200,songs:q.ids.split(',').reverse().filter(id=>id!=='3').map(track)}};
+    return call(name,q);
+  };
+  const first=await p.handle('library.likes',{page:1,pageSize:2});
+  const second=await p.handle('library.likes',{page:2,pageSize:2});
+  const detail=await p.handle('library.tracks',{containerId:'5',page:1,pageSize:4});
+  const ids=page=>page.items.map(t=>t.ref.songId);
+  assert.deepEqual([...ids(first),...ids(second)],ids(detail));
+  assert.deepEqual(ids(first),['9','3']);assert.deepEqual(ids(second),['7','1']);
+  assert.equal(first.items[1].availability,'unavailable');
+  assert.equal(first.total,4);assert.equal(first.hasMore,true);assert.equal(second.hasMore,false);
+  assert.equal(t.calls.some(([name])=>name==='likelist'),false);
+  ordered=[1,7,3,9];
+  assert.deepEqual(ids(await p.handle('library.likes',{page:1,pageSize:2})),['1','7']);
+  assert.deepEqual(await p.handle('library.likeIds',{}),['1','2','3']);
+});
+test('liked playlist lookup follows container pagination and supports empty playlists',async()=>{
+  const {p,t}=await ready(),offsets=[];
+  t.call=async(name,q)=>{
+    if(name==='user_playlist'){
+      offsets.push(q.offset);
+      return {body:{code:200,more:q.offset===0,playlist:q.offset===0
+        ?[playlist(8),{...playlist(6,'2'),specialType:5}]
+        :[{...playlist(5),specialType:5}]}};
+    }
+    assert.equal(name,'playlist_detail');assert.equal(q.id,'5');
+    return {body:{code:200,playlist:{...playlist(5),trackCount:0,trackIds:[]}}};
+  };
+  assert.deepEqual(await p.handle('library.likes',{page:1,pageSize:2}),{page:1,total:0,hasMore:false,items:[]});
+  assert.deepEqual(offsets,[0,2]);
+});
+test('missing or truncated liked playlist fails without falling back to unordered IDs',async()=>{
+  for(const mode of ['missing','truncated','denied']) {
+    const {p,t}=await ready(),calls=[];
+    t.call=async(name)=>{
+      calls.push(name);
+      if(name==='user_playlist')return {body:{code:200,more:false,playlist:mode==='missing'?[playlist(8)]:[{...playlist(5),specialType:5}]}};
+      assert.equal(name,'playlist_detail');
+      return mode==='denied'?{body:{code:403}}:{body:{code:200,playlist:{...playlist(5),trackIds:[{id:1}]}}};
+    };
+    await assert.rejects(p.handle('library.likes',{page:1,pageSize:2}),e=>e.code===(mode==='denied'?'entitlement_denied':'upstream_schema_changed'));
+    assert.deepEqual(calls,mode==='missing'?['user_playlist']:['user_playlist','playlist_detail']);
+  }
 });
 test('preview is never returned as full playback; failures classified; no automatic retries',async()=>{
   const {p,t}=await ready();
