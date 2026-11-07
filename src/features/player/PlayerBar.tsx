@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { CommitRange } from "./CommitRange";
 import { PlaybackNotice } from "./PlaybackNotice";
 import { SourceBadge } from "../providers/SourceBadge";
-import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
+import { DeckPlaylistAction } from "../rhine/DeckPlaylistAction";
 
 import { Icon } from "../../components/Icon";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
@@ -18,6 +18,8 @@ import {
 interface PlayerBarProps {
   onOpenQueue: () => void;
   queueOpen: boolean;
+  accountKey?: string;
+  authenticated?: boolean;
 }
 
 const MODE_LABELS: Record<PlaybackMode, string> = {
@@ -63,7 +65,7 @@ function PlayerTimeline({ track }: { track: NonNullable<ReturnType<typeof getCur
   );
 }
 
-export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
+export function PlayerBar({ onOpenQueue, queueOpen, accountKey, authenticated = true }: PlayerBarProps) {
   const track = usePlayerSelector(getCurrentTrack);
   const mode = usePlayerSelector(selectMode);
   const isPlaying = usePlayerSelector(selectIsPlaying);
@@ -133,7 +135,7 @@ export function PlayerBar({ onOpenQueue, queueOpen }: PlayerBarProps) {
       </div>
 
       <div className="player-bar__tools">
-        <div className="player-bar__library"><ProviderLibraryActions track={track} /></div>
+        <div className="player-bar__library"><DeckPlaylistAction key={accountKey} track={track} authenticated={authenticated} variant="default" /></div>
         <div className="player-bar__volume">
           <label className="sr-only" htmlFor="player-volume">音量</label>
           <CommitRange

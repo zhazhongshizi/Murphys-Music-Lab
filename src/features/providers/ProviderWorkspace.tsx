@@ -10,7 +10,7 @@ import type {
   ProviderVideo,
   ProviderWriteRequest,
 } from "../../contracts/providers";
-import { nativeQueuePlay } from "../../backend/nativeQueueAdapter";
+import { nativeQueueEnqueueNext, nativeQueuePlay } from "../../backend/nativeQueueAdapter";
 import { Icon } from "../../components/Icon";
 import { playerActions } from "../player/playerStore";
 import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
@@ -258,6 +258,7 @@ function ReadyWorkspace({
   const [input, setInput] = useState("");
   const searchHistory = useProviderSearchHistory(id);
   const [linkInput, setLinkInput] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
@@ -373,6 +374,7 @@ function ReadyWorkspace({
     setLinkInput("");
     inputValue.current = "";
     setNotice("");
+    setFilterQuery("");
   }
 
   function submitSearch(value: string, kind: Tab = tab) {
@@ -393,6 +395,7 @@ function ReadyWorkspace({
     setSelected(new Map());
     setVideo(null);
     setLastWrite(null);
+    setFilterQuery("");
     try {
       const detail = await api.nativeProviderContainer(id, row.id);
       if (!current() || token !== selection.current) return;
@@ -424,7 +427,7 @@ function ReadyWorkspace({
     }
   }
 
-  async function openVideo(row: ProviderVideo, play: boolean) {
+  async function openVideo(row: ProviderVideo, play: boolean, next = false) {
     if (pending.current || !current()) return;
     const token = ++selection.current;
     pending.current = true;
@@ -447,7 +450,7 @@ function ReadyWorkspace({
         setLastWrite(null);
         setPartsPage(1);
         setVideo(row);
-        setNotice(play ? "此视频有多个分 P，请选择要播放的内容" : "此视频有多个分 P，请选择要加入队列的内容");
+        setNotice(play ? "此视频有多个分 P，请选择要播放的内容" : next ? "此视频有多个分 P，请选择要下一首播放的内容" : "此视频有多个分 P，请选择要加入队列的内容");
       }
     } catch {
       if (current() && token === selection.current) setNotice("视频读取失败，请重试；未播放或入队");
@@ -455,17 +458,19 @@ function ReadyWorkspace({
       pending.current = false;
       if (current()) setBusy(false);
     }
-    if (single && current() && token === selection.current) await enqueue([single], play);
+    if (single && current() && token === selection.current) await enqueue([single], play, next);
   }
 
-  async function enqueue(tracks: readonly ProviderTrack[], play: boolean) {
+  async function enqueue(tracks: readonly ProviderTrack[], play: boolean, next = false) {
     if (pending.current || !current() || !tracks.length || tracks.some(t => !usable(t))) return;
     const token = selection.current;
     const active = () => current() && token === selection.current;
     pending.current = true;
     setBusy(true);
     try {
-      const queue = await api.nativeProviderEnqueueTracks(tracks);
+      const queue = next
+        ? await nativeQueueEnqueueNext(api.providerTrackToQueueTrack(tracks[0]!))
+        : await api.nativeProviderEnqueueTracks(tracks);
       if (!active()) return;
       await playerActions.hydrateNative(queue);
       if (!active()) return;
@@ -483,7 +488,7 @@ function ReadyWorkspace({
         }
       }
       if (active()) {
-        setNotice(play ? `已请求播放：${tracks[0]!.title}` : `已将 ${tracks.length} 项加入混合队列`);
+        setNotice(play ? `已请求播放：${tracks[0]!.title}` : next ? `下一首播放：${tracks[0]!.title}` : `已将 ${tracks.length} 项加入混合队列`);
       }
     } catch {
       if (active()) setNotice("播放或入队失败，请检查此来源登录与队列容量");
@@ -594,7 +599,11 @@ function ReadyWorkspace({
   const trackRows = rows.filter(isTrack);
   const containerRows = rows.filter(isContainer);
   const videoRows = rows.filter((r): r is ProviderVideo => !isTrack(r) && !isContainer(r));
-  const inspectedTrack = trackRows.find(t => t.id === activeTrackId) ?? trackRows[0] ?? null;
+  const normalizedFilter = filterQuery.trim().toLocaleLowerCase("zh-CN");
+  const visibleTrackRows = variant === "default" && normalizedFilter
+    ? trackRows.filter(row => `${row.title} ${row.artist} ${row.album}`.toLocaleLowerCase("zh-CN").includes(normalizedFilter))
+    : trackRows;
+  const inspectedTrack = visibleTrackRows.find(t => t.id === activeTrackId) ?? visibleTrackRows[0] ?? trackRows.find(t => t.id === activeTrackId) ?? trackRows[0] ?? null;
 
   const isRhineShelf = variant === "rhine" && (tab === "created" || tab === "favorite") && !container && !video;
   const isRhineDetail = variant === "rhine" && (container !== null || video !== null);
@@ -638,6 +647,7 @@ function ReadyWorkspace({
     }
     setSelected(new Map());
     setLastWrite(null);
+    setFilterQuery("");
   }
 
   if (variant === "rhine" && (container || video)) {
@@ -649,8 +659,8 @@ function ReadyWorkspace({
         onBack={handleBack} onPage={n => { selection.current++; if (video) setPartsPage(n); else setPage(n); }}
         onRefresh={() => { selection.current++; setSelected(new Map()); setPage(1); setPartsPage(1); setReload(r => r + 1); }}
         onCheck={check} onClear={() => setSelected(new Map())}
-        onEnqueue={(tracks, play) => { if (play && tracks[0]) setActiveTrackId(tracks[0].id); void enqueue(tracks, play); }}
-        onVideo={(row, play) => void openVideo(row, play)} onEnqueueAll={play => video ? void enqueueAll() : void enqueueContainer(play)}
+        onEnqueue={(tracks, play, next) => { if (play && tracks[0]) setActiveTrackId(tracks[0].id); void enqueue(tracks, play, next); }}
+        onVideo={(row, play, next) => void openVideo(row, play, next)} onEnqueueAll={play => video ? void enqueueAll() : void enqueueContainer(play)}
         canRemove={!lastWrite && caps.writeActions.includes(removeAction) && !!container?.allowedActions.includes(removeAction)}
         onRemove={() => { if (container) void write({ providerId: id, accountId: status.account.id, operation: { kind: "removeItems", containerId: container.id, trackIds: [...selected.keys()] } }); }}
         verification={lastWrite ? { disabled: busy, onVerify: () => void write(lastWrite, true) } : undefined}
@@ -864,6 +874,16 @@ function ReadyWorkspace({
                           <span className="rhine-song-actions provider-rhine-actions">
                             <button
                               type="button"
+                              className="play-next-button"
+                              title="下一首播放"
+                              aria-label={`下一首播放 ${row.title}`}
+                              disabled={busy || !usable(row)}
+                              onClick={() => void enqueue([row], false, true)}
+                            >
+                              <Icon name="play-next" size={20} />
+                            </button>
+                            <button
+                              type="button"
                               className="rhine-playlist-icon-button"
                               title="播放"
                               aria-label="播放此项"
@@ -922,6 +942,16 @@ function ReadyWorkspace({
                             </span>
                           </div>
                           <span className="rhine-song-actions provider-rhine-actions">
+                            <button
+                              type="button"
+                              className="play-next-button"
+                              title="下一首播放"
+                              aria-label={`下一首播放 ${row.title}`}
+                              disabled={busy}
+                              onClick={() => void openVideo(row, false, true)}
+                            >
+                              <Icon name="play-next" size={20} />
+                            </button>
                             <button type="button" className="rhine-playlist-icon-button" title="播放" aria-label="播放视频" disabled={busy} onClick={() => void openVideo(row, true)}>
                               <PlaylistActionIcon kind="play" />
                             </button>
@@ -972,7 +1002,7 @@ function ReadyWorkspace({
       <div className="catalog-pane provider-catalog-pane">
         <header className="catalog-pane__header">
           <div>
-            <span className="section-label">{id === "netease" ? "NETEASE CLOUD CATALOG" : "BILIBILI MEDIA CATALOG"}</span>
+            <span className="section-label">{likesOnly ? "RECORD CATALOG" : id === "netease" ? "NETEASE CLOUD CATALOG" : "BILIBILI MEDIA CATALOG"}</span>
             <h1>{likesOnly ? "喜欢的音乐" : `${SOURCE_LABELS[id]} · ${status.account.displayName}`}</h1>
             <p>
               {container
@@ -988,9 +1018,11 @@ function ReadyWorkspace({
                 <Icon name="back" size={16} />返回{video ? "视频列表" : "容器列表"}
               </button>
             )}
-            <button className="text-button" type="button" onClick={onAccount}>
-              管理此来源账号
-            </button>
+            {!likesOnly && (
+              <button className="text-button" type="button" onClick={onAccount}>
+                管理此来源账号
+              </button>
+            )}
           </div>
         </header>
 
@@ -1005,6 +1037,25 @@ function ReadyWorkspace({
         </nav>}
 
         {likesOnly && !tabs.includes("likes") && <p role="status">此来源暂不支持读取喜欢的歌曲。</p>}
+
+        {(likesOnly || container || video) && (
+          <label className="catalog-search">
+            <Icon name="search" size={18} />
+            <span className="sr-only">搜索歌曲、歌手或专辑</span>
+            <input
+              value={filterQuery}
+              placeholder={container ? "在此歌单中搜索歌曲、歌手或专辑" : "搜索歌曲、歌手或专辑"}
+              type="search"
+              maxLength={100}
+              onChange={event => setFilterQuery(event.currentTarget.value)}
+            />
+            {filterQuery && (
+              <button aria-label="清空搜索" type="button" onClick={() => setFilterQuery("")}>
+                <Icon name="close" size={16} />
+              </button>
+            )}
+          </label>
+        )}
 
         {((!container && ["songs", "playlists", "videos"].includes(tab)) || id === "bilibili") && (
           <div className="provider-search-stack">
@@ -1133,6 +1184,8 @@ function ReadyWorkspace({
 
         <div className="playlist-songs__toolbar provider-toolbar">
           <div className="playlist-songs__batch-actions provider-buttons">
+            {!likesOnly && (
+              <>
             <button
               className="text-button text-button--primary"
               type="button"
@@ -1170,6 +1223,8 @@ function ReadyWorkspace({
               >
                 从当前容器移出选中
               </button>
+            )}
+              </>
             )}
             {lastWrite && (
               <button className="text-button text-button--primary" type="button" disabled={busy} onClick={() => void write(lastWrite, true)}>
@@ -1253,6 +1308,16 @@ function ReadyWorkspace({
                   </p>
                 </div>
                 <div className="provider-buttons">
+                  <button
+                    className="text-button play-next-button"
+                    type="button"
+                    title="下一首播放"
+                    aria-label={`下一首播放 ${row.title}`}
+                    disabled={busy}
+                    onClick={() => void openVideo(row, false, true)}
+                  >
+                    <Icon name="play-next" size={15} />
+                  </button>
                   <button className="text-button text-button--primary" type="button" disabled={busy} onClick={() => void openVideo(row, true)}>
                     <Icon name="play" size={15} />播放视频
                   </button>
@@ -1265,20 +1330,20 @@ function ReadyWorkspace({
           </div>
         ) : (
           <div className="catalog-table-wrap">
-            <table className="catalog-table playlist-songs__table provider-tracks-table">
+            <table className={likesOnly ? "catalog-table provider-tracks-table" : "catalog-table playlist-songs__table provider-tracks-table"}>
               <thead>
                 <tr>
-                  <th scope="col">选择</th>
-                  <th scope="col">#</th>
+                  <th scope="col">{!likesOnly && <span className="sr-only">选择歌曲</span>}#</th>
                   <th scope="col">封面</th>
-                  <th scope="col">曲目 / 分 P</th>
-                  <th scope="col">状态</th>
+                  <th scope="col">曲目</th>
+                  <th scope="col">{id === "bilibili" ? "UP 主" : "歌手"}</th>
+                  <th scope="col">{id === "bilibili" ? "视频" : "专辑"}</th>
+                  <th scope="col">{id === "bilibili" ? "状态" : "音质"}</th>
                   <th scope="col">时长</th>
-                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {trackRows.map((row, idx) => {
+                {visibleTrackRows.map((row, idx) => {
                   const checked = selected.has(row.id);
                   const isActive = inspectedTrack?.id === row.id;
                   return (
@@ -1286,22 +1351,32 @@ function ReadyWorkspace({
                       key={row.id}
                       className={isActive ? "catalog-table__active" : checked ? "playlist-songs__selected" : undefined}
                       onClick={() => setActiveTrackId(row.id)}
+                      onDoubleClick={() => {
+                        if (!busy && usable(row)) {
+                          setActiveTrackId(row.id);
+                          void enqueue([row], true);
+                        }
+                      }}
                     >
-                      <td onClick={e => e.stopPropagation()}>
-                        <label className="playlist-songs__check">
-                        <input
-                          type="checkbox"
-                          aria-label={row.title}
-                          checked={checked}
-                          disabled={!usable(row) || busy || (selected.size >= 100 && !checked)}
-                          onChange={e => check(row, e.target.checked)}
-                        />
-                        </label>
-                      </td>
-                      <td>
-                        <span className={isActive ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
-                          {String(((video ? partsPage : page) - 1) * 50 + idx + 1).padStart(2, "0")}
-                        </span>
+                      <td onClick={!likesOnly ? e => e.stopPropagation() : undefined}>
+                        {likesOnly ? (
+                          <span className={isActive ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
+                            {String(((video ? partsPage : page) - 1) * 50 + idx + 1).padStart(2, "0")}
+                          </span>
+                        ) : (
+                          <label className="playlist-songs__check">
+                            <input
+                              type="checkbox"
+                              aria-label={row.title}
+                              checked={checked}
+                              disabled={!usable(row) || busy || (selected.size >= 100 && !checked)}
+                              onChange={e => check(row, e.target.checked)}
+                            />
+                            <span className={isActive ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
+                              {String(((video ? partsPage : page) - 1) * 50 + idx + 1).padStart(2, "0")}
+                            </span>
+                          </label>
+                        )}
                       </td>
                       <td>
                         <AlbumArtwork compact track={providerArtworkTrack(row)} />
@@ -1310,45 +1385,17 @@ function ReadyWorkspace({
                         <div className="provider-track-cell">
                           <button className="catalog-table__title" type="button" onClick={() => setActiveTrackId(row.id)}>
                             <strong>{row.title}</strong>
-                            <small>
-                              {row.creatorKind === "uploader" ? `UP：${row.artist}` : `艺人：${row.artist}`} · {row.album}
-                            </small>
+                            <small>{row.id.replace(/^netease:track:/, "")}</small>
                           </button>
-                          <SourceBadge track={row} />
+                          {row.providerId === "bilibili" && <SourceBadge track={row} />}
                         </div>
                       </td>
+                      <td>{row.artist}</td>
+                      <td>{row.album}</td>
                       <td>
-                        <span className="quality-tag">{usable(row) ? "可尝试播放" : row.availability}</span>
+                        <span className="quality-tag">{usable(row) ? (id === "bilibili" ? "可尝试播放" : "在线") : row.availability}</span>
                       </td>
                       <td className="catalog-table__duration">{formatDuration(row.durationMs)}</td>
-                      <td className="provider-track-actions-cell" onClick={e => e.stopPropagation()}>
-                        <div className="provider-row-actions">
-                          <button
-                            className="text-button text-button--primary"
-                            type="button"
-                            disabled={busy || !usable(row)}
-                            onClick={() => {
-                              setActiveTrackId(row.id);
-                              void enqueue([row], true);
-                            }}
-                          >
-                            播放此项
-                          </button>
-                          <button
-                            className="text-button"
-                            type="button"
-                            disabled={busy || !usable(row)}
-                            onClick={() => void enqueue([row], false)}
-                          >
-                            加入队列
-                          </button>
-                          <ProviderLibraryActions
-                            track={row}
-                            variant={variant}
-                            initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
-                          />
-                        </div>
-                      </td>
                     </tr>
                   );
                 })}
@@ -1397,7 +1444,7 @@ function ReadyWorkspace({
           <>
             <h2>{inspectedTrack.title}</h2>
             <p className="provider-inspector__creator">
-              {inspectedTrack.creatorKind === "uploader" ? `UP 主 · ${inspectedTrack.artist}` : `艺人 · ${inspectedTrack.artist}`}
+              {inspectedTrack.creatorKind === "uploader" ? `UP 主 · ${inspectedTrack.artist}` : inspectedTrack.artist}
             </p>
             <dl>
               <div>
@@ -1405,18 +1452,58 @@ function ReadyWorkspace({
                 <dd>{inspectedTrack.album}</dd>
               </div>
               <div>
-                <dt>可用性</dt>
-                <dd>{usable(inspectedTrack) ? "可尝试播放" : inspectedTrack.availability}</dd>
+                <dt>{id === "bilibili" ? "可用性" : "实际音质"}</dt>
+                <dd>{usable(inspectedTrack) ? (id === "bilibili" ? "可尝试播放" : "在线") : inspectedTrack.availability}</dd>
               </div>
               <div>
                 <dt>时长</dt>
                 <dd>{formatDuration(inspectedTrack.durationMs)}</dd>
               </div>
-              <div>
-                <dt>批量勾选</dt>
-                <dd>{selected.size} / 100</dd>
-              </div>
+              {!likesOnly && (
+                <div>
+                  <dt>批量勾选</dt>
+                  <dd>{selected.size} / 100</dd>
+                </div>
+              )}
             </dl>
+            <div className="catalog-inspector__play-actions">
+              <button
+                aria-label={`下一首播放 ${inspectedTrack.title}`}
+                title="下一首播放"
+                className="text-button play-next-button"
+                disabled={busy || !usable(inspectedTrack)}
+                onClick={() => void enqueue([inspectedTrack], false, true)}
+                type="button"
+              >
+                <Icon name="play-next" size={20} />
+              </button>
+              <button
+                aria-label="播放此项"
+                className="text-button text-button--primary catalog-inspector__play"
+                disabled={busy || !usable(inspectedTrack)}
+                onClick={() => {
+                  setActiveTrackId(inspectedTrack.id);
+                  void enqueue([inspectedTrack], true);
+                }}
+                type="button"
+              >
+                <Icon name="play" size={17} />原生播放
+              </button>
+            </div>
+            <button
+              aria-label="加入队列"
+              className="text-button"
+              disabled={busy || !usable(inspectedTrack)}
+              onClick={() => void enqueue([inspectedTrack], false)}
+              type="button"
+            >
+              <Icon name="queue" size={17} />加入本地队列
+            </button>
+            <ProviderLibraryActions
+              track={inspectedTrack}
+              variant={variant}
+              initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
+            />
           </>
         ) : (
           <>

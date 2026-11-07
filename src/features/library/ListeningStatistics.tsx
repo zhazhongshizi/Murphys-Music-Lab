@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getStatistics, type Statistics, type ShuffleRow } from "../../backend/personalAdapter";
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
 
@@ -64,7 +64,7 @@ function StatisticsRows({ data, view, days, busy, onAction }: { data: Statistics
       <span>{row.recentPlays} 次 · {duration(row.recentMs)}</span><TrackActions row={row} busy={busy} onAction={onAction}/></li>)}</ul>
     {!rows.length && <p>还没有记录，开始听歌后这里会逐步更新。</p>}</>;
 }
-export function ListeningRecords() {
+export function ListeningRecords({viewNavigation}:{viewNavigation?:ReactNode}) {
   const [data, setData] = useState<Statistics | null>(null);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -102,12 +102,12 @@ export function ListeningRecords() {
     return () => { alive = false;window.clearInterval(timer);document.removeEventListener("visibilitychange",visibleRefresh); };
   }, [revision,days]);
   return <div className="listening-records" aria-label="听歌统计">
-    <header className="catalog-pane__header">
+    <header className="catalog-pane__header statistics-header">
       <div>
         <span className="section-label">LISTENING RECORD</span>
         <h1>听歌统计</h1>
       </div>
-      <button type="button" onClick={() => setRevision(r => r + 1)}>刷新统计</button>
+      <div className="statistics-header-actions">{viewNavigation}<button type="button" onClick={() => setRevision(r => r + 1)}>刷新统计</button></div>
     </header>
     <p>从此版本开始累计实际播放进度；暂停、拖动和休眠跳变不计入。累计听满 30 秒，或短曲的一半（至少 1 秒），记为一次有效收听。</p>
     <nav className="personal-actions" aria-label="统计日期范围">{([1,7,30] as const).map(value=><button type="button" key={value} aria-pressed={days===value} onClick={()=>{if(value!==days){setData(null);setDays(value);}else setRevision(r=>r+1);}}>{value===1?"今天":`近 ${value} 天`}</button>)}</nav>
@@ -117,9 +117,9 @@ export function ListeningRecords() {
       <p role="status">正在读取统计…</p> : <>
         {!data.storageAvailable && <p role="alert">部分收听数据未能保存，统计可能不完整。</p>}
         <div className="listening-summary">
-          <div><strong>{duration(data.totalMs)}</strong><span>累计收听</span></div>
-          <div><strong>{data.qualifiedPlays} 次</strong><span>有效收听</span></div>
-          <div><strong>{data.startedMs ? new Date(data.startedMs).toLocaleDateString() : "尚未开始"}</strong><span>开始记录</span></div>
+          <div><span>累计收听</span><strong>{duration(data.totalMs)}</strong></div>
+          <div><span>有效收听</span><strong>{data.qualifiedPlays} 次</strong></div>
+          <div><span>开始记录</span><strong>{data.startedMs ? new Date(data.startedMs).toLocaleDateString() : "尚未开始"}</strong></div>
         </div>
         <nav className="personal-actions" aria-label="统计分类">{VIEWS.map(([id, label]) =>
           <button type="button" key={id} aria-pressed={view === id} onClick={() => setView(id)}>{label}</button>)}</nav>
@@ -130,11 +130,11 @@ export function ListeningRecords() {
 
 export function ListeningStatistics() {
   const [view,setView]=useState<"analytics"|"records">("analytics");
-  return <section className="listening-statistics analytics-shell catalog-pane" aria-label="听歌统计">
-    <nav className="personal-actions" aria-label="统计视图">
+  const viewNavigation = <nav className="personal-actions statistics-view-switch" aria-label="统计视图">
       <button type="button" aria-pressed={view==="analytics"} onClick={()=>setView("analytics")}>数据分析</button>
       <button type="button" aria-pressed={view==="records"} onClick={()=>setView("records")}>收听记录与队列</button>
-    </nav>
-    {view==="analytics"?<ListeningAnalytics/>:<ListeningRecords/>}
+    </nav>;
+  return <section className="listening-statistics analytics-shell catalog-pane" aria-label="听歌统计">
+    {view==="analytics"?<ListeningAnalytics viewNavigation={viewNavigation}/>:<ListeningRecords viewNavigation={viewNavigation}/>}
   </section>;
 }

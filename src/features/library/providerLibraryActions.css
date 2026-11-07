@@ -60,6 +60,13 @@
   color: var(--paper);
 }
 
+.provider-library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .provider-library-form__title {
   margin: 0;
   font-size: 0.86rem;
@@ -217,4 +224,36 @@
   width: min(26rem, calc(100vw - 32px));
   max-height: min(68vh, calc(100dvh - 180px));
   overscroll-behavior: contain;
+}
+
+.catalog-inspector .provider-library-actions {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.catalog-inspector .provider-library-trigger {
+  width: 100%;
+  margin-top: 0;
+  justify-content: center;
+}
+
+.catalog-inspector .provider-library-form {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.catalog-inspector .provider-library-form .text-button {
+  margin-top: 0;
+}
+
+.catalog-inspector .provider-library-heading .text-button {
+  width: auto;
+  flex-shrink: 0;
 }

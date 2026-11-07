@@ -1,5 +1,6 @@
 /* Cover luminance surfaces stay local to the normal listening stage. */
 .app-shell[data-cover-tone="light"] {
+  color: var(--cover-on-surface);
   color-scheme: light;
   --vinyl: var(--cover-surface-base);
   --vinyl-raised: var(--cover-surface-raised);
@@ -88,6 +89,7 @@
 }
 
 .app-shell[data-cover-tone="light"] .player-bar {
+  color: var(--cover-on-surface);
   border-top-color: color-mix(in srgb, var(--cover-accent-light) 44%, var(--cover-line-light));
   background:
     linear-gradient(

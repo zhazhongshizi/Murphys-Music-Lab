@@ -72,13 +72,16 @@
 .app-shell.app-shell--normal .stage__metadata h1 { font-size: clamp(25px, 2.6vw, 38px); font-weight: 650; letter-spacing: -.035em; line-height: 1.3; }
 .app-shell.app-shell--normal .stage__album { display: none; }
 .app-shell.app-shell--normal .stage__metadata > p:not(.stage__album) { font-size: 16px; margin-top: 5px; }
-.app-shell.app-shell--normal .stage__quality { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-top: 15px; font-size: 10px; opacity: .8; }
+.app-shell.app-shell--normal .stage__quality { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 10px; align-items: center; margin-top: 15px; font-size: 10px; }
 .app-shell.app-shell--normal .stage__spine > .needle-scale { visibility: visible; }
 .app-shell.app-shell--normal .lyrics-scroll { padding-left: 0; }
 .app-shell.app-shell--normal .lyrics-scroll__eyebrow { font-family: var(--font-body); letter-spacing: .08em; opacity: .65; }
 .app-shell.app-shell--normal .lyrics-scroll__line--active .lyrics-scroll__original { font-weight: 650; font-size: clamp(26px, 2.6vw, 40px); letter-spacing: -.025em; }
 .app-shell.app-shell--normal .lyrics-scroll__line--active::before { display: none; }
-.app-shell.app-shell--normal .lyrics-scroll__empty { opacity: .6; }
+.app-shell.app-shell--normal .lyrics-scroll__empty { text-align: center; letter-spacing: .12em; color: var(--paper-muted); }
+.app-shell.app-shell--normal .lyrics-scroll__empty::after { content: "NO LYRICS AVAILABLE / INSTRUMENTAL OR UNSYNCED"; display: block; max-width: 34ch; margin: 16px auto 0; font: 10px/1.8 var(--font-data); letter-spacing: .14em; opacity: .8; }
+.app-shell.app-shell--normal .stage__quality > span,
+.app-shell.app-shell--normal .stage__quality-trigger { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--paper); }
 .app-shell.app-shell--normal .stage__ambient { position: fixed; inset: 0; overflow: hidden; overflow: clip; }
 .app-shell.app-shell--normal .stage__glow--field {
   background:

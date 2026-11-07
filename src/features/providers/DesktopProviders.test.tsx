@@ -11,7 +11,7 @@ import { DesktopAccountDialog } from "./ProviderAccount";
 import { ProviderWorkspace, type RhineProviderSceneState } from "./ProviderWorkspace";
 import { SourceBadge } from "./SourceBadge";
 import { playerActions } from "../player/playerStore";
-import { nativeQueuePlay } from "../../backend/nativeQueueAdapter";
+import { nativeQueueEnqueueNext, nativeQueuePlay } from "../../backend/nativeQueueAdapter";
 
 vi.mock("../../backend/providersAdapter", async original => ({
   ...await original<typeof import("../../backend/providersAdapter")>(),
@@ -19,7 +19,7 @@ vi.mock("../../backend/providersAdapter", async original => ({
   nativeProviderSearchSongs: vi.fn(), nativeProviderSearchPlaylists: vi.fn(), nativeProviderSearchVideos: vi.fn(), nativeProviderLibraryContainers: vi.fn(), nativeProviderLibraryTracks: vi.fn(), nativeProviderLibraryVideos: vi.fn(), nativeProviderLibraryLikes: vi.fn(), nativeProviderContainer: vi.fn(), nativeProviderResolveVideo: vi.fn(), nativeProviderVideoParts: vi.fn(), nativeProviderEnqueueTracks: vi.fn(), nativeProviderEnqueueVideo: vi.fn(), nativeProviderWrite: vi.fn(),
 }));
 vi.mock("../player/playerStore", () => ({ playerActions: { hydrateNative: vi.fn(), refreshProviderLikes: vi.fn(), applyVerifiedProviderLike: vi.fn() } }));
-vi.mock("../../backend/nativeQueueAdapter", async original => ({ ...await original<typeof import("../../backend/nativeQueueAdapter")>(), nativeQueuePlay: vi.fn() }));
+vi.mock("../../backend/nativeQueueAdapter", async original => ({ ...await original<typeof import("../../backend/nativeQueueAdapter")>(), nativeQueuePlay: vi.fn(), nativeQueueEnqueueNext: vi.fn() }));
 
 const ready = (id: NewProviderId, account = "42"): Extract<ProviderSnapshot, { state: "ready" }> => ({ providerId: id, state: "ready", account: { providerId: id, id: account, displayName: `Synthetic ${account}` }, persistence: "saved", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
 const disabled = (id: NewProviderId): ProviderSnapshot => ({ providerId: id, state: "disabled", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
@@ -47,6 +47,7 @@ beforeEach(() => {
   vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part]));
   vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [{ id: song.id, providerId: "netease", title: song.title, artist: song.artist, album: song.album, durationMs: song.durationMs }] });
   vi.mocked(nativeQueuePlay).mockResolvedValue(null);
+  vi.mocked(nativeQueueEnqueueNext).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [api.providerTrackToQueueTrack(song)] });
   vi.mocked(api.nativeProviderWrite).mockResolvedValue({ status: "applied", affectedCount: null });
   vi.mocked(api.nativeProviderCancel).mockResolvedValue();
 });
@@ -290,6 +291,56 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
         expect(scenes.at(-1)).toMatchObject({ detail: true, searchMode: false }),
       );
     }
+  });
+  it("enqueues next for Netease playlist tracks without triggering immediate playback", async () => {
+    await open(variant, "netease");
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    const button = await screen.findByRole("button", { name: `下一首播放 ${song.title}` });
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(nativeQueueEnqueueNext).toHaveBeenCalledWith(api.providerTrackToQueueTrack(song)));
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    await screen.findByText(`下一首播放：${song.title}`);
+  });
+  it("enqueues next for Bilibili favorite single-part video directly without triggering playback", async () => {
+    await open(variant, "bilibili");
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    const button = await screen.findByRole("button", { name: `下一首播放 ${video.title}` });
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(nativeQueueEnqueueNext).toHaveBeenCalledWith(api.providerTrackToQueueTrack(part)));
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    await screen.findByText(`下一首播放：${part.title}`);
+  });
+  it("prompts on multi-part Bilibili favorite video and enqueues chosen part as next", async () => {
+    const secondPart = { ...part, id: "bilibili:video:BV17x411w7KC:125", title: "视频 P3" };
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part, secondPart]));
+    await open(variant, "bilibili");
+    fireEvent.click(screen.getByRole("button", { name: "自建" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
+    const videoNextBtn = await screen.findByRole("button", { name: `下一首播放 ${video.title}` });
+    fireEvent.click(videoNextBtn);
+    await screen.findByText("此视频有多个分 P，请选择要下一首播放的内容");
+    expect(nativeQueueEnqueueNext).not.toHaveBeenCalled();
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    const partNextBtn = await screen.findByRole("button", { name: `下一首播放 ${part.title}` });
+    fireEvent.click(partNextBtn);
+    await waitFor(() => expect(nativeQueueEnqueueNext).toHaveBeenCalledWith(api.providerTrackToQueueTrack(part)));
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    await screen.findByText(`下一首播放：${part.title}`);
+  });
+  it("enqueues next for Bilibili direct video parts without triggering immediate playback", async () => {
+    await open(variant, "bilibili");
+    fireEvent.change(screen.getByLabelText("BV/AV 或视频链接"), { target: { value: video.bvid } });
+    fireEvent.click(screen.getByRole("button", { name: "读取视频分 P" }));
+    const button = await screen.findByRole("button", { name: `下一首播放 ${part.title}` });
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(nativeQueueEnqueueNext).toHaveBeenCalledWith(api.providerTrackToQueueTrack(part)));
+    expect(nativeQueuePlay).not.toHaveBeenCalled();
+    await screen.findByText(`下一首播放：${part.title}`);
   });
 });
 it("Rhine shares QQ search layout, keeps histories per source and returns to the shelf", async () => {

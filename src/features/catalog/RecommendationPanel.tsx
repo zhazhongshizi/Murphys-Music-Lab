@@ -22,12 +22,18 @@ export function DiscoveryTabs({ value, onChange, includeNewSongs = true }: {
 export function RecommendationPanel({ kind, accountKey, active = true, onOpen }: {
   kind: RecommendationKind; accountKey: string; active?: boolean; onOpen: (entity: CatalogEntity) => void;
 }) {
-  const { page, error, pageNumber, busy, notice, act, refresh, goToPage } = useRecommendations({ kind, accountKey, active });
+  const { page, error, pageNumber, busy, notice, act, actAll, refresh, goToPage } = useRecommendations({ kind, accountKey, active });
   const label = DISCOVERY_TABS.find(([tab]) => tab === kind)![1];
   return <section className="catalog-recommendations" aria-label={label}>
     <header className="recommendation-heading"><div><h2>{label}</h2><p>QQ 音乐实时推荐{accountKey.startsWith("authenticated:") ? " · 当前账号" : " · 登录后可获得个人推荐"}</p></div>
-      <button type="button" className="text-button" disabled={busy || !active}
-        onClick={refresh}>刷新推荐</button></header>
+      <div className="recommendation-heading__actions">
+        {kind !== "playlists" && <button type="button" className={kind === "radar" ? "text-button text-button--primary" : "text-button"}
+          disabled={busy || !active || !page?.items.length}
+          title={kind === "radar" ? "清空当前播放列表，加入全部雷达推荐并播放" : "将全部猜你喜欢追加到当前播放列表"}
+          onClick={() => void actAll()}><Icon name={kind === "radar" ? "play" : "cassette-add"} size={16} />{kind === "radar" ? "播放雷达推荐" : "全部添加进播放列表中"}</button>}
+        <button type="button" className="text-button" disabled={busy || !active}
+          onClick={refresh}>刷新推荐</button>
+      </div></header>
     {error ? <p role="alert">推荐暂时不可用，检查网络后可刷新重试。</p> :
       !page ? <p role="status">正在读取推荐…</p> : <>
       {!!page.warningCount && <p role="status">部分内容暂时不可用，已显示可用推荐。</p>}

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { addSongsToPlaylist, getLibraryPlaylists, LibraryAdapterError } from "../../backend/libraryAdapter";
+import { isRemotePlayback } from "../../backend/playbackTransport";
 import type { PlaylistSummary } from "../../contracts/library";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import PlaylistPicker from "../library/PlaylistPicker";
@@ -7,7 +8,15 @@ import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
 
 type Song = { id: string; title: string };
 
-function PlaylistForm({ song, onClose }: { song: Song; onClose: () => void }) {
+function PlaylistForm({
+  song,
+  onClose,
+  variant = "rhine",
+}: {
+  song: Song;
+  onClose: () => void;
+  variant?: "default" | "rhine";
+}) {
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [targetId, setTargetId] = useState("");
   const [page, setPage] = useState(1);
@@ -56,35 +65,105 @@ function PlaylistForm({ song, onClose }: { song: Song; onClose: () => void }) {
     }
   }
 
-  return <div className="rhine-deck-playlist-panel">
-    <div className="rhine-deck-playlist-heading"><strong>将歌曲添加进歌单</strong><button type="button" onClick={onClose} aria-label="关闭添加歌单">关闭</button></div>
-    <p className="rhine-deck-playlist-song" title={song.title}>{song.title}</p>
-    <PlaylistPicker variant="rhine" options={playlists} value={targetId} onChange={setTargetId} label="目标歌单" />
-    <div className="rhine-deck-playlist-actions">
-      {loadError
-        ? <button type="button" onClick={() => setRetry(value => value + 1)}>重新读取歌单</button>
-        : hasMore && <button type="button" disabled={loading} onClick={() => setPage(value => value + 1)}>更多歌单</button>}
-      <button type="button" disabled={!targetId || submitted} onClick={() => void add()}>确认添加</button>
+  return (
+    <div className={variant === "default" ? "provider-library-form" : "rhine-deck-playlist-panel"}>
+      <div className={variant === "default" ? "provider-library-heading" : "rhine-deck-playlist-heading"}>
+        <strong>将歌曲添加进歌单</strong>
+        <button
+          type="button"
+          className={variant === "default" ? "text-button" : undefined}
+          onClick={onClose}
+          aria-label="关闭添加歌单"
+        >
+          关闭
+        </button>
+      </div>
+      <p className={variant === "default" ? "provider-library-form__title" : "rhine-deck-playlist-song"} title={song.title}>
+        {song.title}
+      </p>
+      <PlaylistPicker variant={variant} options={playlists} value={targetId} onChange={setTargetId} label="目标歌单" />
+      <div className={variant === "default" ? "provider-library-buttons" : "rhine-deck-playlist-actions"}>
+        {loadError
+          ? <button type="button" className={variant === "default" ? "text-button" : undefined} onClick={() => setRetry(value => value + 1)}>重新读取歌单</button>
+          : hasMore && <button type="button" className={variant === "default" ? "text-button" : undefined} disabled={loading} onClick={() => setPage(value => value + 1)}>更多歌单</button>}
+        <button
+          type="button"
+          className={variant === "default" ? "text-button text-button--primary" : undefined}
+          disabled={!targetId || submitted}
+          onClick={() => void add()}
+        >
+          确认添加
+        </button>
+      </div>
+      <p className={variant === "default" ? "provider-library-status" : undefined} role="status">
+        {notice || loadError || (loading ? "正在读取歌单…" : playlists.length ? "选择目标歌单后确认添加。" : "还没有可添加的歌单，请先在音乐档案中创建歌单。")}
+      </p>
     </div>
-    <p role="status">{notice || loadError || (loading ? "正在读取歌单…" : playlists.length ? "选择目标歌单后确认添加。" : "还没有可添加的歌单，请先在音乐档案中创建歌单。")}</p>
-  </div>;
+  );
 }
 
-export function DeckPlaylistAction({ track, authenticated = true }: { track: Song | null | undefined; authenticated?: boolean }) {
+export function DeckPlaylistAction({
+  track,
+  authenticated = true,
+  variant = "rhine",
+}: {
+  track: Song | null | undefined;
+  authenticated?: boolean;
+  variant?: "default" | "rhine";
+}) {
   const [song, setSong] = useState<Song | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+
+  if (isRemotePlayback()) return null;
+
   const available = Boolean(track && !localMusicFormatFromId(track.id) && authenticated);
   function close() {
     setSong(null);
     trigger.current?.focus();
   }
-  return <><ProviderLibraryActions track={track} variant="rhine" /><div hidden={Boolean(track?.id.startsWith("netease:") || track?.id.startsWith("bilibili:"))} className="rhine-deck-playlist" onKeyDown={event => {
-    if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); close(); }
-  }}>
-    <button ref={trigger} type="button" disabled={!available} aria-expanded={Boolean(song)} aria-controls={song ? panelId : undefined}
-      title={!authenticated ? "登录后可添加到歌单" : !available ? "请选择在线歌曲" : undefined}
-      onClick={() => { if (song) close(); else if (track) setSong({ id: track.id, title: track.title }); }}>将歌曲添加进歌单</button>
-    {song && <section id={panelId} aria-label="添加歌曲到歌单"><PlaylistForm song={song} onClose={close} /></section>}
-  </div></>;
+
+  const isProviderTrack = Boolean(track?.id.startsWith("netease:") || track?.id.startsWith("bilibili:"));
+
+  if (variant === "default" && isProviderTrack) {
+    return <ProviderLibraryActions track={track} variant={variant} />;
+  }
+
+  return (
+    <>
+      <ProviderLibraryActions track={track} variant={variant} />
+      <div
+        hidden={isProviderTrack}
+        className={variant === "default" ? "provider-library-actions" : "rhine-deck-playlist"}
+        data-variant={variant === "default" ? "default" : undefined}
+        onKeyDown={event => {
+          if (event.key === "Escape" && !event.defaultPrevented) {
+            event.stopPropagation();
+            close();
+          }
+        }}
+      >
+        <button
+          ref={trigger}
+          type="button"
+          className={variant === "default" ? "text-button provider-library-trigger" : undefined}
+          disabled={!available}
+          aria-expanded={Boolean(song)}
+          aria-controls={song ? panelId : undefined}
+          title={!authenticated ? "登录后可添加到歌单" : !available ? "请选择在线歌曲" : undefined}
+          onClick={() => {
+            if (song) close();
+            else if (track) setSong({ id: track.id, title: track.title });
+          }}
+        >
+          将歌曲添加进歌单
+        </button>
+        {song && (
+          <section id={panelId} aria-label="添加歌曲到歌单">
+            <PlaylistForm song={song} onClose={close} variant={variant} />
+          </section>
+        )}
+      </div>
+    </>
+  );
 }

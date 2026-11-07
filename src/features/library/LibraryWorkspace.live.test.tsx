@@ -211,6 +211,9 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     expect(await screen.findByText("喜欢状态待核对；应用没有自动重复提交")).toBeInTheDocument();
     expect(setLikedMock).toHaveBeenCalledTimes(2);
     expect(likedMock).toHaveBeenCalledTimes(2);
+    expect(playlistsMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "将歌曲添加进歌单" }));
+    expect(playlistsMock).toHaveBeenCalledWith("created", 1, 50);
   });
 
   it("Tauri 窗口读取真实发现页且不显示 fixture 曲目", async () => {
@@ -483,6 +486,37 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       await act(async () => resolve({ page: 1, hasMore: false, total: 1, items: [folder("netease")] }));
       expect(screen.getByRole("heading", { name: "我的歌单" })).toBeInTheDocument();
       expect(screen.queryByText(folder("netease").title)).not.toBeInTheDocument();
+    });
+
+    it("搜索页内展示相同三来源切换，且在切入各来源时保留在标题下方", async () => {
+      const user = userEvent.setup();
+      render(
+        <DesktopProviders>
+          <LibraryWorkspace authSnapshot={AUTHENTICATED} authRecovering={false} initialSection="search" onBack={() => {}} />
+        </DesktopProviders>,
+      );
+      await screen.findByRole("heading", { name: "搜索音乐" });
+      const searchNav = screen.getByRole("navigation", { name: "搜索音乐来源" });
+      expect(searchNav.closest(".catalog-pane")).toContainElement(screen.getByRole("heading", { name: "搜索音乐" }));
+      const searchSources = () => within(screen.getByRole("navigation", { name: "搜索音乐来源" }));
+      expect(searchSources().getByRole("button", { name: "QQ 音乐" })).toHaveAttribute("aria-pressed", "true");
+      expect(searchSources().getByRole("button", { name: "网易云音乐" })).toHaveAttribute("aria-pressed", "false");
+      expect(searchSources().getByRole("button", { name: "Bilibili" })).toHaveAttribute("aria-pressed", "false");
+
+      for (const [label, expectedHeading] of [["网易云音乐", "网易云 · 合成账号"], ["Bilibili", "Bilibili · 合成账号"]] as const) {
+        await user.click(searchSources().getByRole("button", { name: label }));
+        await screen.findByRole("heading", { name: expectedHeading });
+        expect(searchSources().getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getAllByRole("navigation", { name: "搜索音乐来源" })).toHaveLength(1);
+        expect(screen.getByRole("navigation", { name: "搜索音乐来源" }).closest(".catalog-pane")).toBeInTheDocument();
+      }
+
+      await user.click(searchSources().getByRole("button", { name: "QQ 音乐" }));
+      await screen.findByRole("heading", { name: "搜索音乐" });
+      expect(searchSources().getByRole("button", { name: "QQ 音乐" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("navigation", { name: "搜索音乐来源" }).closest(".catalog-pane")).toContainElement(
+        screen.getByRole("heading", { name: "搜索音乐" }),
+      );
     });
   });
 

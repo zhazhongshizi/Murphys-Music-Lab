@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LibrarySection } from "../../app/uiModes";
 import { getPlaylistSongs } from "../../backend/catalogAdapter";
 import { ProviderLibraryActions } from "./ProviderLibraryActions";
+import { DeckPlaylistAction } from "../rhine/DeckPlaylistAction";
 import { useDesktopProviders } from "../providers/DesktopProviders";
 import { ProviderWorkspace } from "../providers/ProviderWorkspace";
 import { trackProvider } from "../../contracts/providerIdentity";
@@ -343,8 +344,8 @@ export default function LibraryWorkspace({
       ))}
     </nav>
   ) : null;
-  const sourceNavigation = !remote && section === "playlists" ? (
-    <nav className="catalog-type-tabs" aria-label="歌单音乐来源">
+  const sourceNavigation = !remote && (section === "playlists" || section === "search") ? (
+    <nav className="catalog-type-tabs" aria-label={section === "playlists" ? "歌单音乐来源" : "搜索音乐来源"}>
       {(["qqmusic", "netease", "bilibili"] as const).map(id => (
         <button key={id} type="button" aria-pressed={browseSource === id} onClick={() => {
           selectSource(id);
@@ -816,8 +817,17 @@ export default function LibraryWorkspace({
               </div>
               <button className="text-button" onClick={() => void updateNativeQueue(selectedTrack.track, false)} type="button"><Icon name="queue" size={17} />{remote ? "加入电脑队列" : "加入本地队列"}</button>
               {trackProvider(selectedTrack.track.id) === "qqmusic" && <button className="text-button" disabled={likePendingIds?.includes(selectedTrack.track.id)} aria-pressed={section === "liked" || likedIds.includes(selectedTrack.track.id)} onClick={() => void handleLiveLike(selectedTrack.track)} type="button"><Icon name="heart" size={17} />{section === "liked" || likedIds.includes(selectedTrack.track.id) ? "取消喜欢" : "喜欢"}</button>}
-              <ProviderLibraryActions track={selectedTrack.track} />
-              {!remote && trackProvider(selectedTrack.track.id) === "qqmusic" && createdPlaylists.length > 0 ? (
+              {!remote && trackProvider(selectedTrack.track.id) === "qqmusic" && (section !== "playlists" || createdPlaylists.length === 0) ? (
+                <DeckPlaylistAction
+                  key={`${accountKey}:${selectedTrack.track.id}`}
+                  track={selectedTrack.track}
+                  authenticated={!authRecovering && (!liveAccountRuntime || authSnapshot.state === "authenticated")}
+                  variant="default"
+                />
+              ) : (
+                <ProviderLibraryActions track={selectedTrack.track} />
+              )}
+              {!remote && trackProvider(selectedTrack.track.id) === "qqmusic" && section === "playlists" && createdPlaylists.length > 0 ? (
                 <div className="catalog-inspector__playlist">
                   <span>目标歌单</span>
                   <PlaylistPicker

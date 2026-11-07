@@ -7,13 +7,14 @@ import type { RhineSettings } from "./rhineSettings";
 import "./memory-tapes.css";
 
 const STATUS={recording:"正在记录",complete:"完整月份",partial:"资料不完整"} as const;
-const COLORS=["#708899","#859486","#909672","#748e7e","#67908e","#6e929d","#76879b","#938473","#a08b70","#8c8178","#838990","#8a8a9a"];
+const COLORS=["#b96e2d","#aa7041","#99714e","#b47a46","#a77c55","#967454","#bd8452","#aa794c","#b98a5d","#9c7148","#b17943","#a87d57"];
 function color(month:string){return {"--memory-accent":COLORS[Number(month.slice(5))-1]} as CSSProperties;}
 export function memoryMotion(settings:RhineSettings) {
   return settings.superPerformance||settings.disableCassetteMotionWhilePlaying||settings.renderer==="canvas2d"?"off":settings.reduceCassetteMotionWhilePlaying?"reduced":"full";
 }
 function TapeFace({tape,back=false}:{tape:MemoryTape;back?:boolean}) {
   return <div className={`memory-cassette ${back?"memory-cassette-back":""}`} style={color(tape.month)} aria-hidden="true">
+    <i className="memory-screw memory-screw--bottom-left"/><i className="memory-screw memory-screw--bottom-right"/>
     <div className="memory-cassette-label"><span>RHINE / MEMORY ARCHIVE</span><strong>{tape.month.replace("-"," / ")}</strong><small>{back?`${tape.trackCount} TRACKS · ${tape.qualifiedPlays} LISTENS`:STATUS[tape.status]}</small></div>
     <div className="memory-tape-window"><i className="memory-reel"/><span/><i className="memory-reel"/></div>
     <div className="memory-tape-foot"><span>{back?"B / INDEX":"A / RECOLLECTION"}</span><b>◦ &nbsp; ▱ &nbsp; ◦</b><span>{tape.month.replace("-","")}</span></div>
@@ -87,16 +88,19 @@ export default function MemoryTapeArchive({settings,active=true}:{settings:Rhine
     <section className="memory-detail" aria-label="磁带档案详情" aria-busy={busy}>
       {!month?<div className="memory-empty memory-empty-detail"><span className="memory-empty-reels" aria-hidden="true">◎ ─ ◎</span><h2>从档案柜取出一张磁带</h2><p>查看那个月的收听记录，再把想听的歌放回队列。</p></div>:detailError?<p role="alert">这张磁带读取失败。<button onClick={()=>setRevision(r=>r+1)}>重试磁带</button></p>:!current||!detail?<p role="status">正在打开 {month} 磁带…</p>:<div className="memory-open" key={month}>
         <div className="memory-section-title"><h2 ref={heading} tabIndex={-1}>{current.month} / 回忆档案</h2><button type="button" disabled={busy} onClick={eject}>取出磁带</button></div>
+        <div className="memory-overview"><div className="memory-specimen">
         <div className={`memory-preview ${flipped?"is-flipped":""} ${loaded?"is-loaded":""}`} key={`${month}-${loaded}`}><div className="memory-flip-inner">
           <div className="memory-shell-edge memory-shell-left" aria-hidden="true"/><div className="memory-shell-edge memory-shell-right" aria-hidden="true"/>
           <div className="memory-shell-edge memory-shell-top" aria-hidden="true"/><div className="memory-shell-edge memory-shell-bottom" aria-hidden="true"/>
           <div className="memory-front"><TapeFace tape={current}/></div><div className="memory-back"><TapeFace tape={current} back/></div>
         </div></div>
         <div className="memory-detail-tools"><span className={`memory-status memory-status-${current.status}`}>{STATUS[current.status]}</span><button type="button" aria-pressed={flipped} onClick={()=>setFlipped(v=>!v)}>翻面查看编号</button></div>
+        </div><div className="memory-telemetry">
         <div className="memory-summary"><strong>{duration(current.totalMs)}</strong><span>{current.qualifiedPlays} 次有效收听 · {current.trackCount} 首歌曲</span></div>
-        <dl className="memory-highlights"><dt>最常听的歌</dt><dd>{current.topSong??"暂无曲目"}</dd><dt>最常听的歌手</dt><dd>{current.topArtist??"暂无歌手"}</dd></dl>
+        <dl className="memory-highlights"><div><dt><span aria-hidden="true">TOP TRACK</span>最常听的歌</dt><dd>{current.topSong??"暂无曲目"}</dd></div><div><dt><span aria-hidden="true">TOP ARTIST</span>最常听的歌手</dt><dd>{current.topArtist??"暂无歌手"}</dd></div></dl>
         <p className="memory-coverage">{current.status==="recording"?"本月尚未结束，内容会继续更新。":current.status==="partial"?"旧明细或月初记录可能缺失，这是一张部分记录磁带。":"该自然月已结束，数据来自持续保留的收听记录。"}<br/>已保存记录日期：{current.dataStartDate??"无"} — {current.dataEndDate??"无"}。</p>
         <details className="memory-provenance"><summary>归档时间与数据说明</summary><p>首次生成：{new Date(current.generatedMs).toLocaleString()}<br/>统计截止：{new Date(current.cutoffMs).toLocaleString()}</p><p>按记录时本机日期归档；缺失历史不会补造。歌曲和歌手沿用已保存元数据，榜单按有效次数、时长排序。回放入队不改写历史或收藏；再次实际收听会正常记入当前月份。</p></details>
+        </div></div>
         <div className="memory-track-heading"><h3>月度曲目榜</h3><button type="button" disabled={busy||!detail.songs.some(s=>s.availability!=="unavailable")} onClick={()=>void enqueue(detail.songs)}>本页加入队列</button></div>
         <p className="memory-track-note">跳过已失效的本地文件；在线歌曲的权限和可用性在实际播放时确认。每页最多 50 首。</p>
         {notice&&<p className="memory-notice" role="status">{notice}</p>}

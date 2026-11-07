@@ -1,6 +1,6 @@
 /* Palette and type shared by all Rhine surfaces. */
-.app-shell--rhine, .rhine-mode { --rh-accent: #b96e2d; --rh-accent-rgb: 185 110 45; --rh-accent-strong: #94521f; --rh-danger: #a23f2a; --rh-ink: #1f1f1d; --rh-ink-2: #45433e; --rh-ink-3: #5c5953; --rh-surface-1: #ecebe7; --rh-surface-2: #e2e0db; --rh-surface-3: #d6d4ce; --rh-size-caption: 10px; --rh-size-body: 12px; --rh-size-lead: 14px; --rh-size-title: 24px; --rh-edge: #7d7a7259; --rh-glass: linear-gradient(115deg,#f4f2edc7,#e2dfd8b3); --rh-glass-solid: #e8e6e1f5; --rh-glass-shadow: inset 0 0 0 1px #ffffffa8, 0 1px 2px #1f1f1d1a, 0 14px 28px -12px #1f1f1d38; }
-.app-shell.app-shell--rhine { display: block; color-scheme: light; background: var(--rh-surface-2); color: var(--rh-ink); --paper: #181818; --paper-muted: #5f5f5f; --vinyl: #e6e6e6; --vinyl-raised: #ececec; --surface: #d8d8d8; --line: #8f8f8f6b; --lichen: var(--rh-accent); }
+.app-shell--rhine, .rhine-mode { --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif; --rh-accent: #b96e2d; --rh-accent-rgb: 185 110 45; --rh-accent-strong: #94521f; --rh-danger: #a23f2a; --rh-ink: #1f1f1d; --rh-ink-2: #45433e; --rh-ink-3: #5c5953; --rh-surface-1: #ecebe7; --rh-surface-2: #e2e0db; --rh-surface-3: #d6d4ce; --rh-size-caption: 10px; --rh-size-body: 12px; --rh-size-lead: 14px; --rh-size-title: 24px; --rh-edge: #7d7a7259; --rh-glass: linear-gradient(115deg,#f4f2edc7,#e2dfd8b3); --rh-glass-solid: #e8e6e1f5; --rh-glass-shadow: inset 0 0 0 1px #ffffffa8, 0 1px 2px #1f1f1d1a, 0 14px 28px -12px #1f1f1d38; }
+.app-shell.app-shell--rhine { display: block; color-scheme: light; background: var(--rh-surface-2); color: var(--rh-ink); --paper: #181818; --paper-muted: #5f5f5f; --vinyl: #ecebe7; --vinyl-raised: #f4f3ef; --surface: #f4f3ef; --surface-raised: #faf9f6; --line: var(--rh-edge); --lichen: var(--rh-accent); }
 .rhine-mode { height: 100%; display: grid; grid-template-rows: 82px minmax(0,1fr); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; color: var(--rh-ink); }
 .rhine-mode button { color: inherit; cursor: pointer; }
 .app-shell--rhine .rhine-mode { --cover-vibrant: var(--rh-accent); --cover-primary: #909090; --cover-ambient: #dadada; --cover-top: #eeeeee; --lichen: var(--rh-accent); --lichen-deep: var(--rh-accent-strong); --patina: #737373; --canopy: #e4e4e4; --canopy-soft: #ededed; --clay: var(--rh-accent); --focus-ring: 0 0 0 3px rgb(var(--rh-accent-rgb) / 40%); }
@@ -410,9 +410,12 @@
 @media (prefers-reduced-motion: reduce) { .rhine-deck-caption, .rhine-deck-console, .rhine-deck-preview, .rhine-deck-lyric > span, .rhine-deck-lyric > small, .rhine-settings-page, .rhine-local-page { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .rhine-deck-preview { transition: none; transform: none; } .rhine-workspace[data-settings="true"] .rhine-scene { transition: none; } }
 
-.rhine-local-page { position: absolute; inset: 18px; overflow: auto; padding: 20px; background: #e8e9e5ed; color: #30332f; border: 1px solid #797f7466; z-index: 5; border-radius: 10px; animation: rhine-document-in .32s cubic-bezier(.22,1,.36,1) both; }
-.rhine-local-page-actions { display: flex; justify-content: space-between; margin-bottom: 20px; }
-.rhine-local-page .catalog-pane { width: 100%; }
+.rhine-local-page { position: absolute; inset: 14px 24px 54px; display: flex; flex-direction: column; overflow: hidden; padding: 0; background: var(--rh-surface-1); color: var(--rh-ink); border: 1px solid var(--rh-edge); z-index: 5; border-radius: 2px; animation: rhine-document-in .32s cubic-bezier(.22,1,.36,1) both; }
+.rhine-local-page-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 18px; padding: 12px 24px; border-bottom: 1px solid var(--rh-edge); background: #efeeeae6; backdrop-filter: blur(12px); z-index: 3; }
+.rhine-local-coordinate { display: flex; align-items: center; gap: 18px; flex: 1; min-width: 0; color: var(--rh-ink-3); font: 10px var(--font-data); letter-spacing: .12em; }
+.rhine-local-coordinate::before { content: ""; flex: 1; height: 1px; background: var(--rh-edge); }
+.rhine-local-page-content { min-height: 0; overflow: auto; padding: 16px 24px 24px; scrollbar-gutter: stable; font-size: 12px; }
+.rhine-local-page .catalog-pane { width: 100%; background: transparent; padding: 0; overflow: visible; border-radius: 0; }
 .rhine-local-page .catalog-table { width: 100%; text-align: left; border-collapse: collapse; }
 .rhine-local-page .catalog-table td, .rhine-local-page .catalog-table th { padding: 12px; border-bottom: 1px solid #797f742b; }
 .rhine-local-page .catalog-pane__header { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
@@ -474,7 +477,7 @@
 .rhine-browse-content > .rhine-selection { bottom: 198px; }
 .rhine-header .rhine-nav-button { height: 54px; grid-template-rows: 24px 14px; }
 .rhine-header .rhine-nav-button[aria-pressed="true"] { min-width: 64px; }
-.rhine-local-page { bottom: 60px; border-radius: 4px; border-color: var(--rh-edge); background: var(--rh-glass-solid); box-shadow: var(--rh-glass-shadow); }
+.rhine-local-page { box-shadow: inset 0 1px #ffffffa8; }
 .rhine-deck-quality, .rhine-deck-foot button, .rhine-deck-quality-menu button, .rhine-volume-reading { font-size: var(--rh-size-body); color: var(--rh-ink-2); }
 .rhine-deck-quality-menu button { min-height: 36px; }
 .rhine-document { bottom: 64px; }
@@ -592,6 +595,44 @@ body:has(.app-shell--rhine) > .playlist-picker__menu .playlist-picker__option[da
 }
 .rhine-mode .bookmark-control [aria-pressed="true"] {
   background: rgba(185, 110, 45, 0.16);
+}
+
+/* Local archive faceplates share type, surfaces and hardware controls. */
+.rhine-mode :is(h1, h2, h3) { font-family: var(--font-display); font-weight: 700; }
+.rhine-local-page :is(.section-label, .saved-queues-label, .listening-summary, .analytics-range-note) { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.rhine-local-page :is(.catalog-pane__header, .statistics-header) { margin-bottom: 14px; }
+.rhine-local-page .catalog-pane__header h1, .rhine-local-page .statistics-header h1 { margin: 5px 0; font-size: 28px; }
+.rhine-local-page .catalog-pane__header p, .rhine-local-page .statistics-header p { margin: 0; color: var(--rh-ink-3); font-size: 12px; }
+.rhine-local-page .personal-library > h2 { margin: 20px 0 12px; font-size: 17px; }
+.rhine-local-page :is(.analytics-card, .listening-summary > div, .saved-queues, .bookmark-list > li) { background: var(--surface); border-radius: 2px; }
+.rhine-local-page .saved-queues { padding: 16px 20px; border-left: 3px solid var(--rh-accent); }
+.rhine-local-page :is(.saved-queues input, .saved-queues select, .bookmark-toolbar input, .bookmark-toolbar select) { background: #faf9f6; }
+.rhine-local-page :is(.saved-queues form button, .saved-queues-switch, .memory-track-heading button):not(:disabled) { background: linear-gradient(#464646, #303030); color: #f0f0f0; border: 1px solid #222; border-radius: 2px; box-shadow: inset 0 1px #777, 0 2px #161616; }
+.rhine-local-page :is(.saved-queues form button, .saved-queues-switch, .memory-track-heading button):hover:not(:disabled) { background: linear-gradient(#535353, #363636); border-color: #222; }
+.rhine-local-page .saved-queues-delete:hover:not(:disabled) { color: var(--rh-danger); border-color: var(--rh-danger); background: #a23f2a0a; }
+.rhine-local-page :is(.bookmark-toolbar, .statistics-view-switch, .analytics-date-toolbar) [aria-pressed="true"] { background: #fff9; border-color: var(--rh-edge); box-shadow: inset 0 -2px var(--rh-accent); color: var(--rh-ink); }
+.rhine-local-page :is(.saved-queues-note, .saved-queues-label, .saved-queues-recovery, .analytics-range-note) { color: var(--rh-ink-3); }
+.rhine-local-page .bookmark-empty { background: #ffffff70; }
+.rhine-local-page .analytics-date-toolbar { padding-block: 8px; }
+.rhine-local-page .listening-summary { margin-block: 12px; }
+.rhine-local-page .listening-summary > div { padding-block: 12px; }
+.rhine-local-page .analytics-card { padding-block: 10px; }
+.rhine-local-page :is(button, input, select, .statistics-view-switch) { border-radius: 2px; }
+@media (min-width: 1100px) {
+  .rhine-local-page .saved-queues-storage { display: grid; grid-template-columns: minmax(340px, .75fr) minmax(0, 1.5fr); gap: 20px; }
+  .rhine-local-page .saved-queues-module + .saved-queues-module { padding-left: 20px; border-left: 1px solid var(--rh-edge); }
+}
+.rhine-navigation > .rhine-nav-button:is(:nth-child(4), :nth-child(9)) { margin-right: 10px; }
+.rhine-navigation > .rhine-nav-button:is(:nth-child(4), :nth-child(9))::before { content: ""; position: absolute; right: -7px; top: 10px; bottom: 10px; width: 1px; background: var(--rh-edge); pointer-events: none; }
+@media (max-width: 1000px) {
+  .rhine-local-page { inset-inline: 12px; }
+  .rhine-local-page-actions { padding-inline: 16px; gap: 10px; }
+  .rhine-local-page-content { padding: 14px 16px 20px; }
+  .rhine-local-coordinate { font-size: 9px; letter-spacing: .04em; }
+}
+@media (max-width: 600px) {
+  .rhine-local-coordinate { font-size: 0; gap: 0; }
+  .rhine-local-page .saved-queues { padding: 12px; }
 }
 
 .rhine-deck-hardware .mv-lyric-offset,

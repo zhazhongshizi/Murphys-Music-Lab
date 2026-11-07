@@ -95,30 +95,40 @@ describe("黑胶温室应用外壳", () => {
     expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
   });
 
-  it("搜索保留顶栏来源切换，歌单在内容区切换，播放舞台与其他分区不显示", async () => {
+  it("搜索与歌单在内容区切换，播放舞台与其他分区不显示", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "搜索" }));
-    expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    const searchSources = await screen.findByRole("navigation", { name: "搜索音乐来源" });
+    expect(searchSources.closest(".catalog-pane")).toBeInTheDocument();
+    expect(within(searchSources).getAllByRole("button")).toHaveLength(3);
+    expect(within(searchSources).getByRole("button", { name: "QQ 音乐" })).toBeInTheDocument();
+    expect(within(searchSources).getByRole("button", { name: "网易云音乐" })).toBeInTheDocument();
+    expect(within(searchSources).getByRole("button", { name: "Bilibili" })).toBeInTheDocument();
 
     const sidebar = await screen.findByRole("complementary", { name: "曲库导航" });
     await user.click(within(sidebar).getByRole("button", { name: /歌单/ }));
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
     const playlistSources = screen.getByRole("navigation", { name: "歌单音乐来源" });
     expect(playlistSources.closest(".catalog-pane")).toBeInTheDocument();
     expect(within(playlistSources).getAllByRole("button")).toHaveLength(3);
 
     await user.click(within(sidebar).getByRole("button", { name: "发现" }));
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "歌单音乐来源" })).not.toBeInTheDocument();
 
     await user.click(within(sidebar).getByRole("button", { name: "搜索" }));
-    expect(screen.getByRole("navigation", { name: "音乐来源" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "搜索音乐来源" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "返回舞台" }));
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
   });
 });

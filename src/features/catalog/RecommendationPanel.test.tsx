@@ -1,12 +1,23 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RecommendationPanel } from "./RecommendationPanel";
-const mocks = vi.hoisted(() => ({ songs: vi.fn(), lists: vi.fn(), play: vi.fn(), next: vi.fn(), enqueue: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  songs: vi.fn(), lists: vi.fn(), play: vi.fn(), next: vi.fn(), enqueue: vi.fn(),
+  enqueueMany: vi.fn(), startRadar: vi.fn(), hydrateSession: vi.fn(),
+}));
 vi.mock("../../backend/catalogDiscoveryAdapter", () => ({
   getRecommendedSongs: mocks.songs, getRecommendedPlaylists: mocks.lists,
 }));
 vi.mock("../player/catalogQueue", () => ({
+  MAX_CATALOG_QUEUE_ITEMS: 1000,
   enqueueAndPlayCatalogTrack: mocks.play, enqueueNextCatalogTrack: mocks.next, enqueueCatalogTrack: mocks.enqueue,
+  enqueueCatalogTracks: mocks.enqueueMany,
+}));
+vi.mock("../../backend/nativeQueueAdapter", () => ({
+  nativeStartRadar: mocks.startRadar,
+}));
+vi.mock("../player/playerStore", () => ({
+  playerActions: { hydrateNativeSession: mocks.hydrateSession },
 }));
 vi.mock("../stage/AlbumArtwork", () => ({ AlbumArtwork: () => <span /> }));
 const song = { id: "song-1", title: "推荐曲目", subtitle: "", artists: [{ id: "artist-1", name: "歌手" }],
@@ -20,6 +31,9 @@ beforeEach(() => {
   mocks.lists.mockImplementation((generation: number, page: number) =>
     Promise.resolve({ generation, page, hasMore: false, warningCount: 0, items: [playlist] }));
   mocks.play.mockResolvedValue(undefined); mocks.next.mockResolvedValue(undefined); mocks.enqueue.mockResolvedValue(undefined);
+  mocks.enqueueMany.mockResolvedValue(undefined);
+  mocks.startRadar.mockResolvedValue({ queue: { items: [song] } });
+  mocks.hydrateSession.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
 it("retains a named song credit as text and keeps the profiled artist link",async()=>{
@@ -67,4 +81,27 @@ it("shows failure and empty states without inventing recommendations", async () 
   mocks.songs.mockImplementation((_kind: string, generation: number) => Promise.resolve({ generation, page: 1, hasMore: false, warningCount: 0, items: [] }));
   fireEvent.click(screen.getByRole("button", { name: "刷新推荐" }));
   await screen.findByText("暂时没有推荐内容，稍后刷新试试。");
+});
+it("supports bulk radar playback and disables the action when empty", async () => {
+  render(<RecommendationPanel kind="radar" accountKey="authenticated:a" onOpen={() => {}} />);
+  const radarBtn = await screen.findByRole("button", { name: "播放雷达推荐" });
+  expect(radarBtn).not.toBeDisabled();
+  fireEvent.click(radarBtn);
+  await waitFor(() => expect(mocks.startRadar).toHaveBeenCalledTimes(1));
+  expect(mocks.hydrateSession).toHaveBeenCalledWith({ queue: { items: [song] } });
+  expect(await screen.findByText("已载入 1 首雷达推荐并开始播放")).toBeInTheDocument();
+
+  mocks.songs.mockImplementation((_kind: string, generation: number) =>
+    Promise.resolve({ generation, page: 1, hasMore: false, warningCount: 0, items: [] }));
+  fireEvent.click(screen.getByRole("button", { name: "刷新推荐" }));
+  await screen.findByText("暂时没有推荐内容，稍后刷新试试。");
+  expect(screen.getByRole("button", { name: "播放雷达推荐" })).toBeDisabled();
+});
+it("supports appending all guessed songs to the playback queue", async () => {
+  render(<RecommendationPanel kind="guess" accountKey="authenticated:a" onOpen={() => {}} />);
+  const addAllBtn = await screen.findByRole("button", { name: "全部添加进播放列表中" });
+  expect(addAllBtn).not.toBeDisabled();
+  fireEvent.click(addAllBtn);
+  await waitFor(() => expect(mocks.enqueueMany).toHaveBeenCalledWith([song]));
+  expect(await screen.findByText("已将全部 1 首推荐加入播放列表")).toBeInTheDocument();
 });

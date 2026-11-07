@@ -1,4 +1,5 @@
 .app-shell {
+  color: var(--paper);
   position: relative;
   display: grid;
   grid-template-rows: var(--header-height) minmax(0, 1fr) var(--player-height);
@@ -3679,7 +3680,8 @@ body.queue-drag-active * {
 .recommendation-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin: 20px 0; }
 .recommendation-heading h2 { margin: 0 0 6px; font-size: 20px; }
 .recommendation-heading p { margin: 0; font-size: 12px; opacity: .7; }
-.recommendation-heading > button { flex-shrink: 0; }
+.recommendation-heading > button, .recommendation-heading__actions { flex-shrink: 0; }
+.recommendation-heading__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .recommendation-songs { margin: 0; }
 .recommendation-songs > li { gap: 16px; }
 .recommendation-songs > li > .album-artwork { flex: 0 0 54px; width: 54px; height: 54px; }
@@ -3734,7 +3736,7 @@ body.queue-drag-active * {
 .saved-queues summary { cursor: pointer; font-weight: 600; }
 .saved-queues form { margin: 12px 0; }
 .saved-queues input, .saved-queues select, .personal-library > input { min-width: 0; max-width: 100%; padding: 8px 10px; color: var(--paper); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-small); }
-.saved-queues select { flex: 1 1 140px; width: 140px; }
+.saved-queues select { flex: 0 1 240px; width: 240px; }
 .saved-queues select option, .personal-actions select option { background: var(--vinyl-raised); color: var(--paper); }
 .saved-queues button, .personal-actions button, .personal-list button, .search-history button {
   padding: 6px 10px;
@@ -3756,9 +3758,10 @@ body.queue-drag-active * {
 .personal-list strong, .personal-list small { display: block; overflow-wrap: anywhere; }
 .personal-list small { opacity: .7; margin-top: 4px; }
 .personal-list li > span { font-size: 12px; overflow-wrap: anywhere; }
-.listening-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; margin: 20px 0; }
-.listening-summary > div { padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-small); }
-.listening-summary span { display: block; margin-top: 6px; font-size: 12px; opacity: .7; }
+.listening-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; margin: 14px 0; }
+.listening-summary > div { min-width: 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--analytics-accent, var(--lichen)); border-radius: var(--radius-small); }
+.listening-summary span { display: block; font-size: 11px; color: var(--paper-muted); }
+.listening-summary strong { display: block; margin-top: 10px; font: 700 clamp(20px, 2.2vw, 28px)/1.3 var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .bookmark-control { margin: 8px 0; font-size: 12px; }
 .bookmark-control [aria-pressed="true"], .personal-actions [aria-pressed="true"] { background: color-mix(in srgb, var(--lichen) 20%, transparent); border-color: var(--lichen); }
 .personal-actions input, .personal-actions select { min-width: 0; max-width: 100%; padding: 8px 10px; color: var(--paper); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-small); }
@@ -3766,6 +3769,18 @@ body.queue-drag-active * {
 .bookmark-open > span { min-width: 0; }
 .bookmark-open .album-artwork, .bookmark-open .artist-avatar { flex: 0 0 48px; width: 48px; height: 48px; }
 .personal-list li > .statistics-track-actions, .bookmark-list li > .personal-actions { flex: 0 1 auto; }
+.saved-queues-module { margin-top: 12px; }
+.saved-queues-label { display: block; margin-bottom: 7px; font: 10px var(--font-data); letter-spacing: .08em; color: var(--paper-muted); }
+.saved-queues-module form { margin: 0; }
+.saved-queues input { flex: 0 1 240px; width: 240px; }
+.saved-queues-recovery { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); font: 11px/1.6 var(--font-data); font-variant-numeric: tabular-nums; }
+.saved-queues .saved-queues-note { margin: 8px 0 0; font-size: 11px; color: var(--paper-muted); }
+.bookmark-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.bookmark-toolbar > .personal-actions { min-width: 0; }
+.bookmark-toolbar input { width: 220px; flex: 1 1 140px; }
+.bookmark-empty { padding: 32px 20px; border: 1px dashed var(--line); background: var(--surface); text-align: center; color: var(--paper-muted); line-height: 1.8; }
+.bookmark-list > li { padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-small); }
+.bookmark-list .bookmark-open { padding: 0; background: transparent; }
 .queue-preview { padding: 12px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface); }
 .queue-preview ol { padding-left: 24px; max-height: 280px; overflow: auto; }
 .queue-preview li { padding: 5px 0; overflow-wrap: anywhere; }

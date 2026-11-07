@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAnalytics, type Analytics } from "../../backend/analyticsAdapter";
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
 import { chartPoints, dateObject, duration, localDate, presetRange, validRange, type ChartPoint } from "./analyticsDates";
@@ -14,6 +14,7 @@ function Chart({points,mode,label}:{points: readonly ChartPoint[];mode:"bar"|"li
     <p className="analytics-chart-detail" aria-live="polite">{point?describe(point):"悬停或用 Tab 聚焦图表查看详情；横向滚动可查看完整区间。"}</p>
     <div className="analytics-chart-scroll" role="group" aria-label={label}>
       <svg width={width} height="190" viewBox={`0 0 ${width} 190`}>
+        {[30,70,110].map(y=><line key={y} x1="0" y1={y} x2={width} y2={y} className="analytics-gridline" strokeDasharray="3 3" aria-hidden="true"/>)}
         <line x1="0" y1="150" x2={width} y2="150" className="analytics-axis"/>
         {mode==="line"&&<polyline fill="none" className="analytics-line" points={points.map((p,i)=>`${(i+.5)*step},${150-p.listenedMs/max*130}`).join(" ")}/>}
         {points.map((p,i)=><g key={p.label} tabIndex={0} role="img" aria-label={describe(p)} onMouseEnter={()=>setSelected(i)} onFocus={()=>setSelected(i)} onMouseLeave={()=>setSelected(null)} onBlur={()=>setSelected(null)}>
@@ -89,7 +90,7 @@ function Dashboard({data}:{data:Analytics}) {
   </>;
 }
 
-export function ListeningAnalytics() {
+export function ListeningAnalytics({viewNavigation}:{viewNavigation?:ReactNode}) {
   const [preset,setPreset]=useState("month");
   const [range,setRange]=useState(()=>presetRange("month"));
   const [draft,setDraft]=useState(range);
@@ -119,14 +120,14 @@ export function ListeningAnalytics() {
   },[range.start,range.end,preset,revision]);
   function choose(value:string){const next=presetRange(value);setPreset(value);setRange(next);setDraft(next);setValidation("");setRevision(r=>r+1);}
   return <div className="analytics-body">
-    <header className="analytics-card-heading"><div><span className="section-label">YOUR MUSIC, OVER TIME</span><h1>听歌统计 2.0</h1><p>让每一次收听，留下可回顾的记录。</p></div><button type="button" onClick={()=>setRevision(r=>r+1)}>刷新分析</button></header>
-    <nav className="personal-actions" aria-label="分析日期预设">{([["today","今天"],["week","近 7 天"],["month","本月"],["year","今年"]] as const).map(([id,label])=><button type="button" key={id} aria-pressed={preset===id} onClick={()=>choose(id)}>{label}</button>)}</nav>
+    <header className="analytics-card-heading statistics-header"><div><span className="section-label">YOUR MUSIC, OVER TIME</span><h1>听歌统计 2.0</h1><p>让每一次收听，留下可回顾的记录。</p></div><div className="statistics-header-actions">{viewNavigation}<button type="button" onClick={()=>setRevision(r=>r+1)}>刷新分析</button></div></header>
+    <div className="analytics-date-toolbar"><nav className="personal-actions" aria-label="分析日期预设">{([["today","今天"],["week","近 7 天"],["month","本月"],["year","今年"]] as const).map(([id,label])=><button type="button" key={id} aria-pressed={preset===id} onClick={()=>choose(id)}>{label}</button>)}</nav>
     <form className="personal-actions analytics-range" onSubmit={e=>{e.preventDefault();if(!validRange(draft.start,draft.end)){setValidation("请选择有效的起止日期，开始不晚于结束，最多 366 天。");return;}setValidation("");setPreset("custom");setRange({...draft});setRevision(r=>r+1);}}>
       <label>开始日期 <input type="date" min="1970-01-01" value={draft.start} onChange={e=>setDraft({...draft,start:e.target.value})}/></label>
       <label>结束日期 <input type="date" min="1970-01-01" value={draft.end} onChange={e=>setDraft({...draft,end:e.target.value})}/></label><button type="submit">应用日期</button>
-    </form>
+    </form></div>
     {validation&&<p role="alert">{validation}</p>}
-    <p>统计区间：{range.start} 至 {range.end}（含首尾日期）。旧版仅保留约 31 天明细，更早的日期可能缺失；全部历史累计仍保留。</p>
+    <p className="analytics-range-note">统计区间：{range.start} 至 {range.end}（含首尾日期）。旧版仅保留约 31 天明细，更早的日期可能缺失；全部历史累计仍保留。</p>
     {error?<p role="alert">分析读取失败。<button type="button" onClick={()=>setRevision(r=>r+1)}>重试分析</button></p>:!data?<p role="status">正在聚合收听数据…</p>:<Dashboard data={data}/>}
   </div>;
 }

@@ -4,7 +4,7 @@ import {
 } from "react";
 import { Icon } from "../components/Icon";
 import { APP_NAME, APP_SHORT_NAME } from "./branding";
-import { SourceNavigation, useDesktopProviders } from "../features/providers/DesktopProviders";
+import { useDesktopProviders } from "../features/providers/DesktopProviders";
 import { WindowControls } from "../components/WindowControls";
 import { PlayerBar } from "../features/player/PlayerBar";
 import { ArtistNavigationContext, ArtistNavigationContent, useArtistNavigation } from "../features/artist/ArtistNavigation";
@@ -394,7 +394,6 @@ export function NormalMode({
   const { source, selectSource } = useDesktopProviders();
   const artistNavigation = useArtistNavigation();
   const blockingStatus = fixtureStatus === "normal" || fixtureStatus === "partial" ? null : fixtureStatus;
-  const showSourceNavigation = view === "library" && !artistNavigation.artist && librarySection === "search";
   return (
     <ArtistNavigationContext.Provider value={artist => { setQueueOpen(false); setSettingsOpen(false); artistNavigation.openArtist(artist); }}>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -421,16 +420,6 @@ export function NormalMode({
         settingsOpen={settingsOpen}
         onSettingsToggle={() => { artistNavigation.closeArtist(false); setView("stage"); setFixtureStatus("normal"); setSettingsOpen((open) => !open); }}
       />
-      {showSourceNavigation ? (
-        <SourceNavigation
-          onSelect={id => {
-            artistNavigation.closeArtist(false);
-            setSettingsOpen(false);
-            navigateToLibrary(id === "local" ? "local" : "search");
-          }}
-          onAccount={() => setAccountOpen(true)}
-        />
-      ) : null}
       {fixtureStatus === "partial" ? <PublicState kind="partial" onAction={() => setFixtureStatus("normal")} /> : null}
       <div
         aria-hidden={blockingStatus ? "true" : undefined}
@@ -482,7 +471,12 @@ export function NormalMode({
           onAction={blockingStatus === "loading" ? undefined : () => handlePublicStateAction(blockingStatus)}
         />
       ) : null}
-      <PlayerBar onOpenQueue={() => setQueueOpen(true)} queueOpen={queueOpen} />
+      <PlayerBar
+        accountKey={`${authSnapshot.state}:${authSnapshot.state === "authenticated" ? authSnapshot.account?.musicId ?? "guest" : "guest"}:${authRecovering}`}
+        authenticated={authSnapshot.state === "authenticated" && !authRecovering}
+        onOpenQueue={() => setQueueOpen(true)}
+        queueOpen={queueOpen}
+      />
       <QueueDrawer onClose={() => setQueueOpen(false)} open={queueOpen} />
     </ArtistNavigationContext.Provider>
   );

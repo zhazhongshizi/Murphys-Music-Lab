@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import * as api from "../../backend/providersAdapter";
 import { providerSessionRevision } from "../../backend/providerSessions";
 import type { NewProviderId, ProviderContainer, ProviderPage, ProviderTrack, ProviderVideo } from "../../contracts/providers";
+import { Icon } from "../../components/Icon";
 import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
 import { PlaylistActionIcon } from "../rhine/PlaylistActionIcon";
 import { RhinePlaylistDocument, RhinePlaylistSearch, RhinePlaylistSelection, RhinePlaylistRow, RhinePlaylistPagination } from "../rhine/RhinePlaylistView";
@@ -19,7 +20,7 @@ export function ProviderPlaylistDetail({ id, container, video, data, loading, fa
   loading: boolean; failed: boolean; page: number; pageSize: number; reload: number; busy: boolean; notice: string;
   selected: Map<string, ProviderTrack>; activeTrackId: string; onBack: () => void; onPage: (page: number) => void;
   onRefresh: () => void; onCheck: (track: ProviderTrack, checked: boolean) => void; onClear: () => void;
-  onEnqueue: (tracks: readonly ProviderTrack[], play: boolean) => void; onVideo: (video: ProviderVideo, play: boolean) => void;
+  onEnqueue: (tracks: readonly ProviderTrack[], play: boolean, next?: boolean) => void; onVideo: (video: ProviderVideo, play: boolean, next?: boolean) => void;
   onEnqueueAll: (play?: boolean) => void; canRemove: boolean; onRemove: () => void;
   verification?: { disabled: boolean; onVerify: () => void }; subscriptions?: ReactNode;
 }) {
@@ -108,6 +109,8 @@ export function ProviderPlaylistDetail({ id, container, video, data, loading, fa
           checkbox={isTrack(item) ? <input type="checkbox" aria-label={item.title} checked={selected.has(item.id)}
             disabled={busy || !playable(item) || (selected.size >= 100 && !selected.has(item.id))} onChange={e => onCheck(item, e.target.checked)} /> : undefined}
           actions={<>
+            <button className="play-next-button" title="下一首播放" aria-label={`下一首播放 ${item.title}`}
+              disabled={busy || (isTrack(item) && !playable(item))} onClick={() => isTrack(item) ? onEnqueue([item], false, true) : onVideo(item, false, true)}><Icon name="play-next" size={20} /></button>
             <button className="rhine-playlist-icon-button" title="播放" aria-label={isTrack(item) ? "播放此项" : "播放视频"}
               disabled={busy || (isTrack(item) && !playable(item))} onClick={() => isTrack(item) ? onEnqueue([item], true) : onVideo(item, true)}><PlaylistActionIcon kind="play" /></button>
             <button className="rhine-playlist-icon-button" title="加入队列" aria-label="加入队列"

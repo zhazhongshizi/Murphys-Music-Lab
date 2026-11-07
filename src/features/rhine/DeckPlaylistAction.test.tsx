@@ -2,7 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { addSongsToPlaylist, getLibraryPlaylists, LibraryAdapterError } from "../../backend/libraryAdapter";
+import { installPlaybackTransport } from "../../backend/playbackTransport";
 import type { PlaylistPage } from "../../contracts/library";
+import { PlayerBar } from "../player/PlayerBar";
+import { resetPlayerFixture } from "../player/playerStore";
 import { DeckPlaylistAction } from "./DeckPlaylistAction";
 
 vi.mock("../../backend/libraryAdapter", async importOriginal => ({
@@ -23,7 +26,11 @@ beforeEach(() => {
   vi.mocked(getLibraryPlaylists).mockResolvedValue(firstPage);
   vi.mocked(addSongsToPlaylist).mockResolvedValue({ status: "applied" });
 });
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+  installPlaybackTransport(null);
+});
 
 it("点击才读取歌单；切歌后仍将点击时的歌曲加入选定歌单，只提交一次", async () => {
   const user = userEvent.setup();
@@ -99,4 +106,50 @@ it.each([undefined, { id: `local_${"a".repeat(64)}_flac`, title: "本地歌" }])
   render(<DeckPlaylistAction track={song} />);
   expect(screen.getByRole("button", { name: "将歌曲添加进歌单" })).toBeDisabled();
   expect(getLibraryPlaylists).not.toHaveBeenCalled();
+});
+
+it("variant='default' 渲染 .provider-library-trigger 且在网易歌曲时只展示 ProviderLibraryActions", async () => {
+  const user = userEvent.setup();
+  const qqTrack = { id: "songA", title: "雷达歌曲 A" };
+  const view = render(<DeckPlaylistAction track={qqTrack} variant="default" />);
+
+  const trigger = screen.getByRole("button", { name: "将歌曲添加进歌单" });
+  expect(trigger).toHaveClass("provider-library-trigger");
+
+  await user.click(trigger);
+  expect(getLibraryPlaylists).toHaveBeenCalledExactlyOnceWith("created", 1, 50);
+
+  const form = document.querySelector(".provider-library-form");
+  expect(form).toBeInTheDocument();
+
+  await screen.findByRole("combobox", { name: "目标歌单：工作" });
+  const confirmBtn = screen.getByRole("button", { name: "确认添加" });
+  expect(confirmBtn).toHaveClass("text-button", "text-button--primary");
+  await user.click(confirmBtn);
+
+  expect(addSongsToPlaylist).toHaveBeenCalledExactlyOnceWith("101", "201", ["songA"]);
+  const status = await screen.findByRole("status");
+  expect(status).toHaveClass("provider-library-status");
+  expect(status).toHaveTextContent("已将“雷达歌曲 A”加入“工作”");
+
+  view.rerender(<DeckPlaylistAction track={{ id: "netease:track:2", title: "网易歌曲" }} variant="default" />);
+  expect(screen.queryByRole("button", { name: "将歌曲添加进歌单" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "网易喜欢 / 歌单操作" })).toBeInTheDocument();
+});
+
+it("远端播放时隐藏添加歌单入口", () => {
+  installPlaybackTransport(() => Promise.resolve());
+  const { container } = render(<DeckPlaylistAction track={track} />);
+  expect(container.firstChild).toBeNull();
+});
+
+it("主界面底部播放栏播放 QQ 音乐歌曲时展示将歌曲添加进歌单按钮", async () => {
+  resetPlayerFixture();
+  const user = userEvent.setup();
+  render(<PlayerBar onOpenQueue={() => {}} queueOpen={false} />);
+  const trigger = screen.getByRole("button", { name: "将歌曲添加进歌单" });
+  expect(trigger.closest(".player-bar__library")).not.toBeNull();
+  await user.click(trigger);
+  expect(getLibraryPlaylists).toHaveBeenCalledExactlyOnceWith("created", 1, 50);
+  expect(await screen.findByRole("combobox", { name: "目标歌单：工作" })).toBeInTheDocument();
 });
