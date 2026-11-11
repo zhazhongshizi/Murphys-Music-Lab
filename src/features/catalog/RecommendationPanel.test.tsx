@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../backend/catalogDiscoveryAdapter", () => ({
   getRecommendedSongs: mocks.songs, getRecommendedPlaylists: mocks.lists,
 }));
-vi.mock("../player/catalogQueue", () => ({
-  MAX_CATALOG_QUEUE_ITEMS: 1000,
+vi.mock("../player/catalogQueue", async importOriginal => ({
+  ...await importOriginal<typeof import("../player/catalogQueue")>(),
   enqueueAndPlayCatalogTrack: mocks.play, enqueueNextCatalogTrack: mocks.next, enqueueCatalogTrack: mocks.enqueue,
   enqueueCatalogTracks: mocks.enqueueMany,
 }));
@@ -88,6 +88,7 @@ it("supports bulk radar playback and disables the action when empty", async () =
   expect(radarBtn).not.toBeDisabled();
   fireEvent.click(radarBtn);
   await waitFor(() => expect(mocks.startRadar).toHaveBeenCalledTimes(1));
+  expect(mocks.startRadar).toHaveBeenCalledWith({ items: [expect.objectContaining({ id: song.id })], sourcePage: 1, hasMore: true });
   expect(mocks.hydrateSession).toHaveBeenCalledWith({ queue: { items: [song] } });
   expect(await screen.findByText("已载入 1 首雷达推荐并开始播放")).toBeInTheDocument();
 
@@ -96,6 +97,31 @@ it("supports bulk radar playback and disables the action when empty", async () =
   fireEvent.click(screen.getByRole("button", { name: "刷新推荐" }));
   await screen.findByText("暂时没有推荐内容，稍后刷新试试。");
   expect(screen.getByRole("button", { name: "播放雷达推荐" })).toBeDisabled();
+});
+it("starts with the displayed order across loaded pages and discards that order on refresh", async () => {
+  const second = { ...song, id: "song-2", title: "后续推荐" };
+  const first = { ...song, id: "song-3", title: "首条推荐" };
+  const refreshed = { ...song, id: "song-4", title: "刷新后推荐" };
+  mocks.songs.mockImplementationOnce(async (_, generation) => ({ generation, page: 1, hasMore: true, warningCount: 0, items: [first, song] }))
+    .mockImplementationOnce(async (_, generation) => ({ generation, page: 2, hasMore: true, warningCount: 0, items: [second, first] }))
+    .mockImplementationOnce(async (_, generation) => ({ generation, page: 1, hasMore: false, warningCount: 0, items: [refreshed] }));
+  render(<RecommendationPanel kind="radar" accountKey="authenticated:a" onOpen={() => {}} />);
+  await screen.findByText(first.title);
+  fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+  await screen.findByText(second.title);
+  fireEvent.click(screen.getByRole("button", { name: "播放雷达推荐" }));
+  expect(mocks.startRadar).toHaveBeenLastCalledWith({
+    items: [first, song, second].map(item => expect.objectContaining({ id: item.id })), sourcePage: 2, hasMore: true,
+  });
+  expect(mocks.songs).toHaveBeenCalledTimes(2);
+  await screen.findByText("已载入 1 首雷达推荐并开始播放");
+  fireEvent.click(screen.getByRole("button", { name: "刷新推荐" }));
+  await screen.findByText(refreshed.title);
+  fireEvent.click(screen.getByRole("button", { name: "播放雷达推荐" }));
+  expect(mocks.songs).toHaveBeenLastCalledWith("radar", expect.any(Number), 1);
+  expect(mocks.startRadar).toHaveBeenLastCalledWith({
+    items: [expect.objectContaining({ id: refreshed.id })], sourcePage: 1, hasMore: false,
+  });
 });
 it("supports appending all guessed songs to the playback queue", async () => {
   render(<RecommendationPanel kind="guess" accountKey="authenticated:a" onOpen={() => {}} />);

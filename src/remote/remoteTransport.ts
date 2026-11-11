@@ -208,7 +208,8 @@ async function dispatchRemote(command: string, payload: Record<string, unknown>)
   }
   if (command === "radar_start") {
     if (connection !== "online") throw new Error("连接已断开，请等待恢复");
-    const value = await readJson("/api/library", { command });
+    const { ids } = buildQueueBatchArgs(payload.items);
+    const value = await readJson("/api/library", { command, ids, sourcePage: payload.sourcePage, hasMore: payload.hasMore });
     latest = mergePlaybackSession(latest, parsePlaybackSessionSnapshot(value));
     return latest;
   }

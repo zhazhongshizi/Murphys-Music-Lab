@@ -197,8 +197,16 @@ export async function nativeQueueSnapshot(): Promise<QueueSnapshot> {
   return parseQueueSnapshot(await invoke(QUEUE_COMMANDS.snapshot));
 }
 
-export async function nativeStartRadar(): Promise<PlaybackSessionSnapshot> {
-  return parsePlaybackSessionSnapshot(await invoke("radar_start"));
+export interface RadarSeed {
+  readonly items: readonly QueueTrack[];
+  readonly sourcePage: number;
+  readonly hasMore: boolean;
+}
+
+export async function nativeStartRadar({ items, sourcePage, hasMore }: RadarSeed): Promise<PlaybackSessionSnapshot> {
+  const normalized = normalizeItems(items);
+  if (!normalized.length || unsigned(sourcePage) < 1 || sourcePage > 100 || typeof hasMore !== "boolean") return invalid();
+  return parsePlaybackSessionSnapshot(await invoke("radar_start", { items: normalized, sourcePage, hasMore }));
 }
 
 export async function nativeQueueReplace(items: readonly QueueTrack[]): Promise<QueueSnapshot> {

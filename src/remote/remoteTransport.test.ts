@@ -93,9 +93,9 @@ it("radar start uses the native session once and updates stable IDs for followin
   const items=Array.from({length:10},(_,index)=>({id:`radar-${index+1}`,title:"Radar",artist:"Artist",album:"",durationMs:180000}));
   const started={...state,queue:{generation:15,selectedIndex:0,items},player:{...state.player,generation:8,state:"playing",currentTrack:{id:items[0]!.id,title:"Radar",artist:"Artist"}}};
   fetcher.mockResolvedValueOnce(new Response(JSON.stringify(started)));
-  expect(await invokeRemote("radar_start")).toEqual(started);
+  expect(await invokeRemote("radar_start", { items, sourcePage: 2, hasMore: false })).toEqual(started);
   expect(fetcher.mock.calls.at(-1)![0]).toBe("/api/library");
-  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"radar_start"});
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({command:"radar_start", ids:items.map(item=>item.id), sourcePage:2, hasMore:false});
   expect(fetcher).toHaveBeenCalledTimes(2);
   fetcher.mockResolvedValueOnce(new Response("null"));await invokeRemote("queue_play",{trackId:"radar-10",queueGeneration:15});
   expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({action:"playTrack",id:"radar-10",queue_generation:15});

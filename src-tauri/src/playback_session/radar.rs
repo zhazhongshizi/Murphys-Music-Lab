@@ -24,6 +24,45 @@ impl From<QueueError> for RadarError {
     }
 }
 
+#[cfg_attr(test, derive(Default))]
+pub(crate) struct RadarSeed {
+    items: Vec<QueueTrack>,
+    source_page: u32,
+    has_more: bool,
+}
+
+impl RadarSeed {
+    pub(crate) fn new(
+        items: Vec<QueueTrack>,
+        source_page: u32,
+        has_more: bool,
+    ) -> Result<Self, RadarError> {
+        use crate::multi_provider::{identity::track_provider, ProviderId};
+        if items.is_empty()
+            || !(1..=100).contains(&source_page)
+            || items
+                .iter()
+                .any(|track| track_provider(&track.id) != Ok(ProviderId::Qqmusic))
+        {
+            return Err(RadarError::Catalog(CatalogError::InvalidRequest));
+        }
+        crate::queue::validate_items(&items)?;
+        Ok(Self {
+            items,
+            source_page,
+            has_more: has_more && source_page < 100,
+        })
+    }
+
+    #[cfg(test)]
+    fn unseeded() -> Self {
+        Self {
+            has_more: true,
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Clone)]
 struct RadarReader {
     session_id: u64,
@@ -35,14 +74,14 @@ struct RadarReader {
 }
 
 impl RadarReader {
-    fn new(catalog: Arc<CatalogService>, session_id: u64) -> Self {
+    fn new(catalog: Arc<CatalogService>, session_id: u64, seed: RadarSeed) -> Self {
         Self {
             session_id,
             catalog,
-            source_page: 0,
-            has_more: true,
-            buffered: VecDeque::new(),
-            seen: HashSet::new(),
+            source_page: seed.source_page,
+            has_more: seed.has_more,
+            seen: seed.items.iter().map(|item| item.id.clone()).collect(),
+            buffered: seed.items.into(),
         }
     }
 
@@ -137,9 +176,10 @@ impl PlaybackSession {
         }
     }
 
-    pub fn start_radar(
+    pub(crate) fn start_radar(
         &self,
         catalog: Arc<CatalogService>,
+        seed: RadarSeed,
     ) -> Result<PlaybackSessionSnapshot, RadarError> {
         let (epoch, generation, previous_intent) = {
             let _operation = self
@@ -153,7 +193,7 @@ impl PlaybackSession {
                 self.play_intent.load(Ordering::SeqCst),
             )
         };
-        let mut reader = RadarReader::new(catalog, epoch);
+        let mut reader = RadarReader::new(catalog, epoch, seed);
         let items = reader.take(INITIAL_TRACKS, || {
             self.radar_epoch.load(Ordering::SeqCst) == epoch
                 && self.play_intent.load(Ordering::SeqCst) == previous_intent

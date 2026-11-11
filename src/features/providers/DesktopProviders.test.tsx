@@ -11,7 +11,7 @@ import { DesktopAccountDialog } from "./ProviderAccount";
 import { ProviderWorkspace, type RhineProviderSceneState } from "./ProviderWorkspace";
 import { SourceBadge } from "./SourceBadge";
 import { playerActions } from "../player/playerStore";
-import { nativeQueueEnqueueNext, nativeQueuePlay } from "../../backend/nativeQueueAdapter";
+import { nativeQueueEnqueueNext, nativeQueuePlay, nativeQueueReplace } from "../../backend/nativeQueueAdapter";
 
 vi.mock("../../backend/providersAdapter", async original => ({
   ...await original<typeof import("../../backend/providersAdapter")>(),
@@ -19,7 +19,7 @@ vi.mock("../../backend/providersAdapter", async original => ({
   nativeProviderSearchSongs: vi.fn(), nativeProviderSearchPlaylists: vi.fn(), nativeProviderSearchVideos: vi.fn(), nativeProviderLibraryContainers: vi.fn(), nativeProviderLibraryTracks: vi.fn(), nativeProviderLibraryVideos: vi.fn(), nativeProviderLibraryLikes: vi.fn(), nativeProviderContainer: vi.fn(), nativeProviderResolveVideo: vi.fn(), nativeProviderVideoParts: vi.fn(), nativeProviderEnqueueTracks: vi.fn(), nativeProviderEnqueueVideo: vi.fn(), nativeProviderWrite: vi.fn(),
 }));
 vi.mock("../player/playerStore", () => ({ playerActions: { hydrateNative: vi.fn(), refreshProviderLikes: vi.fn(), applyVerifiedProviderLike: vi.fn() } }));
-vi.mock("../../backend/nativeQueueAdapter", async original => ({ ...await original<typeof import("../../backend/nativeQueueAdapter")>(), nativeQueuePlay: vi.fn(), nativeQueueEnqueueNext: vi.fn() }));
+vi.mock("../../backend/nativeQueueAdapter", async original => ({ ...await original<typeof import("../../backend/nativeQueueAdapter")>(), nativeQueuePlay: vi.fn(), nativeQueueEnqueueNext: vi.fn(), nativeQueueReplace: vi.fn() }));
 
 const ready = (id: NewProviderId, account = "42"): Extract<ProviderSnapshot, { state: "ready" }> => ({ providerId: id, state: "ready", account: { providerId: id, id: account, displayName: `Synthetic ${account}` }, persistence: "saved", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
 const disabled = (id: NewProviderId): ProviderSnapshot => ({ providerId: id, state: "disabled", capabilities: constants.capabilities[id] as ProviderSnapshot["capabilities"] });
@@ -47,6 +47,7 @@ beforeEach(() => {
   vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part]));
   vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [{ id: song.id, providerId: "netease", title: song.title, artist: song.artist, album: song.album, durationMs: song.durationMs }] });
   vi.mocked(nativeQueuePlay).mockResolvedValue(null);
+  vi.mocked(nativeQueueReplace).mockImplementation(async items => ({ generation: 2, selectedIndex: 0, items }));
   vi.mocked(nativeQueueEnqueueNext).mockResolvedValue({ generation: 1, selectedIndex: 0, items: [api.providerTrackToQueueTrack(song)] });
   vi.mocked(api.nativeProviderWrite).mockResolvedValue({ status: "applied", affectedCount: null });
   vi.mocked(api.nativeProviderCancel).mockResolvedValue();
@@ -204,13 +205,43 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     await act(async () => { d.resolve(page([song])); });
     expect(screen.queryByText(song.title)).not.toBeInTheDocument(); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
   });
-  it("whole playlist collection is bounded and commits once after complete pagination", async () => {
-    vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _c, n = 1, size) => size === 100 ? { ...page([n === 1 ? song : { ...song, id: "netease:track:2", title: "第二首" }], n === 1, n), total: 2 } : page([song]));
+  it.each(["全部歌曲加入队列", "播放全部"])("handles a 895-track playlist with unavailable tracks and a cross-page duplicate: %s", async action => {
+    const rows: ProviderTrack[] = Array.from({ length: 895 }, (_, i) => ({ ...song, id: `netease:track:${i + 1}` }));
+    rows[0] = { ...rows[0]!, availability: "deleted" };
+    rows[500] = rows[1]!;
+    rows[894] = { ...rows[894]!, availability: "unavailable" };
+    const expected = rows.filter((_, index) => ![0, 500, 894].includes(index));
+    vi.mocked(api.nativeProviderContainer).mockResolvedValue({ ...folder("netease"), itemCount: rows.length });
+    vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _c, n = 1, size) => size === 100
+      ? { ...page(rows.slice((n - 1) * size, n * size), n * size < rows.length, n), total: rows.length }
+      : page([rows[0]!, rows[1]!], true));
+    const player = {
+      state: "playing" as const, generation: 3, currentTrack: api.providerTrackToQueueTrack(expected[0]!),
+      positionMs: 0, durationMs: song.durationMs, volume: 0.5, muted: false, failure: null,
+    };
+    const queue = { generation: 2, selectedIndex: 0, items: expected.map(api.providerTrackToQueueTrack) };
+    vi.mocked(api.nativeProviderEnqueueTracks).mockResolvedValue(queue);
+    vi.mocked(nativeQueuePlay).mockResolvedValue({
+      requestedQuality: "320k", queue,
+      playback: { player, quality: "320k", expiresInSeconds: 60 },
+    });
     await open(variant); fireEvent.click(screen.getByRole("button", { name: "自建" })); fireEvent.click(await screen.findByRole("button", { name: "打开此容器" }));
-    const enqueueAll = await screen.findByRole("button", { name: "全部歌曲加入队列" });
-    await waitFor(() => expect(enqueueAll).toBeEnabled());
-    fireEvent.click(enqueueAll);
-    await waitFor(() => expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledTimes(1)); expect(vi.mocked(api.nativeProviderEnqueueTracks).mock.calls[0]![0]).toHaveLength(2);
+    const button = await screen.findByRole("button", { name: action });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await screen.findByText(/892 首.*跳过 2 首不可用歌曲；去除 1 首重复歌曲/);
+    const reads = vi.mocked(api.nativeProviderLibraryTracks).mock.calls.filter(([, , , size]) => size === 100);
+    expect(reads.map(([, , n]) => n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    if (action === "播放全部") {
+      expect(nativeQueueReplace).toHaveBeenCalledExactlyOnceWith(queue.items);
+      expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(expected[0]!.id, 2);
+      expect(playerActions.hydrateNative).toHaveBeenLastCalledWith(expect.objectContaining({ generation: 2 }), player, "320k", undefined);
+      expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+    } else {
+      expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith(expected);
+      expect(nativeQueueReplace).not.toHaveBeenCalled();
+      expect(nativeQueuePlay).not.toHaveBeenCalled();
+    }
   });
   it("QR returned after closing is cancelled and never polled", async () => {
     statuses.netease = disabled("netease"); const d = deferred<import("../../contracts/providers").ProviderQrImage>(); vi.mocked(api.nativeProviderLogin).mockReturnValueOnce(d.promise);
@@ -454,16 +485,23 @@ it("Rhine full-playlist search failure exposes retry without actionable partial 
   await within(detail).findByText("网易歌曲");
   expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
 });
-it("Rhine Netease play-all reads the complete playlist once before starting its first track", async () => {
+it("play-all preserves the existing queue if a later playlist page is incomplete", async () => {
+  vi.mocked(api.nativeProviderLibraryTracks).mockImplementation(async (_id, _container, n = 1, size) => {
+    if (size !== 100) return page([song]);
+    const items = n === 1 ? Array.from({ length: 100 }, (_, index) => ({ ...song, id: `netease:track:${index + 1}` })) : [];
+    return { ...page(items, n === 1, n), total: 101 };
+  });
   const detail = await openRhinePlaylist("netease");
   const button = await within(detail).findByRole("button", { name: "播放全部" });
   await waitFor(() => expect(button).toBeEnabled());
   fireEvent.click(button);
-  await waitFor(() => expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(song.id, 1));
-  expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([song]);
+  await within(detail).findByText(/整单读取未完成，队列未改变/);
+  expect(nativeQueueReplace).not.toHaveBeenCalled();
+  expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+  expect(nativeQueuePlay).not.toHaveBeenCalled();
 });
 
-it.each(["read", "enqueue", "hydrate"] as const)("leaving a playlist cancels play-all after %s and releases its busy state", async phase => {
+it.each(["read", "replace", "hydrate"] as const)("leaving a playlist cancels play-all after %s and releases its busy state", async phase => {
   const detail = await openRhinePlaylist("netease");
   const button = await within(detail).findByRole("button", { name: "播放全部" });
   await waitFor(() => expect(button).toBeEnabled());
@@ -473,19 +511,19 @@ it.each(["read", "enqueue", "hydrate"] as const)("leaving a playlist cancels pla
     if (size === 100) await gate.promise;
     return page([song]);
   });
-  if (phase === "enqueue") vi.mocked(api.nativeProviderEnqueueTracks).mockImplementation(async () => { await gate.promise; return queue; });
+  if (phase === "replace") vi.mocked(nativeQueueReplace).mockImplementation(async () => { await gate.promise; return queue; });
   if (phase === "hydrate") vi.mocked(playerActions.hydrateNative).mockImplementation(async () => { await gate.promise; });
   fireEvent.click(button);
   await waitFor(() => {
     if (phase === "read") expect(api.nativeProviderLibraryTracks).toHaveBeenCalledWith("netease", "netease:playlist:7", 1, 100);
-    else if (phase === "enqueue") expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledTimes(1);
+    else if (phase === "replace") expect(nativeQueueReplace).toHaveBeenCalledTimes(1);
     else expect(playerActions.hydrateNative).toHaveBeenCalledTimes(1);
   });
   fireEvent.click(within(detail).getByRole("button", { name: "返回容器列表" }));
   await screen.findByRole("button", { name: "打开此容器" });
   await act(async () => { gate.resolve(); });
   expect(nativeQueuePlay).not.toHaveBeenCalled();
-  if (phase === "read") expect(api.nativeProviderEnqueueTracks).not.toHaveBeenCalled();
+  if (phase === "read") expect(nativeQueueReplace).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "打开此容器" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "播放全部" })).toBeEnabled());
 });

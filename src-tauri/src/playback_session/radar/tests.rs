@@ -93,7 +93,7 @@ fn pause_during_first_source_resolution_keeps_refills_on_early_or_late_resume() 
         let feed = Feed::new(10);
         thread::scope(|scope| {
             let session = &test.session;
-            let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+            let worker = scope.spawn(|| session.start_radar(feed.catalog(), RadarSeed::unseeded()));
             entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
             assert_eq!(session.queue.snapshot().items.len(), 10);
             session.pause().unwrap();
@@ -135,7 +135,7 @@ fn cancelling_first_source_resolution_prevents_late_playback() {
         let feed = Feed::new(10);
         thread::scope(|scope| {
             let session = &test.session;
-            let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+            let worker = scope.spawn(|| session.start_radar(feed.catalog(), RadarSeed::unseeded()));
             entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
             match action {
                 "account" => session.cancel_radar(),
@@ -166,7 +166,7 @@ fn account_cancellation_does_not_supersede_a_later_ordinary_play_request() {
     let feed = Feed::new(10);
     thread::scope(|scope| {
         let session = &test.session;
-        let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+        let worker = scope.spawn(|| session.start_radar(feed.catalog(), RadarSeed::unseeded()));
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         playing_at(session, 3);
         let intent = session.play_intent.load(Ordering::SeqCst);
@@ -191,9 +191,12 @@ fn old_source_resolution_cannot_clear_a_restarted_radar_session() {
         crate::playback_session::tests::gated_failure_session(&[], Some((entered_tx, release_rx)));
     thread::scope(|scope| {
         let session = &test.session;
-        let worker = scope.spawn(|| session.start_radar(Feed::new(10).catalog()));
+        let worker =
+            scope.spawn(|| session.start_radar(Feed::new(10).catalog(), RadarSeed::unseeded()));
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        session.start_radar(Feed::new(10).catalog()).unwrap();
+        session
+            .start_radar(Feed::new(10).catalog(), RadarSeed::unseeded())
+            .unwrap();
         release_tx.send(()).unwrap();
         assert!(matches!(
             worker.join().unwrap(),
@@ -211,7 +214,9 @@ fn unavailable_first_or_later_song_keeps_radar_refilling_after_auto_skip() {
     for (denied, next_id) in [("song-1", "song-2"), ("song-3", "song-4")] {
         let (test, _) = crate::playback_session::tests::failure_session(&[denied]);
         let feed = Feed::new(10);
-        let result = test.session.start_radar(feed.catalog());
+        let result = test
+            .session
+            .start_radar(feed.catalog(), RadarSeed::unseeded());
         if denied == "song-1" {
             assert!(result.is_err());
         } else {
@@ -227,7 +232,9 @@ fn unavailable_first_or_later_song_keeps_radar_refilling_after_auto_skip() {
 fn native_decode_failure_keeps_radar_refilling_after_auto_skip() {
     let (test, events) = crate::playback_session::tests::failure_session(&[]);
     let feed = Feed::new(10);
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 2);
     let generation = test.session.snapshot().player.generation;
     events.lock().unwrap().push_back(NativePlayerEvent::Failed {
@@ -250,7 +257,7 @@ fn manual_replay_supersedes_initial_radar_read_without_changing_queue_generation
     *feed.gate.lock().unwrap() = Some((entered_tx, release_rx));
     thread::scope(|scope| {
         let session = &test.session;
-        let worker = scope.spawn(|| session.start_radar(feed.catalog()));
+        let worker = scope.spawn(|| session.start_radar(feed.catalog(), RadarSeed::unseeded()));
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         session.play_index(0, PlaybackQuality::Auto).unwrap();
         assert_eq!(session.queue.snapshot().generation, before.generation);
@@ -273,7 +280,10 @@ fn manual_replay_supersedes_initial_radar_read_without_changing_queue_generation
 fn starts_with_ten_and_refills_five_at_fifth_tenth_and_fifteenth_tracks() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let feed = Feed::new(10);
-    let snapshot = test.session.start_radar(feed.catalog()).unwrap();
+    let snapshot = test
+        .session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     assert_eq!(snapshot.queue.items.len(), 10);
     assert_eq!(snapshot.mode, PlaybackMode::Sequence);
     assert_eq!(feed.calls.load(Ordering::SeqCst), 1);
@@ -296,7 +306,9 @@ fn starts_with_ten_and_refills_five_at_fifth_tenth_and_fifteenth_tracks() {
 fn keeps_upstream_overflow_without_fetching_on_each_refill() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let feed = Feed::new(20);
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     for index in [4, 9] {
         playing_at(&test.session, index);
         let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
@@ -307,10 +319,69 @@ fn keeps_upstream_overflow_without_fetching_on_each_refill() {
 }
 
 #[test]
+fn starts_in_cached_order_and_continues_after_the_last_loaded_page() {
+    let (test, _) = crate::playback_session::tests::failure_session(&[]);
+    let feed = Feed::new(10);
+    // Deliberately reverse the display order and overlap the next provider batch.
+    let mut ids: Vec<_> = (2..=15)
+        .rev()
+        .map(|index| format!("song-{index}"))
+        .collect();
+    let items = ids
+        .iter()
+        .map(|id| QueueTrack {
+            id: id.clone(),
+            title: id.clone(),
+            artist: "Artist".into(),
+            album: String::new(),
+            duration_ms: 180_000,
+            media_mid: None,
+            cover_cache_key: None,
+            video: None,
+        })
+        .collect();
+    let seed = RadarSeed::new(items, 2, true).unwrap();
+    let snapshot = test.session.start_radar(feed.catalog(), seed).unwrap();
+    let queue_ids = |queue: QueueSnapshot| {
+        queue
+            .items
+            .into_iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(queue_ids(snapshot.queue), ids[..10]);
+    assert_eq!(snapshot.player.current_track.unwrap().id, ids[0]);
+    assert_eq!(snapshot.mode, PlaybackMode::Sequence);
+    assert_eq!(feed.calls.load(Ordering::SeqCst), 0);
+
+    playing_at(&test.session, 4);
+    let (epoch, reader, queued) = test.session.prepare_radar_refill().unwrap();
+    assert_eq!(reader.source_page, 2);
+    test.session.refill_radar(epoch, reader, queued);
+    // Cached overflow precedes the new song; the rest of the upstream batch is duplicate.
+    ids.push("song-1".into());
+    assert_eq!(queue_ids(test.session.queue.snapshot()), ids);
+    assert_eq!(feed.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        test.session
+            .radar
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .reader
+            .source_page,
+        3
+    );
+}
+
+#[test]
 fn pause_suspends_reads_and_resume_can_refill_the_same_radar_queue() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let feed = Feed::new(10);
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
     test.session.pause().unwrap();
@@ -329,7 +400,9 @@ fn late_refill_cannot_append_after_pause_stop_or_queue_replacement() {
     for action in ["pause", "stop", "replace"] {
         let (test, _) = crate::playback_session::tests::failure_session(&[]);
         let feed = Feed::new(10);
-        test.session.start_radar(feed.catalog()).unwrap();
+        test.session
+            .start_radar(feed.catalog(), RadarSeed::unseeded())
+            .unwrap();
         playing_at(&test.session, 4);
         let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
         let (entered_tx, entered_rx) = mpsc::channel();
@@ -372,14 +445,16 @@ fn queue_edits_and_stale_initial_reads_do_not_overwrite_new_playback() {
     thread::scope(|scope| {
         let session = &test.session;
         let catalog = feed.catalog();
-        let worker = scope.spawn(move || session.start_radar(catalog));
+        let worker = scope.spawn(move || session.start_radar(catalog, RadarSeed::unseeded()));
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         session.replace_queue(vec![]).unwrap();
         release_tx.send(()).unwrap();
         assert!(worker.join().unwrap().is_err());
     });
     assert!(test.session.queue.snapshot().items.is_empty());
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
     // Direct queue edits can bypass the session operation lock. The append must
@@ -395,7 +470,9 @@ fn repeated_and_empty_batches_stop_without_scanning_to_page_one_hundred() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let mut feed = Feed::new(10);
     Arc::get_mut(&mut feed).unwrap().repeated = true;
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
     test.session.refill_radar(epoch, reader, ids);
@@ -404,7 +481,10 @@ fn repeated_and_empty_batches_stop_without_scanning_to_page_one_hundred() {
     assert!(test.session.prepare_radar_refill().is_none());
     let empty = Feed::new(0);
     let before = test.session.queue.snapshot();
-    assert!(test.session.start_radar(empty.catalog()).is_err());
+    assert!(test
+        .session
+        .start_radar(empty.catalog(), RadarSeed::unseeded())
+        .is_err());
     assert_eq!(empty.calls.load(Ordering::SeqCst), 1);
     assert_eq!(test.session.queue.snapshot(), before);
 }
@@ -414,7 +494,9 @@ fn refill_failure_keeps_playing_the_existing_queue_and_stops_reading() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let mut feed = Feed::new(10);
     Arc::get_mut(&mut feed).unwrap().fail_at = 2;
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let (epoch, reader, ids) = test.session.prepare_radar_refill().unwrap();
     test.session.refill_radar(epoch, reader, ids);
@@ -427,7 +509,9 @@ fn refill_failure_keeps_playing_the_existing_queue_and_stops_reading() {
 fn short_upstream_batches_still_fill_ten_then_five_without_exhausting_the_feed() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
     let feed = Feed::new(2);
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     assert_eq!(test.session.queue.snapshot().items.len(), 10);
     assert_eq!(feed.calls.load(Ordering::SeqCst), 5);
     playing_at(&test.session, 4);
@@ -440,11 +524,15 @@ fn short_upstream_batches_still_fill_ten_then_five_without_exhausting_the_feed()
 #[test]
 fn old_refill_cannot_clear_a_new_sessions_pending_flag_even_with_identical_song_ids() {
     let (test, _) = crate::playback_session::tests::failure_session(&[]);
-    test.session.start_radar(Feed::new(10).catalog()).unwrap();
+    test.session
+        .start_radar(Feed::new(10).catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let old = test.session.prepare_radar_refill().unwrap();
     let feed = Feed::new(10);
-    test.session.start_radar(feed.catalog()).unwrap();
+    test.session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&test.session, 4);
     let new = test.session.prepare_radar_refill().unwrap();
     test.session.refill_radar(old.0, old.1, old.2);
@@ -473,7 +561,7 @@ fn pausing_during_initial_fetch_preserves_the_old_queue() {
     thread::scope(|scope| {
         let session = &test.session;
         let catalog = feed.catalog();
-        let worker = scope.spawn(move || session.start_radar(catalog));
+        let worker = scope.spawn(move || session.start_radar(catalog, RadarSeed::unseeded()));
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         session.pause().unwrap();
         release_tx.send(()).unwrap();
@@ -489,7 +577,9 @@ fn background_worker_refills_after_fifth_track_without_the_discovery_view() {
     let dummy = PlaybackSession::new(test.session.queue.clone(), test.session.playback.clone());
     let session = Arc::new(std::mem::replace(&mut test.session, dummy));
     let feed = Feed::new(10);
-    session.start_radar(feed.catalog()).unwrap();
+    session
+        .start_radar(feed.catalog(), RadarSeed::unseeded())
+        .unwrap();
     playing_at(&session, 4);
     PlaybackSession::start_auto_advance_worker(&session);
     let until = Instant::now() + Duration::from_secs(5);

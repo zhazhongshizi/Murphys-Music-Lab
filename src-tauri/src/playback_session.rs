@@ -27,6 +27,7 @@ const FAILED_TRACK_SKIP_DELAY: Duration = Duration::from_millis(1200);
 
 mod radar;
 pub use radar::RadarError;
+pub(crate) use radar::RadarSeed;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

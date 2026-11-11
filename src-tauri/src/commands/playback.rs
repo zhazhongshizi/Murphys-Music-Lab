@@ -10,7 +10,12 @@ use crate::{
 #[tauri::command]
 pub(crate) async fn radar_start(
     state: State<'_, AppState>,
+    items: Vec<QueueTrack>,
+    source_page: u32,
+    has_more: bool,
 ) -> Result<PlaybackSessionSnapshot, PublicError> {
+    let seed = playback_session::RadarSeed::new(items, source_page, has_more)
+        .map_err(crate::public_radar_error)?;
     let session = state
         .playback_session
         .clone()
@@ -19,7 +24,7 @@ pub(crate) async fn radar_start(
         .catalog
         .clone()
         .ok_or_else(crate::provider_unavailable)?;
-    tauri::async_runtime::spawn_blocking(move || session.start_radar(catalog))
+    tauri::async_runtime::spawn_blocking(move || session.start_radar(catalog, seed))
         .await
         .map_err(|_| playback_unavailable())?
         .map_err(crate::public_radar_error)

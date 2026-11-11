@@ -51,8 +51,9 @@ describe("native queue adapter", () => {
   it("starts radar through the typed native session command", async () => {
     const session = { mode: "sequence", requestedQuality: "320k", queue: SNAPSHOT, player: PLAYER };
     invokeMock.mockResolvedValueOnce(session);
-    expect(await nativeStartRadar()).toEqual(session);
-    expect(invokeMock).toHaveBeenCalledWith("radar_start", undefined);
+    const seed = { items: [TRACK], sourcePage: 2, hasMore: true };
+    expect(await nativeStartRadar(seed)).toEqual(session);
+    expect(invokeMock).toHaveBeenCalledWith("radar_start", seed);
   });
   it("accepts only the typed skip notice and keeps incremental snapshots compatible", () => {
     const session = { mode: "sequence", requestedQuality: "320k", queue: null, player: PLAYER,

@@ -29,7 +29,7 @@ beforeEach(() => {
   mocks.replace.mockImplementation(async (items: QueueTrack[]) => { order.push("replace"); queue = items; return snapshot(); });
   mocks.hydrate.mockImplementation(async () => { order.push("hydrate"); });
   mocks.play.mockImplementation(async () => { order.push("play"); return true; });
-  mocks.start.mockImplementation(async () => { order.push("radar"); queue = songs.slice(0, 10); return { queue: snapshot() }; });
+  mocks.start.mockImplementation(async ({ items }: { items: QueueTrack[] }) => { order.push("radar"); queue = items.slice(0, 10); return { queue: snapshot() }; });
   mocks.hydrateSession.mockImplementation(async () => { order.push("hydrate-session"); });
 });
 afterEach(cleanup);
@@ -55,14 +55,23 @@ it("appends all guess recommendations across visual pages without clearing or pl
   expect(props.onDeck).not.toHaveBeenCalled();
 });
 
-it("starts the native radar session without exhaustively reading visual pages", async () => {
+it("starts radar in shelf order, including the tenth song not yet shown on the shelf", async () => {
+  const firstBatch = [...songs.slice(0, 10)].reverse();
+  mocks.songs.mockImplementation(async (kind: string, generation: number, page: number) => ({
+    generation, page, hasMore: kind === "radar", warningCount: 0,
+    items: kind === "radar" ? firstBatch : songs,
+  }));
   render(<ArchiveDiscovery {...props}/>);
   await openRadar();
+  expect(screen.getAllByRole("button", { name: /选择歌曲 推荐/ }).map(button => button.getAttribute("aria-label")))
+    .toEqual(firstBatch.slice(0, 9).map(song => `选择歌曲 ${song.title}`));
   fireEvent.click(screen.getByRole("button", { name: "播放雷达推荐" }));
   await waitFor(() => expect(props.onDeck).toHaveBeenCalledOnce());
-  expect(queue.map(song => song.id)).toEqual(songs.slice(0, 10).map(song => song.id));
+  expect(queue.map(song => song.id)).toEqual(firstBatch.map(song => song.id));
   expect(order).toEqual(["radar", "hydrate-session"]);
-  expect(mocks.start).toHaveBeenCalledOnce();
+  expect(mocks.start).toHaveBeenCalledWith({
+    items: firstBatch.map(song => expect.objectContaining({ id: song.id })), sourcePage: 1, hasMore: true,
+  });
   expect(mocks.play).not.toHaveBeenCalled();
   expect(mocks.append).not.toHaveBeenCalled();
   expect(mocks.songs.mock.calls.filter(call => call[0] === "radar")).toHaveLength(1);

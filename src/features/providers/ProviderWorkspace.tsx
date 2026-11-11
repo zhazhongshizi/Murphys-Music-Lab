@@ -10,7 +10,7 @@ import type {
   ProviderVideo,
   ProviderWriteRequest,
 } from "../../contracts/providers";
-import { nativeQueueEnqueueNext, nativeQueuePlay } from "../../backend/nativeQueueAdapter";
+import { nativeQueueEnqueueNext, nativeQueuePlay, nativeQueueReplace } from "../../backend/nativeQueueAdapter";
 import { Icon } from "../../components/Icon";
 import { playerActions } from "../player/playerStore";
 import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
@@ -28,6 +28,9 @@ import { useProviderSearchHistory, type ProviderSearchKind } from "./providerSea
 
 type Tab = "songs" | "playlists" | "videos" | "created" | "favorite" | "likes";
 type Row = ProviderTrack | ProviderContainer | ProviderVideo;
+
+const PLAYLIST_BATCH_SIZE = 100;
+const PLAYLIST_QUEUE_LIMIT = 1_000;
 
 const label: Record<Tab, string> = {
   songs: "歌曲搜索",
@@ -526,35 +529,64 @@ function ReadyWorkspace({
     const target = container;
     pending.current = true;
     setBusy(true);
+    setNotice("正在读取整张歌单…");
+    let failure = "整单读取未完成，队列未改变；请刷新歌单后重试";
     try {
       const tracks: ProviderTrack[] = [];
-      for (let n = 1; n <= 10; n++) {
-        const response = await api.nativeProviderLibraryTracks(id, target.id, n, 100);
+      const seen = new Set<string>();
+      let total: number | null = null;
+      let unavailable = 0;
+      let duplicates = 0;
+      for (let n = 1; n <= PLAYLIST_QUEUE_LIMIT / PLAYLIST_BATCH_SIZE; n++) {
+        const response = await api.nativeProviderLibraryTracks(id, target.id, n, PLAYLIST_BATCH_SIZE);
         if (!active()) return;
-        if (response.page !== n || (response.total !== null && response.total > 1000)) {
-          throw new Error("container_capacity");
+        if (response.page !== n || response.total === null || (total !== null && response.total !== total)) {
+          throw new Error("container_page");
         }
-        tracks.push(...response.items);
+        total = response.total;
+        if (total > PLAYLIST_QUEUE_LIMIT) {
+          setNotice("歌单超过 1000 首，请分页选择所需歌曲");
+          return;
+        }
+        const remaining = total - (n - 1) * PLAYLIST_BATCH_SIZE;
+        if (response.items.length !== Math.min(PLAYLIST_BATCH_SIZE, remaining) || response.hasMore !== (remaining > PLAYLIST_BATCH_SIZE)) {
+          throw new Error("container_page");
+        }
+        for (const track of response.items) {
+          if (!usable(track)) { unavailable++; continue; }
+          if (seen.has(track.id)) { duplicates++; continue; }
+          seen.add(track.id);
+          tracks.push(track);
+        }
         if (!response.hasMore) break;
-        if (n === 10) throw new Error("container_capacity");
       }
-      if (!tracks.length || tracks.length > 1000 || tracks.some(t => !usable(t))) {
-        throw new Error("container_unavailable");
+      const first = tracks[0];
+      if (!first) {
+        setNotice(total === 0 ? "这个歌单还没有歌曲" : "歌单内没有可尝试播放的歌曲，队列未改变");
+        return;
       }
-      const queue = await api.nativeProviderEnqueueTracks(tracks);
-      if (active()) {
-        await playerActions.hydrateNative(queue);
+      const skipped = `${unavailable ? `；跳过 ${unavailable} 首不可用歌曲` : ""}${duplicates ? `；去除 ${duplicates} 首重复歌曲` : ""}`;
+      failure = play ? "无法载入歌单队列，请重试" : "整单未加入队列，请检查当前队列是否还有空间（最多 1000 首）";
+      const queue = play
+        ? await nativeQueueReplace(tracks.map(api.providerTrackToQueueTrack))
+        : await api.nativeProviderEnqueueTracks(tracks);
+      if (!active()) return;
+      failure = "歌单已载入，但未能更新播放器状态";
+      await playerActions.hydrateNative(queue);
+      if (!active()) return;
+      if (play) {
+        failure = `已载入 ${tracks.length} 首，未能开始播放，请检查此来源登录与歌曲播放权限${skipped}`;
+        const playback = await nativeQueuePlay(first.id, queue.generation);
         if (!active()) return;
-        if (play) {
-          const index = queue.items.findIndex(item => item.id === tracks[0]!.id);
-          if (index < 0) throw new Error("queue_target");
-          const playback = await nativeQueuePlay(tracks[0]!.id, queue.generation);
-          if (playback && active()) await playerActions.hydrateNative(playback.queue, playback.playback.player, playback.playback.quality, playback.playback.bitrate);
+        if (!playback) {
+          setNotice(`已载入 ${tracks.length} 首，播放请求已取消${skipped}`);
+          return;
         }
-        if (active()) setNotice(play ? `已请求播放：${target.title}` : `已将“${target.title}”的 ${tracks.length} 首歌曲加入队列`);
+        await playerActions.hydrateNative(playback.queue, playback.playback.player, playback.playback.quality, playback.playback.bitrate);
       }
+      if (active()) setNotice(`${play ? `正在播放“${target.title}”，已载入 ${tracks.length} 首` : `已将“${target.title}”的 ${tracks.length} 首歌曲加入队列`}${skipped}`);
     } catch {
-      if (active()) setNotice("整单未入队：最多1000首，须完整读取且条目可用；请分页选择所需歌曲");
+      if (active()) setNotice(failure);
     } finally {
       pending.current = false;
       if (current()) setBusy(false);
@@ -1153,7 +1185,10 @@ function ReadyWorkspace({
               <p>{container.description || `${container.itemCount} 首歌曲 · ${container.id}`}</p>
             </div>
             <div className="provider-buttons">
-              <button className="text-button text-button--primary" type="button" disabled={busy} onClick={() => void enqueueContainer()}>
+              <button className="text-button text-button--primary" type="button" disabled={busy || loading || !result?.items.length} onClick={() => void enqueueContainer(true)}>
+                <Icon name="play" size={16} />播放全部
+              </button>
+              <button className="text-button" type="button" disabled={busy || loading || !result?.items.length} onClick={() => void enqueueContainer()}>
                 <Icon name="queue" size={16} />全部歌曲加入队列
               </button>
               {([true, false] as const).map(subscribed => (

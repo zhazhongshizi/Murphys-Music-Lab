@@ -55,8 +55,12 @@ pub(crate) enum LibraryRequest {
         #[serde(default)]
         params: serde_json::Value,
     },
-    #[serde(rename = "radar_start")]
-    RadarStart {},
+    #[serde(rename = "radar_start", rename_all = "camelCase")]
+    RadarStart {
+        ids: Vec<String>,
+        source_page: u32,
+        has_more: bool,
+    },
     #[serde(rename = "catalog_discover_new_songs")]
     Discover { area: u8, generation: u64 },
     #[serde(rename = "catalog_search_suggestions")]
@@ -850,13 +854,33 @@ impl RemoteLibrary {
                 self.remember_provider_tracks(provider_id, pre_gen, &method, &value)?;
                 return Ok(value);
             }
-            LibraryRequest::RadarStart {} => {
+            LibraryRequest::RadarStart {
+                ids,
+                source_page,
+                has_more,
+            } => {
                 let catalog = self
                     .catalog
                     .clone()
                     .ok_or_else(crate::provider_unavailable)?;
+                if ids.len() > 1000 {
+                    return Err(crate::public_queue_error(
+                        crate::queue::QueueError::LimitExceeded,
+                    ));
+                }
+                let items = ids
+                    .iter()
+                    .map(|id| {
+                        self.resolve_queue_item(
+                            Some(crate::multi_provider::ProviderId::Qqmusic),
+                            id,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let seed = crate::playback_session::RadarSeed::new(items, source_page, has_more)
+                    .map_err(crate::public_radar_error)?;
                 let result = session
-                    .start_radar(catalog)
+                    .start_radar(catalog, seed)
                     .map_err(crate::public_radar_error)?;
                 return Ok(serde_json::json!(result));
             }
@@ -1328,7 +1352,7 @@ mod tests {
         )
         .is_ok());
         for value in [
-            r#"{"command":"radar_start"}"#,
+            r#"{"command":"radar_start","ids":["songA"],"sourcePage":1,"hasMore":true}"#,
             r#"{"command":"catalog_search_suggestions","keyword":"test","generation":1}"#,
             r#"{"command":"catalog_recommend_songs","kind":"radar","page":2,"generation":1}"#,
             r#"{"command":"catalog_recommend_playlists","page":2,"pageSize":20,"generation":1}"#,
@@ -1344,7 +1368,8 @@ mod tests {
             assert!(serde_json::from_str::<LibraryRequest>(value).is_ok());
         }
         for value in [
-            r#"{"command":"radar_start","url":"SENTINEL"}"#,
+            r#"{"command":"radar_start"}"#,
+            r#"{"command":"radar_start","ids":["songA"],"sourcePage":1,"hasMore":true,"url":"SENTINEL"}"#,
             r#"{"command":"local_music_catalog","request":{"action":"status"}}"#,
             r#"{"command":"local_music_catalog","request":{"action":"remove","id":"x"}}"#,
             r#"{"command":"catalog_search_entities","kind":"downloads","keyword":"test","page":1,"pageSize":20,"generation":1}"#,
