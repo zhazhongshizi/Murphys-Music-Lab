@@ -50,7 +50,7 @@ function Form({ track, providerId, variant, initialContainer }: { track: Track; 
       if (!active || revision !== providerSessionRevision(providerId)) return;
       setContainers(prev => page === 1 ? [...result.items] : [...new Map([...prev, ...result.items].map(c => [c.id, c])).values()]);
       setMore(result.hasMore && page < 100);
-    }).catch(() => { if (active) setNotice("容器读取失败，请关闭后重新读取"); });
+    }).catch(() => { if (active) setNotice(providerId === "bilibili" ? "收藏夹读取失败，请关闭后重新读取" : "歌单读取失败，请关闭后重新读取"); });
     return () => { active = false; };
   }, [providerId, page]);
   useEffect(() => {
@@ -80,7 +80,7 @@ function Form({ track, providerId, variant, initialContainer }: { track: Track; 
       }
     } catch (error) {
       if (revision === providerSessionRevision(providerId)) {
-        const reason = error instanceof ProviderAdapterError && error.upstreamCode === "entitlement_denied" ? "当前账号无权编辑该容器；未发送写入" : error instanceof ProviderAdapterError && ["authentication_required", "credential_invalid"].includes(error.upstreamCode ?? "") ? "账号未就绪，请重新确认登录" : "操作未获确认，请只读核对；未自动重复提交";
+        const reason = error instanceof ProviderAdapterError && error.upstreamCode === "entitlement_denied" ? "当前账号无权编辑此目标；未发送写入" : error instanceof ProviderAdapterError && ["authentication_required", "credential_invalid"].includes(error.upstreamCode ?? "") ? "账号未就绪，请重新确认登录" : "操作未获确认，请只读核对；未自动重复提交";
         setNotice(`${reason}：${track.title} → ${label}`);
       }
     } finally { guard.current = false; setBusy(false); }
@@ -118,14 +118,14 @@ function Form({ track, providerId, variant, initialContainer }: { track: Track; 
   return <div className="provider-library-form">
     <p className="provider-library-form__title">{providerId === "bilibili" ? "视频本体（同一 BV 的所有分 P 共用收藏状态）" : "网易歌曲"}：{track.title}</p>
     <PlaylistPicker options={[...new Map([...(initialContainer ? [initialContainer] : []), ...containers].map(c => [c.id, { id: c.id, title: c.title }])).values()]} value={target} onChange={setTarget} label={providerId === "bilibili" ? "目标自建收藏夹" : "目标自建歌单"} variant={variant} />
-    {more && <button className="text-button" type="button" disabled={busy} onClick={() => setPage(p => p + 1)}>读取更多容器</button>}
+    {more && <button className="text-button" type="button" disabled={busy} onClick={() => setPage(p => p + 1)}>{providerId === "bilibili" ? "读取更多收藏夹" : "读取更多歌单"}</button>}
     <div className="provider-library-buttons">
       <button className="text-button text-button--primary" type="button" disabled={disabled || !target || !capabilities.includes(add) || !targetActions.includes(add)} onClick={() => void submit({ kind: "addItems", containerId: target, trackIds: [track.id] })}>确认添加</button>
       <button className="text-button" type="button" disabled={disabled || !target || !capabilities.includes(remove) || !targetActions.includes(remove)} onClick={() => void submit({ kind: "removeItems", containerId: target, trackIds: [track.id] })}>确认移出</button>
       {providerId === "netease" && <>
         <button className="text-button" type="button" disabled={disabled || !capabilities.includes("song.like")} onClick={() => void submit({ kind: "setLiked", trackId: track.id, liked: true })}>喜欢此歌曲</button>
         <button className="text-button" type="button" disabled={disabled || !capabilities.includes("song.unlike")} onClick={() => void submit({ kind: "setLiked", trackId: track.id, liked: false })}>取消喜欢此歌曲</button>
-        <button className="text-button" type="button" disabled={busy} onClick={() => void playerActions.refreshProviderLikes(true)}>只读刷新喜欢列表</button>
+        <button className="text-button" type="button" disabled={busy} onClick={() => void playerActions.refreshProviderLikes(true)}>刷新喜欢列表</button>
       </>}
     </div>
     {providerId === "netease" && <fieldset className="provider-library-fieldset" disabled={disabled}>

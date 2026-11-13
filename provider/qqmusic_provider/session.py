@@ -43,10 +43,16 @@ class QQMusicSession:
     @staticmethod
     def _default_client_factory(device_path: str) -> Any:
         from qqmusic_api import Client
+        from qqmusic_api.core.versioning import Platform
 
         from .transport import QQMusicTransport
 
-        return Client(device_path=device_path, transport=QQMusicTransport(connect_retries=2))
+        # F09: Use desktop/Windows request identity rather than upstream Android default.
+        return Client(
+            device_path=device_path,
+            platform=Platform.DESKTOP,
+            transport=QQMusicTransport(connect_retries=2),
+        )
 
     @property
     def generation(self) -> int:

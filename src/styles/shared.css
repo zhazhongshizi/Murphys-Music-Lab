@@ -2999,8 +2999,8 @@ body.queue-drag-active * {
     padding-inline: 24px;
   }
 
-  .catalog-table th:nth-child(5),
-  .catalog-table td:nth-child(5) {
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) th:nth-child(5),
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) td:nth-child(5) {
     display: none;
   }
 
@@ -3335,14 +3335,14 @@ body.queue-drag-active * {
     display: flex;
   }
 
-  .catalog-table th:nth-child(4),
-  .catalog-table td:nth-child(4),
-  .catalog-table th:nth-child(6),
-  .catalog-table td:nth-child(6) {
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) th:nth-child(4),
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) td:nth-child(4),
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) th:nth-child(6),
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) td:nth-child(6) {
     display: none;
   }
 
-  .catalog-table th:nth-child(3) {
+  .catalog-table:not(.remote-provider-tracks-table):not(.remote-provider-videos-table) th:nth-child(3) {
     width: auto;
   }
 

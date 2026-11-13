@@ -713,13 +713,20 @@ export async function nativeProviderLibraryLikes(
 export async function nativeProviderEnqueueTrack(
   track: ProviderTrack,
 ): Promise<QueueSnapshot> {
+  if (track.availability !== "unknown") {
+    throw new ProviderAdapterError("QMG-PROVIDER-001", "media_unavailable");
+  }
   return nativeQueueEnqueue(providerTrackToQueueTrack(track));
 }
 
 export async function nativeProviderEnqueueTracks(
   tracks: readonly ProviderTrack[],
 ): Promise<QueueSnapshot> {
-  return nativeQueueEnqueueMany(tracks.map(providerTrackToQueueTrack));
+  const playable = tracks.filter(track => track.availability === "unknown");
+  if (tracks.length > 0 && playable.length === 0) {
+    throw new ProviderAdapterError("QMG-PROVIDER-001", "media_unavailable");
+  }
+  return nativeQueueEnqueueMany(playable.map(providerTrackToQueueTrack));
 }
 
 export function parseProviderVideo(value: unknown): ProviderVideo {
@@ -764,6 +771,7 @@ export async function nativeProviderEnqueueVideo(input: string, selection: "firs
   if (status.state !== "ready") throw new ProviderAdapterError("QMG-PROVIDER-001", "authentication_required");
   const revision = providerSessionRevision("bilibili");
   const video = await nativeProviderResolveVideo(input);
+  if (video.availability !== "unknown") throw new ProviderAdapterError("QMG-PROVIDER-001", "media_unavailable");
   const tracks: ProviderTrack[] = [];
   const firstPage = typeof selection === "number" ? Math.floor((selection - 1) / 100) + 1 : 1;
   for (let page = firstPage; page <= 100; page++) {
@@ -778,8 +786,13 @@ export async function nativeProviderEnqueueVideo(input: string, selection: "firs
   const current = await nativeProviderStatus("bilibili");
   if (current.state !== "ready" || current.account.id !== status.account.id || revision !== providerSessionRevision("bilibili")) throw new ProviderAdapterError("QMG-PROVIDER-001", "authentication_required");
   if (!tracks.length) return invalid();
-  const chosen = selection === "all" ? tracks : selection === "first" ? tracks.slice(0, 1) : tracks.filter(t => t.video?.partNumber === selection);
-  if (!chosen.length || chosen.length > 1000) return invalid();
+  const chosen = selection === "all"
+    ? tracks.filter(t => t.availability === "unknown")
+    : selection === "first"
+      ? tracks.slice(0, 1)
+      : tracks.filter(t => t.video?.partNumber === selection);
+  if (!chosen.length) throw new ProviderAdapterError("QMG-PROVIDER-001", "media_unavailable");
+  if (chosen.length > 1000) return invalid();
   return nativeProviderEnqueueTracks(chosen);
 }
 

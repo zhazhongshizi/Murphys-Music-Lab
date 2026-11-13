@@ -33,6 +33,16 @@ import {
 } from "../backend/nativeQueueAdapter";
 import { SourceBadge } from "../features/providers/SourceBadge";
 import { SOURCE_LABELS } from "../features/providers/DesktopProviders";
+import {
+  MAX_PROVIDER_BATCH_ITEMS,
+  collectBilibiliFolderFirstParts,
+  collectPlayableProviderTracks,
+  formatProviderAvailability,
+  hasBrowsableProviderItems,
+  isProviderTrackPlayable,
+  isProviderVideoPlayable,
+  readAllProviderPages,
+} from "../features/providers/providerListHelpers";
 import { getCurrentTrack, playerActions, usePlayerSelector } from "../features/player/playerStore";
 import { AlbumArtwork, type ArtworkTrack } from "../features/stage/AlbumArtwork";
 
@@ -185,6 +195,7 @@ export function RemoteProviderLibrary({
 
   const [loadingContent, setLoadingContent] = useState(false);
   const [contentError, setContentError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
   const [trackPage, setTrackPage] = useState<ProviderPage<ProviderTrack> | null>(null);
   const [containers, setContainers] = useState<ProviderPage<ProviderContainer> | null>(null);
@@ -192,6 +203,11 @@ export function RemoteProviderLibrary({
   const [partsPage, setPartsPage] = useState<ProviderPage<ProviderTrack> | null>(null);
 
   const requestTokenRef = useRef(0);
+  const actionTokenRef = useRef(0);
+
+  useEffect(() => () => {
+    actionTokenRef.current += 1;
+  }, []);
 
   useEffect(() => {
     setSnapshot(null);
@@ -238,6 +254,35 @@ export function RemoteProviderLibrary({
 
   const isReady = snapshot?.state === "ready";
   const accountId = snapshot?.state === "ready" ? snapshot.account.id : "";
+
+  function invalidatePendingActions(clearNotice = false) {
+    actionTokenRef.current += 1;
+    setActionBusy(false);
+    if (clearNotice) {
+      setActionNotice("");
+    }
+  }
+
+  function handlePageChange(setter: (next: number) => void, next: number) {
+    invalidatePendingActions(true);
+    setter(next);
+  }
+
+  useEffect(() => {
+    invalidatePendingActions(false);
+  }, [
+    providerId,
+    accountId,
+    neteaseView,
+    bilibiliView,
+    searchKind,
+    submittedKeyword,
+    page,
+    selectedContainer?.id,
+    containerPage,
+    selectedVideo?.bvid,
+    partPage,
+  ]);
 
   useEffect(() => {
     if (!isReady) {
@@ -374,6 +419,7 @@ export function RemoteProviderLibrary({
     if (!isReady || providerId !== "bilibili") return;
     const kw = keywordInput.trim();
     if (!kw) return;
+    invalidatePendingActions(true);
     const token = ++requestTokenRef.current;
     setLoadingContent(true);
     setContentError("");
@@ -392,85 +438,260 @@ export function RemoteProviderLibrary({
     }
   }
 
-  async function handlePlayTrack(track: ProviderTrack) {
-    setActionNotice(`正在准备播放：${track.title}…`);
+  function formatBatchSummary(skippedUnavailable: number, skippedDuplicates: number, truncated: boolean): string {
+    const parts: string[] = [];
+    if (skippedUnavailable > 0) parts.push(`跳过 ${skippedUnavailable} 个不可用条目`);
+    if (skippedDuplicates > 0) parts.push(`去重 ${skippedDuplicates} 个重复条目`);
+    if (truncated) parts.push(`已截取前 ${MAX_PROVIDER_BATCH_ITEMS} 首`);
+    return parts.length > 0 ? `（${parts.join("，")}）` : "";
+  }
+
+  async function runGuardedAction(
+    pendingNotice: string,
+    work: (isCurrent: () => boolean) => Promise<void>,
+  ) {
+    if (actionBusy) return;
+    const token = ++actionTokenRef.current;
+    const isCurrent = () => actionTokenRef.current === token;
+    setActionBusy(true);
+    setActionNotice(pendingNotice);
     try {
-      const queue = await nativeProviderEnqueueTrack(track);
-      await playerActions.hydrateNative(queue);
-      const started = await playerActions.playTrack(track.id);
-      setActionNotice(started ? `正在播放：${track.title}` : `播放未完成：${track.title}`);
+      await work(isCurrent);
     } catch (error) {
-      setActionNotice(describeRemoteProviderError(error));
+      if (isCurrent()) setActionNotice(describeRemoteProviderError(error));
+    } finally {
+      if (isCurrent()) setActionBusy(false);
     }
+  }
+
+  async function handlePlayTrack(track: ProviderTrack) {
+    if (!isProviderTrackPlayable(track)) {
+      setActionNotice(`无法播放：${track.title}（${formatProviderAvailability(providerId, track.availability)}）`);
+      return;
+    }
+    await runGuardedAction(`正在准备播放：${track.title}…`, async (isCurrent) => {
+      const queue = await nativeProviderEnqueueTrack(track);
+      if (!isCurrent()) return;
+      await playerActions.hydrateNative(queue);
+      if (!isCurrent()) return;
+      const started = await playerActions.playTrack(track.id);
+      if (!isCurrent()) return;
+      setActionNotice(started ? `正在播放：${track.title}` : `已加入队列，但未能启动播放：${track.title}`);
+    });
   }
 
   async function handleEnqueueTrack(track: ProviderTrack) {
-    setActionNotice(`正在加入队列：${track.title}…`);
-    try {
-      const queue = await nativeProviderEnqueueTrack(track);
-      await playerActions.hydrateNative(queue);
-      setActionNotice(`已加入队列：${track.title}`);
-    } catch (error) {
-      setActionNotice(describeRemoteProviderError(error));
+    if (!isProviderTrackPlayable(track)) {
+      setActionNotice(`无法加入队列：${track.title}（${formatProviderAvailability(providerId, track.availability)}）`);
+      return;
     }
+    await runGuardedAction(`正在加入队列：${track.title}…`, async (isCurrent) => {
+      const queue = await nativeProviderEnqueueTrack(track);
+      if (!isCurrent()) return;
+      await playerActions.hydrateNative(queue);
+      if (!isCurrent()) return;
+      setActionNotice(`已加入队列：${track.title}`);
+    });
   }
 
   async function handleEnqueueNextTrack(track: ProviderTrack) {
-    setActionNotice(`正在安排下一首：${track.title}…`);
-    try {
+    if (!isProviderTrackPlayable(track)) {
+      setActionNotice(`无法安排下一首：${track.title}（${formatProviderAvailability(providerId, track.availability)}）`);
+      return;
+    }
+    await runGuardedAction(`正在安排下一首：${track.title}…`, async (isCurrent) => {
       const queue = await nativeQueueEnqueueNext(providerTrackToQueueTrack(track));
+      if (!isCurrent()) return;
       await playerActions.hydrateNative(queue);
+      if (!isCurrent()) return;
       setActionNotice(`下一首播放：${track.title}`);
-    } catch (error) {
-      setActionNotice(describeRemoteProviderError(error));
-    }
+    });
   }
 
-  async function handleEnqueueAll(tracks: readonly ProviderTrack[]) {
-    if (!tracks.length) return;
-    setActionNotice(`正在批量加入 ${tracks.length} 首曲目…`);
-    try {
-      const queue = await nativeProviderEnqueueTracks(tracks);
+  async function commitTrackBatch(
+    tracks: readonly ProviderTrack[],
+    play: boolean,
+    truncated = false,
+    isCurrent: () => boolean,
+    extraSkipped?: { unavailable?: number; duplicates?: number },
+  ) {
+    const { playable, skippedUnavailable, skippedDuplicates } = collectPlayableProviderTracks(tracks);
+    const totalUnavailable = skippedUnavailable + (extraSkipped?.unavailable ?? 0);
+    const totalDuplicates = skippedDuplicates + (extraSkipped?.duplicates ?? 0);
+    if (!playable.length) {
+      if (isCurrent()) setActionNotice("没有可播放条目，队列未修改");
+      return;
+    }
+    const suffix = formatBatchSummary(totalUnavailable, totalDuplicates, truncated);
+    if (play) {
+      const first = playable[0]!;
+      const queue = await nativeQueueReplace(playable.map(providerTrackToQueueTrack));
+      if (!isCurrent()) return;
       await playerActions.hydrateNative(queue);
-      setActionNotice(`已加入队列（${tracks.length} 首）`);
-    } catch (error) {
-      setActionNotice(describeRemoteProviderError(error));
+      if (!isCurrent()) return;
+      const started = await playerActions.playTrack(first.id);
+      if (!isCurrent()) return;
+      setActionNotice(
+        started
+          ? `已替换队列并播放：${first.title}（共 ${playable.length} 首）${suffix}`
+          : `已替换队列（${playable.length} 首），但未能启动播放：${first.title}${suffix}`,
+      );
+      return;
     }
+    const queue = await nativeProviderEnqueueTracks(playable);
+    if (!isCurrent()) return;
+    await playerActions.hydrateNative(queue);
+    if (!isCurrent()) return;
+    setActionNotice(`已加入队列（${playable.length} 首）${suffix}`);
   }
 
-  async function handleReplaceQueue(tracks: readonly ProviderTrack[]) {
-    if (!tracks.length) return;
-    const first = tracks[0]!;
-    setActionNotice(`正在替换队列并播放：${first.title}…`);
-    try {
-      const queue = await nativeQueueReplace(tracks.map(providerTrackToQueueTrack));
+  async function handlePageBatch(tracks: readonly ProviderTrack[], play: boolean) {
+    const playableCount = tracks.filter(isProviderTrackPlayable).length;
+    if (!playableCount) {
+      setActionNotice("当前页没有可播放条目，队列未修改");
+      return;
+    }
+    await runGuardedAction(
+      play ? `正在替换队列并准备播放本页（${playableCount} 首）…` : `正在批量加入本页 ${playableCount} 首曲目…`,
+      async (isCurrent) => {
+        await commitTrackBatch(tracks, play, false, isCurrent);
+      },
+    );
+  }
+
+  async function handleFullBatch(
+    batchContext: "container" | "likes" | "parts",
+    pageInfo: ProviderPage<ProviderTrack>,
+    play: boolean,
+  ) {
+    await runGuardedAction(
+      play ? "正在读取全部条目并准备替换队列播放…" : "正在读取全部条目以加入队列…",
+      async (isCurrent) => {
+        const pageSize = batchContext === "parts" ? 100 : 50;
+        const read = await readAllProviderPages(
+          (nextPage, size) => {
+            if (batchContext === "parts" && selectedVideo) {
+              return nativeProviderVideoParts(selectedVideo.bvid, nextPage, size);
+            }
+            if (batchContext === "container" && selectedContainer && providerId === "netease") {
+              return nativeProviderLibraryTracks("netease", selectedContainer.id, nextPage, size);
+            }
+            return nativeProviderLibraryLikes("netease", nextPage, size);
+          },
+          pageSize,
+          isCurrent,
+          {
+            initialPage: pageInfo.page === 1 && !pageInfo.hasMore ? pageInfo : null,
+            verifyCompleteTotal: true,
+          },
+        );
+        if (read.aborted || !isCurrent()) return;
+        await commitTrackBatch(read.items, play, read.truncated, isCurrent);
+      },
+    );
+  }
+
+  async function handleBilibiliFolderBatch(pageInfo: ProviderPage<ProviderVideo>, play: boolean) {
+    if (!selectedContainer) return;
+    const folderId = selectedContainer.id;
+    await runGuardedAction(
+      play ? "正在读取收藏夹全部视频的首 P 并准备替换队列播放…" : "正在读取收藏夹全部视频的首 P 以加入队列…",
+      async (isCurrent) => {
+        const result = await collectBilibiliFolderFirstParts(
+          (nextPage, size) => nativeProviderLibraryVideos(folderId, nextPage, size),
+          (bvid, nextPage, size) => nativeProviderVideoParts(bvid, nextPage, size),
+          isCurrent,
+          pageInfo.page === 1 ? pageInfo : null,
+        );
+        if (result.aborted || !isCurrent()) return;
+        await commitTrackBatch(
+          result.tracks,
+          play,
+          result.truncated,
+          isCurrent,
+          {
+            unavailable: result.skippedUnavailableVideos,
+            duplicates: result.skippedDuplicateVideos,
+          },
+        );
+      },
+    );
+  }
+
+  async function handleVideoAction(video: ProviderVideo, mode: "play" | "next" | "enqueue") {
+    if (!isProviderVideoPlayable(video)) {
+      setActionNotice(`无法操作：${video.title}（${formatProviderAvailability("bilibili", video.availability)}）`);
+      return;
+    }
+    await runGuardedAction(`正在读取视频分 P：${video.title}…`, async (isCurrent) => {
+      const parts = await nativeProviderVideoParts(video.bvid, 1, 100);
+      if (!isCurrent()) return;
+      if (!parts.items.length) {
+        setActionNotice(`该视频暂无可播放分 P：${video.title}`);
+        return;
+      }
+      if (parts.hasMore || parts.items.length > 1) {
+        setSelectedVideo(video);
+        setPartPage(1);
+        setPartsPage(parts);
+        setActionNotice("该视频包含多个分 P，已展开分 P 列表，请选择具体分 P 或点击“播放全部分 P”");
+        return;
+      }
+      const single = parts.items[0]!;
+      if (!isProviderTrackPlayable(single)) {
+        setActionNotice(`无法播放：${single.title}（${formatProviderAvailability("bilibili", single.availability)}）`);
+        return;
+      }
+      if (mode === "next") {
+        const queue = await nativeQueueEnqueueNext(providerTrackToQueueTrack(single));
+        if (!isCurrent()) return;
+        await playerActions.hydrateNative(queue);
+        if (!isCurrent()) return;
+        setActionNotice(`下一首播放：${single.title}`);
+        return;
+      }
+      const queue = await nativeProviderEnqueueTrack(single);
+      if (!isCurrent()) return;
       await playerActions.hydrateNative(queue);
-      await playerActions.playTrack(first.id);
-      setActionNotice(`已替换队列并播放：${first.title}`);
-    } catch (error) {
-      setActionNotice(describeRemoteProviderError(error));
-    }
+      if (!isCurrent()) return;
+      if (mode === "play") {
+        const started = await playerActions.playTrack(single.id);
+        if (!isCurrent()) return;
+        setActionNotice(started ? `正在播放：${single.title}` : `已加入队列，但未能启动播放：${single.title}`);
+      } else {
+        setActionNotice(`已加入队列：${single.title}`);
+      }
+    });
   }
 
-  function renderTrackTable(tracks: readonly ProviderTrack[], pageInfo: ProviderPage<ProviderTrack>, onPageChange: (next: number) => void) {
+  function renderTrackTable(
+    tracks: readonly ProviderTrack[],
+    pageInfo: ProviderPage<ProviderTrack>,
+    onPageChange: (next: number) => void,
+    batchContext: "container" | "likes" | "parts" | "search",
+  ) {
+    const playableOnPage = tracks.filter(isProviderTrackPlayable);
+    const isFullReadContext = batchContext !== "search";
+    const playAllLabel = batchContext === "parts" ? "播放全部分 P" : isFullReadContext ? "播放全部" : "播放本页";
+    const enqueueAllLabel = batchContext === "parts" ? "全部分 P 加入队列" : isFullReadContext ? "全部加入队列" : "本页全部加入队列";
     return (
       <>
         <div className="remote-provider__toolbar">
           <button
             className="text-button text-button--primary"
-            disabled={tracks.length === 0}
-            onClick={() => void handleReplaceQueue(tracks)}
+            disabled={actionBusy || (batchContext === "search" ? playableOnPage.length === 0 : !hasBrowsableProviderItems(pageInfo))}
+            onClick={() => isFullReadContext ? void handleFullBatch(batchContext, pageInfo, true) : void handlePageBatch(tracks, true)}
             type="button"
           >
-            <Icon name="play" size={16} />替换队列并播放本页
+            <Icon name="play" size={16} />{playAllLabel}
           </button>
           <button
             className="text-button"
-            disabled={tracks.length === 0}
-            onClick={() => void handleEnqueueAll(tracks)}
+            disabled={actionBusy || (batchContext === "search" ? playableOnPage.length === 0 : !hasBrowsableProviderItems(pageInfo))}
+            onClick={() => isFullReadContext ? void handleFullBatch(batchContext, pageInfo, false) : void handlePageBatch(tracks, false)}
             type="button"
           >
-            本页全部加入队列
+            {enqueueAllLabel}
           </button>
         </div>
         {tracks.length === 0 ? (
@@ -484,14 +705,16 @@ export function RemoteProviderLibrary({
               <tr>
                 <th scope="col">封面</th>
                 <th scope="col">标题 / 来源</th>
-                <th scope="col">创作者 / 专辑</th>
-                <th scope="col">时长</th>
-                <th scope="col">操作</th>
+                <th className="remote-provider__creator-cell" scope="col">创作者 / 专辑</th>
+                <th className="remote-provider__duration-cell" scope="col">时长</th>
+                <th className="remote-provider__actions-cell" scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
               {tracks.map((track) => {
                 const active = currentTrack?.id === track.id;
+                const playable = isProviderTrackPlayable(track);
+                const availabilityText = formatProviderAvailability(providerId, track.availability);
                 return (
                   <tr
                     key={track.id}
@@ -506,23 +729,40 @@ export function RemoteProviderLibrary({
                         <small>
                           <SourceBadge track={track} />
                           {track.video ? ` · ${track.video.title}` : ""}
+                          {!playable ? ` · ${availabilityText}` : ""}
+                          <span className="remote-provider__mobile-creator">{` · ${track.artist}`}</span>
                         </small>
                       </div>
                     </td>
-                    <td>
+                    <td className="remote-provider__creator-cell">
                       <span>{track.artist}</span>
                       {track.album ? <small style={{ display: "block", opacity: 0.7 }}>{track.album}</small> : null}
                     </td>
-                    <td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>
-                    <td>
+                    <td className="catalog-table__duration remote-provider__duration-cell">{formatDuration(track.durationMs)}</td>
+                    <td className="remote-provider__actions-cell">
                       <div className="remote-provider__row-actions">
-                        <button className="text-button text-button--primary" onClick={() => void handlePlayTrack(track)} type="button">
+                        <button
+                          className="text-button text-button--primary"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handlePlayTrack(track)}
+                          type="button"
+                        >
                           播放
                         </button>
-                        <button className="text-button" onClick={() => void handleEnqueueNextTrack(track)} type="button">
+                        <button
+                          className="text-button"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handleEnqueueNextTrack(track)}
+                          type="button"
+                        >
                           下一首
                         </button>
-                        <button className="text-button" onClick={() => void handleEnqueueTrack(track)} type="button">
+                        <button
+                          className="text-button"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handleEnqueueTrack(track)}
+                          type="button"
+                        >
                           加队列
                         </button>
                       </div>
@@ -536,7 +776,7 @@ export function RemoteProviderLibrary({
         <div className="remote-pagination">
           <button
             className="text-button"
-            disabled={pageInfo.page <= 1}
+            disabled={actionBusy || pageInfo.page <= 1}
             onClick={() => onPageChange(pageInfo.page - 1)}
             type="button"
           >
@@ -545,13 +785,130 @@ export function RemoteProviderLibrary({
           <span>第 {pageInfo.page} 页</span>
           <button
             className="text-button"
-            disabled={!pageInfo.hasMore}
+            disabled={actionBusy || !pageInfo.hasMore}
             onClick={() => onPageChange(pageInfo.page + 1)}
             type="button"
           >
             下一页
           </button>
         </div>
+      </>
+    );
+  }
+
+  function renderVideoTable(
+    videos: readonly ProviderVideo[],
+    pageInfo: ProviderPage<ProviderVideo>,
+    onPageChange: (next: number) => void,
+    emptyTitle: string,
+    emptyDetail: string,
+    ariaLabel: string,
+  ) {
+    const showPagination = videos.length > 0 || pageInfo.page > 1 || pageInfo.hasMore;
+    return (
+      <>
+        {videos.length === 0 ? (
+          <div className="catalog-empty">
+            <p>{emptyTitle}</p>
+            <span>{emptyDetail}</span>
+          </div>
+        ) : (
+          <table className="catalog-table provider-tracks-table remote-provider-videos-table" aria-label={ariaLabel}>
+            <thead>
+              <tr>
+                <th scope="col">视频标题</th>
+                <th className="remote-provider__creator-cell" scope="col">UP 主 / BV 号</th>
+                <th className="remote-provider__duration-cell" scope="col">总时长</th>
+                <th className="remote-provider__actions-cell" scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {videos.map((video) => {
+                const playable = isProviderVideoPlayable(video);
+                const availabilityText = formatProviderAvailability("bilibili", video.availability);
+                return (
+                  <tr key={video.bvid} className="catalog-table__row">
+                    <td>
+                      <div className="catalog-table__title">
+                        <strong>{video.title}</strong>
+                        <small>
+                          {playable ? "单 P 直接操作，多 P 自动展开选择" : availabilityText}
+                          <span className="remote-provider__mobile-creator">{` · ${video.uploader} (${video.bvid})`}</span>
+                        </small>
+                      </div>
+                    </td>
+                    <td className="remote-provider__creator-cell">
+                      <span>{video.uploader}</span>
+                      <small style={{ display: "block", opacity: 0.7 }}>{video.bvid}</small>
+                    </td>
+                    <td className="catalog-table__duration remote-provider__duration-cell">{formatDuration(video.durationMs)}</td>
+                    <td className="remote-provider__actions-cell">
+                      <div className="remote-provider__row-actions">
+                        <button
+                          className="text-button text-button--primary"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handleVideoAction(video, "play")}
+                          type="button"
+                        >
+                          播放
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handleVideoAction(video, "next")}
+                          type="button"
+                        >
+                          下一首
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={actionBusy || !playable}
+                          onClick={() => void handleVideoAction(video, "enqueue")}
+                          type="button"
+                        >
+                          加队列
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={actionBusy}
+                          onClick={() => {
+                            invalidatePendingActions(true);
+                            setSelectedVideo(video);
+                            setPartPage(1);
+                          }}
+                          type="button"
+                        >
+                          查看分 P
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {showPagination ? (
+          <div className="remote-pagination">
+            <button
+              className="text-button"
+              disabled={actionBusy || pageInfo.page <= 1}
+              onClick={() => onPageChange(pageInfo.page - 1)}
+              type="button"
+            >
+              上一页
+            </button>
+            <span>第 {pageInfo.page} 页</span>
+            <button
+              className="text-button"
+              disabled={actionBusy || !pageInfo.hasMore}
+              onClick={() => onPageChange(pageInfo.page + 1)}
+              type="button"
+            >
+              下一页
+            </button>
+          </div>
+        ) : null}
       </>
     );
   }
@@ -599,6 +956,7 @@ export function RemoteProviderLibrary({
                       : "library-sidebar__item"
                   }
                   onClick={() => {
+                    invalidatePendingActions(true);
                     setSelectedContainer(null);
                     setContainerPage(1);
                     setPage(1);
@@ -628,6 +986,7 @@ export function RemoteProviderLibrary({
                       : "library-sidebar__item"
                   }
                   onClick={() => {
+                    invalidatePendingActions(true);
                     setSelectedVideo(null);
                     setPartPage(1);
                     setSelectedContainer(null);
@@ -671,6 +1030,7 @@ export function RemoteProviderLibrary({
               <button
                 className="text-button playlist-detail__back"
                 onClick={() => {
+                  invalidatePendingActions(true);
                   setSelectedVideo(null);
                   setPartsPage(null);
                   setPartPage(1);
@@ -683,6 +1043,7 @@ export function RemoteProviderLibrary({
               <button
                 className="text-button playlist-detail__back"
                 onClick={() => {
+                  invalidatePendingActions(true);
                   setSelectedContainer(null);
                   setTrackPage(null);
                   setVideoPage(null);
@@ -690,12 +1051,15 @@ export function RemoteProviderLibrary({
                 }}
                 type="button"
               >
-                <Icon name="back" size={16} />返回列表
+                <Icon name="back" size={16} />{providerId === "netease" ? "返回歌单列表" : "返回收藏夹列表"}
               </button>
             ) : null}
             <button
               className="text-button"
-              onClick={() => setStatusSeq((v) => v + 1)}
+              onClick={() => {
+                invalidatePendingActions(true);
+                setStatusSeq((v) => v + 1);
+              }}
               type="button"
             >
               刷新来源状态
@@ -742,6 +1106,7 @@ export function RemoteProviderLibrary({
                 className="remote-provider__search"
                 onSubmit={(event) => {
                   event.preventDefault();
+                  invalidatePendingActions(true);
                   setPage(1);
                   setSubmittedKeyword(keywordInput.trim());
                 }}
@@ -770,6 +1135,7 @@ export function RemoteProviderLibrary({
                         aria-pressed={searchKind === "songs"}
                         className="text-button"
                         onClick={() => {
+                          invalidatePendingActions(true);
                           setSearchKind("songs");
                           setPage(1);
                         }}
@@ -781,6 +1147,7 @@ export function RemoteProviderLibrary({
                         aria-pressed={searchKind === "playlists"}
                         className="text-button"
                         onClick={() => {
+                          invalidatePendingActions(true);
                           setSearchKind("playlists");
                           setPage(1);
                         }}
@@ -822,12 +1189,12 @@ export function RemoteProviderLibrary({
               </div>
             ) : providerId === "netease" ? (
               selectedContainer && trackPage ? (
-                renderTrackTable(trackPage.items, trackPage, setContainerPage)
+                renderTrackTable(trackPage.items, trackPage, (next) => handlePageChange(setContainerPage, next), "container")
               ) : neteaseView === "likes" && trackPage ? (
-                renderTrackTable(trackPage.items, trackPage, setPage)
+                renderTrackTable(trackPage.items, trackPage, (next) => handlePageChange(setPage, next), "likes")
               ) : neteaseView === "search" && searchKind === "songs" ? (
                 trackPage ? (
-                  renderTrackTable(trackPage.items, trackPage, setPage)
+                  renderTrackTable(trackPage.items, trackPage, (next) => handlePageChange(setPage, next), "search")
                 ) : (
                   <div className="catalog-empty">
                     <p>输入关键词搜索网易云单曲</p>
@@ -852,6 +1219,7 @@ export function RemoteProviderLibrary({
                           <button
                             className="text-button text-button--primary"
                             onClick={() => {
+                              invalidatePendingActions(true);
                               setSelectedContainer(container);
                               setContainerPage(1);
                             }}
@@ -866,7 +1234,7 @@ export function RemoteProviderLibrary({
                       <button
                         className="text-button"
                         disabled={containers.page <= 1}
-                        onClick={() => setPage(containers.page - 1)}
+                        onClick={() => handlePageChange(setPage, containers.page - 1)}
                         type="button"
                       >
                         上一页
@@ -875,7 +1243,7 @@ export function RemoteProviderLibrary({
                       <button
                         className="text-button"
                         disabled={!containers.hasMore}
-                        onClick={() => setPage(containers.page + 1)}
+                        onClick={() => handlePageChange(setPage, containers.page + 1)}
                         type="button"
                       >
                         下一页
@@ -890,143 +1258,45 @@ export function RemoteProviderLibrary({
                 </div>
               )
             ) : selectedVideo && partsPage ? (
-              renderTrackTable(partsPage.items, partsPage, setPartPage)
-            ) : selectedContainer && videoPage ? (
-              videoPage.items.length === 0 ? (
-                <div className="catalog-empty">
-                  <p>收藏夹暂无视频</p>
-                  <span>此收藏夹中没有可显示的视频条目。</span>
+              renderTrackTable(partsPage.items, partsPage, (next) => handlePageChange(setPartPage, next), "parts")
+            ) : selectedContainer && !selectedVideo && videoPage ? (
+              <>
+                <div className="remote-provider__toolbar">
+                  <button
+                    className="text-button text-button--primary"
+                    disabled={actionBusy || !hasBrowsableProviderItems(videoPage)}
+                    onClick={() => void handleBilibiliFolderBatch(videoPage, true)}
+                    type="button"
+                  >
+                    <Icon name="play" size={16} />播放全部
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={actionBusy || !hasBrowsableProviderItems(videoPage)}
+                    onClick={() => void handleBilibiliFolderBatch(videoPage, false)}
+                    type="button"
+                  >
+                    全部加入队列
+                  </button>
                 </div>
-              ) : (
-                <>
-                  <table className="catalog-table provider-tracks-table remote-provider-videos-table" aria-label="Bilibili 视频列表">
-                    <thead>
-                      <tr>
-                        <th scope="col">视频标题</th>
-                        <th scope="col">UP 主 / BV 号</th>
-                        <th scope="col">总时长</th>
-                        <th scope="col">分 P 操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {videoPage.items.map((video) => (
-                        <tr key={video.bvid} className="catalog-table__row">
-                          <td>
-                            <div className="catalog-table__title">
-                              <strong>{video.title}</strong>
-                              <small>视频摘要需先展开分 P 后入队播放</small>
-                            </div>
-                          </td>
-                          <td>
-                            <span>{video.uploader}</span>
-                            <small style={{ display: "block", opacity: 0.7 }}>{video.bvid}</small>
-                          </td>
-                          <td className="catalog-table__duration">{formatDuration(video.durationMs)}</td>
-                          <td>
-                            <button
-                              className="text-button text-button--primary"
-                              onClick={() => {
-                                setSelectedVideo(video);
-                                setPartPage(1);
-                              }}
-                              type="button"
-                            >
-                              展开分 P
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="remote-pagination">
-                    <button
-                      className="text-button"
-                      disabled={videoPage.page <= 1}
-                      onClick={() => setContainerPage(videoPage.page - 1)}
-                      type="button"
-                    >
-                      上一页
-                    </button>
-                    <span>第 {videoPage.page} 页</span>
-                    <button
-                      className="text-button"
-                      disabled={!videoPage.hasMore}
-                      onClick={() => setContainerPage(videoPage.page + 1)}
-                      type="button"
-                    >
-                      下一页
-                    </button>
-                  </div>
-                </>
-              )
+                {renderVideoTable(
+                  videoPage.items,
+                  videoPage,
+                  (next) => handlePageChange(setContainerPage, next),
+                  "收藏夹暂无视频",
+                  "此收藏夹中没有可显示的视频条目。",
+                  "Bilibili 视频列表",
+                )}
+              </>
             ) : bilibiliView === "search" ? (
               videoPage ? (
-                videoPage.items.length === 0 ? (
-                  <div className="catalog-empty">
-                    <p>未找到匹配的 Bilibili 视频</p>
-                    <span>可尝试其他关键词，或直接输入 BV/AV 号解析分 P。</span>
-                  </div>
-                ) : (
-                  <>
-                    <table className="catalog-table provider-tracks-table remote-provider-videos-table" aria-label="Bilibili 搜索结果">
-                      <thead>
-                        <tr>
-                          <th scope="col">视频标题</th>
-                          <th scope="col">UP 主 / BV 号</th>
-                          <th scope="col">总时长</th>
-                          <th scope="col">分 P 操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {videoPage.items.map((video) => (
-                          <tr key={video.bvid} className="catalog-table__row">
-                            <td>
-                              <div className="catalog-table__title">
-                                <strong>{video.title}</strong>
-                                <small>视频摘要需先展开分 P 后入队播放</small>
-                              </div>
-                            </td>
-                            <td>
-                              <span>{video.uploader}</span>
-                              <small style={{ display: "block", opacity: 0.7 }}>{video.bvid}</small>
-                            </td>
-                            <td className="catalog-table__duration">{formatDuration(video.durationMs)}</td>
-                            <td>
-                              <button
-                                className="text-button text-button--primary"
-                                onClick={() => {
-                                  setSelectedVideo(video);
-                                  setPartPage(1);
-                                }}
-                                type="button"
-                              >
-                                展开分 P
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="remote-pagination">
-                      <button
-                        className="text-button"
-                        disabled={videoPage.page <= 1}
-                        onClick={() => setPage(videoPage.page - 1)}
-                        type="button"
-                      >
-                        上一页
-                      </button>
-                      <span>第 {videoPage.page} 页</span>
-                      <button
-                        className="text-button"
-                        disabled={!videoPage.hasMore}
-                        onClick={() => setPage(videoPage.page + 1)}
-                        type="button"
-                      >
-                        下一页
-                      </button>
-                    </div>
-                  </>
+                renderVideoTable(
+                  videoPage.items,
+                  videoPage,
+                  (next) => handlePageChange(setPage, next),
+                  "未找到匹配的 Bilibili 视频",
+                  "可尝试其他关键词，或直接输入 BV/AV 号解析分 P。",
+                  "Bilibili 搜索结果",
                 )
               ) : (
                 <div className="catalog-empty">
@@ -1052,6 +1322,7 @@ export function RemoteProviderLibrary({
                         <button
                           className="text-button text-button--primary"
                           onClick={() => {
+                            invalidatePendingActions(true);
                             setSelectedContainer(container);
                             setContainerPage(1);
                           }}
@@ -1066,7 +1337,7 @@ export function RemoteProviderLibrary({
                     <button
                       className="text-button"
                       disabled={containers.page <= 1}
-                      onClick={() => setPage(containers.page - 1)}
+                      onClick={() => handlePageChange(setPage, containers.page - 1)}
                       type="button"
                     >
                       上一页
@@ -1075,7 +1346,7 @@ export function RemoteProviderLibrary({
                     <button
                       className="text-button"
                       disabled={!containers.hasMore}
-                      onClick={() => setPage(containers.page + 1)}
+                      onClick={() => handlePageChange(setPage, containers.page + 1)}
                       type="button"
                     >
                       下一页

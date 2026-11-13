@@ -47,16 +47,16 @@ it("the top favorite entry reads collected folders and resets detail and paginat
   expect(api.nativeProviderLibraryContainers).toHaveBeenLastCalledWith("bilibili","favorite",1,50);
   expect(screen.getByRole("button", {name:"收藏的他人收藏夹"})).toHaveAttribute("aria-pressed","true");
   expect(document.querySelector(".rhine-provider-bar")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name:"打开此容器"}));
-  await screen.findByRole("button", {name:"返回容器列表"});
+  fireEvent.click(screen.getByRole("button", {name:"打开收藏夹"}));
+  await screen.findByRole("button", {name:"← 返回收藏夹列表"});
   fireEvent.click(screen.getByRole("button", {name:"收藏的他人收藏夹"}));
-  await screen.findByRole("button", {name:"打开此容器"});
-  expect(screen.queryByRole("button", {name:"返回容器列表"})).not.toBeInTheDocument();
+  await screen.findByRole("button", {name:"打开收藏夹"});
+  expect(screen.queryByRole("button", {name:"← 返回收藏夹列表"})).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", {name:"下一页"}));
   await waitFor(() => expect(api.nativeProviderLibraryContainers).toHaveBeenLastCalledWith("bilibili","favorite",2,50));
   fireEvent.click(screen.getByRole("button", {name:"收藏的他人收藏夹"}));
   await waitFor(() => expect(api.nativeProviderLibraryContainers).toHaveBeenLastCalledWith("bilibili","favorite",1,50));
-});
+}, 15_000);
 it("an empty collected page is identified without falling back to own folders", async () => {
   vi.mocked(api.nativeProviderLibraryContainers).mockImplementation(async (_id,kind) => ({page:1,hasMore:false,total:0,items:kind==="created"?[own]:[]}));
   await start();

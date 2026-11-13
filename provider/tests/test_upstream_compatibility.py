@@ -225,3 +225,149 @@ async def test_library_writes_build_correct_sdk_requests_without_network(
     assert captured[1].method == (
         "AddSonglist" if operation in {"playlist.addSongs", "song.like"} else "DelSonglist"
     )
+
+
+async def test_f09_session_uses_desktop_platform_identity_and_preserves_after_rebuild(
+    sdk_session: QQMusicSession,
+):
+    from qqmusic_api import Credential
+    from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
+
+    client = sdk_session.client()
+    assert client.platform == Platform.DESKTOP
+    cgi = client._engine._cgi
+    device = await cgi._device_store.get_device()
+    comm = cgi._version_policy.build_comm(
+        platform=client.platform,
+        credential=Credential(musicid=123, musickey="fixture-key"),
+        device=device,
+        qimei=None,
+        guid=device.open_udid,
+    )
+    assert comm["ct"] == str(DEFAULT_VERSION_POLICY.desktop.ct) == "19"
+    assert comm["cv"] == str(DEFAULT_VERSION_POLICY.desktop.cv) == "2201"
+    assert comm["chid"] == "0"
+    assert "Windows" in cgi._version_policy.get_user_agent(client.platform, device)
+
+    await sdk_session.rebuild_if_current(sdk_session.generation)
+    rebuilt = sdk_session.client()
+    assert rebuilt.platform == Platform.DESKTOP
+    rebuilt_device = await rebuilt._engine._cgi._device_store.get_device()
+    rebuilt_comm = rebuilt._engine._cgi._version_policy.build_comm(
+        platform=rebuilt.platform,
+        credential=Credential(),
+        device=rebuilt_device,
+        qimei=None,
+        guid=rebuilt_device.open_udid,
+    )
+    assert rebuilt_comm["ct"] == "19"
+    assert rebuilt_comm["cv"] == "2201"
+
+
+async def test_f09_auth_lifecycle_uses_desktop_identity_without_android_override(
+    sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch,
+):
+    import json as py_json
+
+    from niquests.models import Response
+    from qqmusic_api.core.versioning import Platform
+
+    from qqmusic_provider.auth import QQMusicAuthSource
+
+    client = sdk_session.client()
+    recorded_cgi: list[tuple[str, str, dict[str, str], str]] = []
+    recorded_http: list[tuple[str, str]] = []
+
+    async def fake_request(method, url, **kwargs):
+        headers = kwargs.get("headers") or {}
+        ua = str(headers.get("User-Agent", ""))
+        response = Response()
+        response.status_code = 200
+        response._content_consumed = True
+        response.encoding = "utf-8"
+        if "musicu.fcg" in url or "musics.fcg" in url:
+            body = kwargs["json"]
+            comm = body["comm"]
+            req0 = body["req_0"]
+            recorded_cgi.append((req0["module"], req0["method"], dict(comm), ua))
+            if req0["method"] == "GetLoginUserInfo":
+                payload = {"code": 0, "req_0": {"code": 0, "data": {}}}
+            elif req0["method"] == "Login":
+                payload = {
+                    "code": 0,
+                    "req_0": {
+                        "code": 0,
+                        "data": {
+                            "musicid": 123,
+                            "musickey": "refreshed-key",
+                            "login_type": 2,
+                            "openid": "open",
+                            "access_token": "tok",
+                            "refresh_token": "ref",
+                            "refresh_key": "rkey",
+                            "expired_at": 9999999999,
+                        },
+                    },
+                }
+            elif req0["method"] == "Logout":
+                payload = {"code": 0, "req_0": {"code": 0, "data": {}}}
+            else:
+                payload = {"code": 0, "req_0": {"code": 0, "data": {}}}
+            response._content = py_json.dumps(payload).encode("utf-8")
+            return response
+
+        recorded_http.append((url, ua))
+        if "ptqrshow" in url:
+            response._content = b"\x89PNG\r\n\x1a\nfixture"
+            response.cookies.set("qrsig", "fixture-qrsig")
+        elif "qrconnect" in url:
+            response._content = b'src="/connect/l/qr?uuid=fixture-uuid"'
+        elif "qrcode/fixture-uuid" in url:
+            response._content = b"\xff\xd8\xff\xe0fixture-wx-qr"
+        else:
+            response._content = b""
+        return response
+
+    monkeypatch.setattr(client._engine._transport._client, "request", fake_request)
+    auth = QQMusicAuthSource(sdk_session)
+
+    qq_qr = await auth.start_qr("qq")
+    wx_qr = await auth.start_qr("wx")
+    assert qq_qr.data.startswith(b"\x89PNG")
+    assert wx_qr.data.startswith(b"\xff\xd8\xff")
+    assert client.platform == Platform.DESKTOP
+    assert any("ptqrshow" in url and "Windows" in ua for url, ua in recorded_http)
+    assert any("qrconnect" in url and "Windows" in ua for url, ua in recorded_http)
+
+    await auth.restore({
+        "openid": "open",
+        "refresh_token": "ref",
+        "access_token": "tok",
+        "musickey": "fixture-key",
+        "unionid": "",
+        "str_musicid": "123",
+        "refresh_key": "rkey",
+        "encrypt_uin": "",
+        "expired_at": 9999999999,
+        "musicid": 123,
+        "musickey_create_time": 1,
+        "key_expires_in": 3600,
+        "first_login": 0,
+        "bind_account_type": 0,
+        "need_refresh_key_in": 3600,
+        "login_type": 2,
+    })
+    assert client.platform == Platform.DESKTOP
+    assert await auth.check_credential() is True
+    refreshed = await auth.refresh_credential()
+    assert refreshed["musickey"] == "refreshed-key"
+    assert client.platform == Platform.DESKTOP
+    await auth.logout()
+    assert client.platform == Platform.DESKTOP
+
+    assert [(m, meth, comm["ct"], comm["cv"], comm["chid"]) for m, meth, comm, _ in recorded_cgi] == [
+        ("music.UserInfo.userInfoServer", "GetLoginUserInfo", "19", "2201", "0"),
+        ("music.login.LoginServer", "Login", "19", "2201", "0"),
+        ("music.login.LoginServer", "Logout", "19", "2201", "0"),
+    ]
+    assert all("Windows" in ua for _, _, _, ua in recorded_cgi)

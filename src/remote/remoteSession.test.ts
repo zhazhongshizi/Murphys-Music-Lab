@@ -266,7 +266,7 @@ it("expands Bilibili video parts on Remote and enqueues playable cid items into 
   );
 
   fireEvent.click(await screen.findByRole("button", { name: "查看视频" }));
-  fireEvent.click(await screen.findByRole("button", { name: "展开分 P" }));
+  fireEvent.click(await screen.findByRole("button", { name: "查看分 P" }));
   await screen.findByText("P2 · 第二 P 原题");
   const addButtons = await screen.findAllByRole("button", { name: "加队列" });
   fireEvent.click(addButtons[1]!);

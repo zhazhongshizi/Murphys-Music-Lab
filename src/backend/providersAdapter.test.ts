@@ -4,6 +4,8 @@ import {
   ProviderAdapterError,
   nativeProviderCancel,
   nativeProviderEnqueueTrack,
+  nativeProviderEnqueueTracks,
+  nativeProviderEnqueueVideo,
   nativeProviderLibraryContainers,
   nativeProviderLibraryLikes,
   nativeProviderLibraryTracks,
@@ -283,5 +285,91 @@ describe("multi-provider stage 3b adapter", () => {
       userMessage: "平台要求完成验证，请在官方客户端处理后重试",
     });
     expect(verifyErr.reason).toBe("authentication");
+  });
+
+  it("F08 blocks unavailable tracks and videos before touching the queue", async () => {
+    const blockedTrack = { ...NETEASE_TRACK, availability: "deleted" as const };
+    await expect(nativeProviderEnqueueTrack(blockedTrack)).rejects.toMatchObject({
+      code: "QMG-PROVIDER-001",
+      upstreamCode: "media_unavailable",
+    });
+    await expect(nativeProviderEnqueueTracks([blockedTrack])).rejects.toMatchObject({
+      code: "QMG-PROVIDER-001",
+      upstreamCode: "media_unavailable",
+    });
+
+    const bStatus = {
+      ...READY_SNAPSHOT,
+      providerId: "bilibili" as const,
+      account: { providerId: "bilibili" as const, id: "123456", displayName: "测试账号" },
+      capabilities: {
+        loginMethods: ["qr"],
+        searchKinds: ["videos"],
+        libraryKinds: ["created", "favorite"],
+        writeActions: [],
+        lyrics: false,
+        qualities: ["auto", "aac"],
+      },
+    };
+    invokeMock.mockImplementation(async (command, payload) => {
+      if (command === "provider_status") return bStatus;
+      if (command === "provider_read" && payload.method === "video.resolve") {
+        return {
+          providerId: "bilibili",
+          bvid: "BV17x411w7KC",
+          aid: "170001",
+          title: "已失效视频",
+          uploader: "UP",
+          durationMs: 60_000,
+          availability: "unavailable",
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    await expect(nativeProviderEnqueueVideo("BV17x411w7KC", "all")).rejects.toMatchObject({
+      code: "QMG-PROVIDER-001",
+      upstreamCode: "media_unavailable",
+    });
+
+    invokeMock.mockImplementation(async (command, payload) => {
+      if (command === "provider_status") return bStatus;
+      if (command === "provider_read" && payload.method === "video.resolve") {
+        return {
+          providerId: "bilibili",
+          bvid: "BV17x411w7KC",
+          aid: "170001",
+          title: "正常视频",
+          uploader: "UP",
+          durationMs: 60_000,
+          availability: "unknown",
+        };
+      }
+      if (command === "provider_read" && payload.method === "video.parts") {
+        return {
+          page: 1,
+          total: 1,
+          hasMore: false,
+          items: [
+            {
+              providerId: "bilibili",
+              id: "bilibili:video:BV17x411w7KC:123",
+              title: "无音频分 P",
+              artist: "UP",
+              creatorKind: "uploader",
+              album: "正常视频",
+              durationMs: 60_000,
+              availability: "noAudio",
+              video: { title: "正常视频", partTitle: "P1", partNumber: 1 },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    await expect(nativeProviderEnqueueVideo("BV17x411w7KC", "all")).rejects.toMatchObject({
+      code: "QMG-PROVIDER-001",
+      upstreamCode: "media_unavailable",
+    });
+    expect(invokeMock.mock.calls.some(([command]) => command === "queue_enqueue_many")).toBe(false);
   });
 });

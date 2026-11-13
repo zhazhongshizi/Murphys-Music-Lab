@@ -572,7 +572,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       const qqReads = likedMock.mock.calls.length;
       await user.click(screen.getByRole("button", { name: "下一页" }));
       await screen.findAllByText("网易喜欢第2页");
-      await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
+      await user.click(screen.getByRole("button", { name: "刷新" }));
       await waitFor(() => expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(3));
       expect(providers.nativeProviderLibraryLikes).toHaveBeenLastCalledWith("netease", 2, 50);
       expect(likedMock).toHaveBeenCalledTimes(qqReads);
@@ -615,7 +615,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
       openLikes();
       await screen.findByText("读取失败；请手动刷新，应用没有重放写入");
       expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(1);
-      await user.click(screen.getByRole("button", { name: "只读刷新列表" }));
+      await user.click(screen.getByRole("button", { name: "刷新" }));
       expect((await screen.findAllByText(neteaseSong.title)).length).toBeGreaterThan(0);
       expect(providers.nativeProviderLibraryLikes).toHaveBeenCalledTimes(2);
     });

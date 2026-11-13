@@ -269,6 +269,22 @@
   overflow: hidden;
 }
 
+.catalog-table.provider-tracks-table th:nth-child(1) {
+  width: 58px;
+}
+
+.catalog-table.provider-tracks-table th:nth-child(6) {
+  width: 88px;
+}
+
+.catalog-table.provider-tracks-table.playlist-songs__table--editable th:nth-child(6) {
+  width: 84px;
+}
+
+.catalog-table.provider-tracks-table.playlist-songs__table--editable th:nth-child(8) {
+  width: 96px;
+}
+
 .catalog-table.provider-tracks-table td {
   vertical-align: middle;
 }
@@ -596,4 +612,12 @@
 .provider-workspace--rhine .provider-rhine-video-row > .provider-rhine-actions {
   flex-wrap: nowrap;
   gap: 4px;
+}
+
+.provider-tracks-table tr.provider-row--inspected {
+  background: color-mix(in srgb, var(--lichen, #889b6e) 10%, transparent);
+}
+
+.provider-search-stack .search-history {
+  margin-top: 2px;
 }
