@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipReleaseBuild,
+    [switch]$UpdatePersonalRelease,
     [string]$ArtifactTag,
     [string]$Target = 'x86_64-pc-windows-msvc',
     [string]$CargoTargetDir
@@ -127,3 +128,7 @@ Write-Host "Portable archive: $archivePath"
 Write-Host "Portable archive size: $($archive.Length) bytes"
 Write-Host "Portable SHA-256: $archiveHash"
 Write-Host 'Runtime requirement: Microsoft Edge WebView2 Runtime'
+
+if ($UpdatePersonalRelease) {
+    & (Join-Path $PSScriptRoot 'update-personal-release.ps1') -ArchivePath $archivePath
+}

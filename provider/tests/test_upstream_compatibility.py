@@ -227,6 +227,32 @@ async def test_library_writes_build_correct_sdk_requests_without_network(
     )
 
 
+async def test_original_audio_uses_android_without_changing_shared_client(
+    sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch,
+):
+    from qqmusic_api.core.versioning import Platform
+
+    from qqmusic_provider.playback import PlaybackService, QQMusicPlaybackSource
+
+    client = sdk_session.client()
+    requests = []
+
+    async def execute(call):
+        requests.append((call.request.method, call.scope.platform, call.request.param["filename"]))
+        return SimpleNamespace(
+            expiration=300, data=[SimpleNamespace(result=0, purl="fixture.mp3")],
+        )
+
+    monkeypatch.setattr(client._engine._cgi, "execute", execute)
+    reply = await PlaybackService(QQMusicPlaybackSource(sdk_session)).execute(
+        "playback.resolve", {"id": "fixtureMid", "preferredQuality": "128k"},
+    )
+    assert reply.result["quality"] == "128k"
+    assert requests == [("UrlGetVkey", Platform.ANDROID, ["M500fixtureMidfixtureMid.mp3"])]
+    assert client.platform == Platform.DESKTOP
+    assert client._resolve_scope(client.mv.get_mv_urls(["fixtureVid"])).platform == Platform.DESKTOP
+
+
 async def test_f09_session_uses_desktop_platform_identity_and_preserves_after_rebuild(
     sdk_session: QQMusicSession,
 ):

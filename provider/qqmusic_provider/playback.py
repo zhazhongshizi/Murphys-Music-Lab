@@ -63,6 +63,7 @@ class QQMusicPlaybackSource:
         self._session = session if session is not None else QQMusicSession(cast("str", device_path))
 
     async def resolve(self, song_mid: str, qualities: tuple[str, ...]) -> Mapping[str, object]:
+        from qqmusic_api.core.versioning import Platform
         from qqmusic_api.modules.song import (
             SongFileInfo,
             SongFileType,
@@ -78,7 +79,10 @@ class QQMusicPlaybackSource:
             SongFileInfo(mid=song_mid, file_type=file_types[quality]) for quality in qualities
         ]
         try:
-            response = await client.song.get_song_urls(requests)
+            # Some recordings only return a playable URL for the Android
+            # GetVkey profile. Keep this override local to original audio.
+            request = client.song.get_song_urls(requests)
+            response = await replace(request, platform=Platform.ANDROID)
         except Exception as error:
             raise _map_upstream_error(error) from None
         data = getattr(response, "data", None)
