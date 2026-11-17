@@ -191,13 +191,20 @@ class QQMusicAuthSource:
             raise _map_upstream_error(error, invalid_credential=True) from None
 
     async def check_credential(self) -> bool:
+        from qqmusic_api.modules.login import LoginApi
+
         client = self._session.client()
         if not _has_credential(client.credential):
             raise AuthFailure(AuthFailureCode.CREDENTIAL_INVALID)
         try:
-            return not bool(await client.login.check_expired())
+            # The Desktop profile can return an expired response for a credential
+            # accepted by the Android profile. Keep QR and refresh on Desktop.
+            login = LoginApi(self._session.android_executor())
+            return not bool(await login.check_expired())
         except Exception as error:
-            raise _map_upstream_error(error, invalid_credential=True) from None
+            # Android device/session initialization can fail before login is checked.
+            # Parsing failures do not establish that the account credential is invalid.
+            raise _map_upstream_error(error) from None
 
     async def refresh_credential(self) -> Mapping[str, object]:
         client = self._session.client()

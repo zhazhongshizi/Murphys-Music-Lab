@@ -3,7 +3,7 @@ use qqmusic_gui_lib::{
     auth::{AuthService, QrLoginState, RecoveryState},
     credentials::{CredentialError, CredentialStore, SecretBlob},
     multi_provider::qq::QqHost,
-    provider::{ProviderLaunch, ProviderRequest, ProviderRequestPort},
+    provider::{ProviderLaunch, ProviderReply, ProviderRequest, ProviderRequestPort},
 };
 use serde_json::{json, Value};
 use std::{
@@ -359,6 +359,103 @@ fn qq_network_restore_keeps_secret_and_bad_v1_registration_is_rejected() {
         let _ = std::fs::remove_file(&m);
     }
 }
+#[test]
+fn qq_business_auth_rejection_rechecks_session_without_replaying_the_operation() {
+    for (scenario, method, code, keep_session) in [
+        (
+            "qq-business-auth-valid",
+            "playlist.addSongs",
+            "write_rejected",
+            true,
+        ),
+        (
+            "qq-business-auth-valid",
+            "recommend.guess",
+            "upstream_unavailable",
+            true,
+        ),
+        (
+            "qq-business-auth-network",
+            "playlist.addSongs",
+            "upstream_unavailable",
+            true,
+        ),
+        (
+            "qq-business-auth-schema",
+            "playlist.addSongs",
+            "upstream_unavailable",
+            true,
+        ),
+        (
+            "qq-business-auth-expired",
+            "playlist.addSongs",
+            "authentication_required",
+            false,
+        ),
+        (
+            "qq-business-auth-invalid",
+            "playlist.addSongs",
+            "authentication_required",
+            false,
+        ),
+    ] {
+        let store = seeded();
+        let saved = store.read().unwrap().unwrap();
+        let m = marker();
+        let host = qq(scenario, store.clone(), &m);
+        host.restore().unwrap();
+        let account = host.account().unwrap();
+        let generation = host.generation();
+        let request = if method == "playlist.addSongs" {
+            ProviderRequest::write(method, Default::default())
+        } else {
+            ProviderRequest::read_only(method, Default::default())
+        };
+        assert_eq!(
+            host.request(request).unwrap(),
+            ProviderReply::Failure {
+                code: code.into(),
+                retryable: false
+            },
+            "{scenario}/{method}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(m.with_extension("check")).unwrap(),
+            "2"
+        );
+        assert_eq!(
+            std::fs::read_to_string(m.with_extension("business")).unwrap(),
+            "1"
+        );
+        assert!(!m.with_extension("refresh").exists());
+        assert_eq!(store.read().unwrap().unwrap().payload(), saved.payload());
+        if keep_session {
+            assert_eq!(host.account(), Some(account));
+            assert_eq!(host.generation(), generation);
+            assert!(matches!(
+                host.request(ProviderRequest::read_only(
+                    "search.songs",
+                    Default::default()
+                ))
+                .unwrap(),
+                ProviderReply::Success { .. }
+            ));
+        } else {
+            assert!(host.account().is_none());
+            assert_ne!(host.generation(), generation);
+        }
+        host.shutdown();
+        for path in [
+            m.clone(),
+            m.with_extension("check"),
+            m.with_extension("business"),
+            m.with_extension("search"),
+        ] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 #[test]
 fn qq_restart_recovers_account_without_replaying_the_failed_read() {
     let store = seeded();

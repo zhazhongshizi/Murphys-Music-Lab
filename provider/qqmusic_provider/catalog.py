@@ -81,6 +81,7 @@ class QQMusicCatalogSource:
 
     def _build_request(self, operation: str, params: Mapping[str, object]) -> Awaitable[object]:
         from qqmusic_api.core.request import CgiRequest, HttpRequest
+        from qqmusic_api.core.versioning import Platform
         from qqmusic_api.modules.search import SearchType
 
         client = cast("Any", self._get_client())
@@ -104,7 +105,7 @@ class QQMusicCatalogSource:
                 highlight=False,
             )
         elif operation == "recommend.guess":
-            request = client.recommend.get_guess_recommend()
+            request = replace(client.recommend.get_guess_recommend(), platform=Platform.ANDROID)
         elif operation == "recommend.radar":
             request = client.recommend.get_radar_recommend(page=cast("int", params["page"]))
         elif operation == "recommend.playlists":

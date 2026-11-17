@@ -71,6 +71,16 @@ class QQMusicSession:
             raise RuntimeError("session_not_initialized")
         return self._client
 
+    def android_executor(self) -> Any:
+        """Bind an SDK operation to Android without mutating the shared client."""
+        from qqmusic_api.core.engine import RequestScope, ScopedRequestExecutor
+        from qqmusic_api.core.versioning import Platform
+
+        client = self.client()
+        return ScopedRequestExecutor(
+            client._engine, RequestScope(credential=client.credential, platform=Platform.ANDROID)
+        )
+
     async def rebuild_if_current(self, failed_generation: int) -> int:
         async with self._rebuild_lock:
             if self._closed:

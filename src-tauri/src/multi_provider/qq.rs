@@ -11,7 +11,7 @@ use crate::{
     provider::{
         ProviderError, ProviderEvent, ProviderLaunch, ProviderRecoveryHook, ProviderRecoveryPort,
         ProviderReply, ProviderRequest, ProviderRequestPort, ProviderSnapshot, ProviderSupervisor,
-        SupervisorConfig,
+        RequestSemantics, SupervisorConfig,
     },
 };
 use serde_json::Value;
@@ -552,6 +552,49 @@ impl ProviderRequestPort for QqHost {
                 code.as_str(),
                 "credential_invalid" | "authentication_required"
             );
+            if !auth && invalid {
+                // A business endpoint can reject its request identity even while the
+                // shared credential is valid. Verify on the same Provider without
+                // routing through QqHost or replaying the original operation.
+                let check = process.request(ProviderRequest::read_only(
+                    "auth.credential.check",
+                    Default::default(),
+                ));
+                if self.generation() != generation {
+                    return Err(ProviderError::Cancelled);
+                }
+                let status = match &check {
+                    Ok(ProviderReply::Success { result, warnings })
+                        if warnings.is_empty() && result.len() == 1 =>
+                    {
+                        result.get("status").and_then(Value::as_str)
+                    }
+                    Ok(ProviderReply::Failure { code, .. }) if code == "credential_invalid" => {
+                        Some("expired")
+                    }
+                    _ => None,
+                };
+                if status == Some("expired") {
+                    self.fail_when(generation, |phase| phase == Phase::Ready);
+                    return Ok(ProviderReply::Failure {
+                        code: "authentication_required".into(),
+                        retryable: false,
+                    });
+                }
+                // Report an operation failure, rather than asking a signed-in
+                // user to log in again or treating a failed check as proof.
+                let code = if status == Some("authenticated")
+                    && request.semantics() == RequestSemantics::WriteNeverReplay
+                {
+                    "write_rejected"
+                } else {
+                    "upstream_unavailable"
+                };
+                return Ok(ProviderReply::Failure {
+                    code: code.into(),
+                    retryable: false,
+                });
+            }
             self.fail_when(generation, |phase| {
                 invalid || (auth && phase != Phase::Ready)
             });

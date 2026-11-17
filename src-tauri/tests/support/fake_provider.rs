@@ -277,7 +277,48 @@ fn run_qq(scenario: &str, marker: Option<&PathBuf>) -> Result<(), String> {
                 }
                 json!({"status":"restored"})
             }
-            "auth.credential.check" => json!({"status":"authenticated"}),
+            "auth.credential.check" => {
+                let n = if scenario.starts_with("qq-business-auth-") {
+                    let file = marker
+                        .ok_or("credential-check marker")?
+                        .with_extension("check");
+                    let n = read_counter(&file).unwrap_or(0) + 1;
+                    write_counter(&file, n)?;
+                    n
+                } else {
+                    1
+                };
+                match (n > 1, scenario) {
+                    (true, "qq-business-auth-expired") => json!({"status":"expired"}),
+                    (true, "qq-business-auth-invalid")
+                    | (true, "qq-business-auth-network")
+                    | (true, "qq-business-auth-schema") => {
+                        let code = if scenario.ends_with("invalid") {
+                            "credential_invalid"
+                        } else if scenario.ends_with("schema") {
+                            "upstream_schema_changed"
+                        } else {
+                            "auth_network_unavailable"
+                        };
+                        write_json(
+                            &json!({"v":1,"id":request["id"],"ok":false,"error":{"code":code,"retryable":false}}),
+                        )?;
+                        continue;
+                    }
+                    _ => json!({"status":"authenticated"}),
+                }
+            }
+            "playlist.addSongs" | "recommend.guess"
+                if scenario.starts_with("qq-business-auth-") =>
+            {
+                let file = marker.ok_or("business marker")?.with_extension("business");
+                let n = read_counter(&file).unwrap_or(0);
+                write_counter(&file, n + 1)?;
+                write_json(
+                    &json!({"v":1,"id":request["id"],"ok":false,"error":{"code":"authentication_required","retryable":false}}),
+                )?;
+                continue;
+            }
             "auth.credential.refresh" => {
                 if let Some(m) = marker {
                     let file = m.with_extension("refresh");

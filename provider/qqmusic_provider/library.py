@@ -139,16 +139,21 @@ class QQMusicLibrarySource:
                 "song.unlike",
             }:
                 song_info = await _resolve_song_info(client, cast("list[str]", params["songIds"]))
-                if operation == "playlist.addSongs":
-                    succeeded = await client.songlist.add_songs(
-                        cast("int", params["playlistId"]), song_info, credential=credential
-                    )
+                if operation in {"playlist.addSongs", "song.like"}:
+                    from qqmusic_api.modules.songlist import SonglistApi
+
+                    # Both entry points use the same AddSonglist endpoint.
+                    songlist = SonglistApi(self._session.android_executor())
+                    if operation == "playlist.addSongs":
+                        succeeded = await songlist.add_songs(
+                            cast("int", params["playlistId"]), song_info, credential=credential
+                        )
+                    else:
+                        succeeded = await songlist.like_song(song_info, credential=credential)
                 elif operation == "playlist.removeSongs":
                     succeeded = await client.songlist.del_songs(
                         cast("int", params["playlistId"]), song_info, credential=credential
                     )
-                elif operation == "song.like":
-                    succeeded = await client.songlist.like_song(song_info, credential=credential)
                 else:
                     succeeded = await client.songlist.unlike_song(song_info, credential=credential)
                 return {"succeeded": succeeded, "affectedCount": len(song_info)}

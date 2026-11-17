@@ -174,6 +174,14 @@ async def test_catalog_uses_real_sdk_descriptors_and_raw_results(
         assert captured[0].param["num_per_page"] == 3
     if method == "lyrics.get":
         assert captured[0].param["trans"] == captured[0].param["roma"] == 1
+    if method in {"recommend.guess", "recommend.radar"}:
+        from qqmusic_api.core.versioning import Platform
+
+        client = sdk_session.client()
+        assert client._resolve_scope(captured[0]).platform == (
+            Platform.ANDROID if method == "recommend.guess" else Platform.DESKTOP
+        )
+        assert client.platform == Platform.DESKTOP
 
 
 @pytest.mark.parametrize("numeric", [False, True])
@@ -202,29 +210,39 @@ async def test_library_writes_build_correct_sdk_requests_without_network(
     sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch, operation: str,
 ):
     from qqmusic_api import Credential
+    from qqmusic_api.core.versioning import Platform
 
     sdk_session.client().credential = Credential(
         musicid=123, musickey="fixture-key", encrypt_uin="fixture-uin",
     )
     captured = []
 
-    async def execute(request):
-        captured.append(request)
+    async def execute(request, scope):
+        captured.append((request, scope))
         if request.method == "CgiGetTrackInfo":
             return SimpleNamespace(tracks=[SimpleNamespace(id=101, mid="mid-a", type=1)])
         assert request.require_login is True
         assert request.credential is sdk_session.client().credential
+        assert scope.credential is sdk_session.client().credential
         return {"retCode": 0}
 
-    monkeypatch.setattr(sdk_session.client(), "execute", execute)
+    client = sdk_session.client()
+    monkeypatch.setattr(client._engine, "execute", execute)
     result = await QQMusicLibrarySource(sdk_session).execute(
         operation, {"songIds": ["mid-a"], "playlistId": 456},
     )
     assert result == {"succeeded": True, "affectedCount": 1}
     assert len(captured) == 2
-    assert captured[1].method == (
+    assert captured[1][0].method == (
         "AddSonglist" if operation in {"playlist.addSongs", "song.like"} else "DelSonglist"
     )
+    assert captured[0][1].platform == Platform.DESKTOP
+    assert captured[1][1].platform == (
+        Platform.ANDROID if operation in {"playlist.addSongs", "song.like"} else Platform.DESKTOP
+    )
+    if operation in {"song.like", "song.unlike"}:
+        assert captured[1][0].param["dirId"] == 201
+    assert client.platform == Platform.DESKTOP
 
 
 async def test_original_audio_uses_android_without_changing_shared_client(
@@ -290,10 +308,71 @@ async def test_f09_session_uses_desktop_platform_identity_and_preserves_after_re
     assert rebuilt_comm["cv"] == "2201"
 
 
-async def test_f09_auth_lifecycle_uses_desktop_identity_without_android_override(
+@pytest.mark.parametrize("scenario", ["qimei-html", "qimei-null", 0, 1000, 104400, 104401])
+async def test_cold_android_check_distinguishes_device_errors_from_expired_credentials(
+    sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch, scenario: str | int,
+):
+    import json
+
+    from niquests.models import Response
+    from qqmusic_api import Credential
+
+    from qqmusic_provider.auth import AuthFailure, AuthService, QQMusicAuthSource
+
+    client = sdk_session.client()
+    credential = Credential(musicid=123, musickey="SYNTHETIC_TEST_ONLY")
+    client.credential = credential
+    visited = []
+
+    async def fake_request(method, url, **kwargs):
+        response = Response()
+        response.status_code = 200
+        response._content_consumed = True
+        response.encoding = "utf-8"
+        if url == "https://api.tencentmusic.com/tme/trpc/proxy":
+            visited.append("QIMEI")
+            if scenario == "qimei-html":
+                response._content = b"<html>temporary gateway response</html>"
+            elif scenario == "qimei-null":
+                response._content = b'{"data":null}'
+            else:
+                response._content = json.dumps({
+                    "data": json.dumps({"data": {"q16": "fixture-q16", "q36": "fixture-q36"}}),
+                }).encode()
+            return response
+
+        operation = kwargs["json"]["req_0"]["method"]
+        visited.append(operation)
+        if operation == "GetSession":
+            payload = {"code": 0, "req_0": {
+                "code": 0, "data": {"session": {"uid": "fixture-uid", "sid": "fixture-sid"}},
+            }}
+        else:
+            assert operation == "GetLoginUserInfo"
+            payload = {"code": 0, "req_0": {"code": scenario, "data": {}}}
+        response._content = json.dumps(payload).encode()
+        return response
+
+    # Keep real QIMEI/Android initialization; replace only the network boundary.
+    monkeypatch.setattr(client._engine._transport._client, "request", fake_request)
+    auth = AuthService(QQMusicAuthSource(sdk_session))
+    if isinstance(scenario, str):
+        with pytest.raises(AuthFailure, match="upstream_schema_changed"):
+            await auth.execute("auth.credential.check", {})
+        assert visited == ["QIMEI"]
+    else:
+        assert await auth.execute("auth.credential.check", {}) == {
+            "status": "authenticated" if scenario == 0 else "expired",
+        }
+        assert visited == ["QIMEI", "GetSession", "GetLoginUserInfo"]
+    assert client.credential is credential
+
+
+async def test_credential_check_uses_android_but_login_lifecycle_stays_desktop(
     sdk_session: QQMusicSession, monkeypatch: pytest.MonkeyPatch,
 ):
     import json as py_json
+    from unittest.mock import AsyncMock
 
     from niquests.models import Response
     from qqmusic_api.core.versioning import Platform
@@ -355,6 +434,9 @@ async def test_f09_auth_lifecycle_uses_desktop_identity_without_android_override
         return response
 
     monkeypatch.setattr(client._engine._transport._client, "request", fake_request)
+    cgi = client._engine._cgi
+    monkeypatch.setattr(cgi._android_session, "ensure", AsyncMock(return_value=None))
+    monkeypatch.setattr(cgi._qimei_manager, "get_cached", AsyncMock(return_value=None))
     auth = QQMusicAuthSource(sdk_session)
 
     qq_qr = await auth.start_qr("qq")
@@ -391,9 +473,12 @@ async def test_f09_auth_lifecycle_uses_desktop_identity_without_android_override
     await auth.logout()
     assert client.platform == Platform.DESKTOP
 
-    assert [(m, meth, comm["ct"], comm["cv"], comm["chid"]) for m, meth, comm, _ in recorded_cgi] == [
-        ("music.UserInfo.userInfoServer", "GetLoginUserInfo", "19", "2201", "0"),
+    assert [
+        (m, meth, comm["ct"], comm["cv"], comm["chid"]) for m, meth, comm, _ in recorded_cgi
+    ] == [
+        ("music.UserInfo.userInfoServer", "GetLoginUserInfo", "11", "20090008", "10003505"),
         ("music.login.LoginServer", "Login", "19", "2201", "0"),
         ("music.login.LoginServer", "Logout", "19", "2201", "0"),
     ]
-    assert all("Windows" in ua for _, _, _, ua in recorded_cgi)
+    assert "android" in recorded_cgi[0][3].lower()
+    assert all("Windows" in ua for _, _, _, ua in recorded_cgi[1:])
