@@ -19,6 +19,7 @@ import { usePlaylistPlayback } from "./usePlaylistPlayback";
 import { useLibraryCatalog } from "./useLibraryCatalog";
 import { catalogAccessMessage } from "../catalog/catalogAccess";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import type { ArtistRef } from "../../contracts/artist";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
@@ -480,14 +481,14 @@ export default function LibraryWorkspace({
   }
 
   async function updateNativeQueue(track: CatalogSong, playNow: boolean) {
-    setQueueNotice(playNow ? "正在交给原生播放器…" : "正在加入本地队列…");
+    setQueueNotice(playNow ? "正在播放…" : "正在加入本地队列…");
     try {
       if (playNow) {
         await enqueueAndPlayCatalogTrack(track);
       } else {
         await enqueueCatalogTrack(track);
       }
-      setQueueNotice(playNow ? "已交给 Windows 原生播放器" : "已加入本地队列");
+      setQueueNotice(playNow ? "已开始播放" : "已加入本地队列");
     } catch (error) {
       if (playNow && !(error instanceof CatalogPlaybackStartError)) {
         playerActions.reportPlaybackError(error, () => updateNativeQueue(track, true));
@@ -650,6 +651,11 @@ export default function LibraryWorkspace({
               onBusyChange={setPlaylistBatchBusy}
               accountKey={accountKey}
               allowRemoval={!remote && !authRecovering && authSnapshot.state === "authenticated"}
+              onRowDoubleClick={(track) => {
+                setSelectedId(track.id);
+                setInspectedPlaylistTrack(track);
+                void updateNativeQueue(track, true);
+              }}
               onPageRead={page => setPlaylistDetail(current => current.state === "ready" ? {
                 ...current, page, playlist: { ...current.playlist, songCount: page.total ?? current.playlist.songCount },
               } : current)}
@@ -666,7 +672,26 @@ export default function LibraryWorkspace({
                 } : current);
               }}
               renderCells={(track) => <>
-                <td><AlbumArtwork compact track={liveArtworkTrack(track)} /></td>
+                <td>
+                  <div className="catalog-table__cover-play">
+                    <AlbumArtwork compact track={liveArtworkTrack(track)} />
+                    <Tooltip content="立即播放">
+                      <button
+                        type="button"
+                        className="icon-button catalog-table__cover-play-btn"
+                        aria-label={`立即播放 ${track.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedId(track.id);
+                          setInspectedPlaylistTrack(track);
+                          void updateNativeQueue(track, true);
+                        }}
+                      >
+                        <Icon name="play" size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </td>
                 <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setInspectedPlaylistTrack(track); }} type="button"><strong>{track.title}</strong><small>{track.id}</small></button></td>
                 <td><ArtistLinks artists={track.artists} onOpenArtist={openArtist} /></td>
                 <td><AlbumLink track={track} onOpen={setOpenedEntity} /></td><td><span className="quality-tag">{qualityLabel(track)}</span></td>
@@ -773,8 +798,34 @@ export default function LibraryWorkspace({
                   const artworkTrack = value.source === "preview" ? value.track : liveArtworkTrack(value.track);
                   const active = currentTrack?.id === track.id;
                   return (
-                    <tr className={active ? "catalog-table__active" : undefined} key={track.id}>
-                       <td><span className={active ? "catalog-needle catalog-needle--active" : "catalog-needle"}>{active ? <span className="sr-only">当前曲目</span> : String(index + 1).padStart(2, "0")}</span></td>
+                    <tr
+                      className={active ? "catalog-table__active" : undefined}
+                      key={track.id}
+                      onDoubleClick={(e) => {
+                        if ((e.target as HTMLElement).closest("button:not(.catalog-table__title), a, input")) return;
+                        setSelectedId(track.id);
+                        if (value.source === "preview") playerActions.playTrack(value.track.id);
+                        else void updateNativeQueue(value.track, true);
+                      }}
+                    >
+                      <td className="catalog-table__index-cell">
+                        <span className={active ? "catalog-needle catalog-needle--active" : "catalog-needle"}>{active ? <span className="sr-only">当前曲目</span> : String(index + 1).padStart(2, "0")}</span>
+                        <Tooltip content="立即播放">
+                          <button
+                            type="button"
+                            className="icon-button icon-button--quiet catalog-table__quick-play"
+                            aria-label={`立即播放 ${track.title}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedId(track.id);
+                              if (value.source === "preview") playerActions.playTrack(value.track.id);
+                              else void updateNativeQueue(value.track, true);
+                            }}
+                          >
+                            <Icon name="play" size={14} />
+                          </button>
+                        </Tooltip>
+                      </td>
                       <td><AlbumArtwork compact track={artworkTrack} /></td>
                       <td><button className="catalog-table__title" onClick={() => setSelectedId(track.id)} type="button"><strong>{track.title}</strong><small>{track.identifier}</small></button>{remote && value.source === "live" && value.track.albumId ? <small className="remote-song-album"><AlbumLink track={value.track} onOpen={setOpenedEntity} /></small> : null}</td>
                       <td>{value.source === "live" ? <ArtistLinks artists={value.track.artists} onOpenArtist={openArtist} /> : track.artist}</td><td><AlbumLink track={track} onOpen={setOpenedEntity} /></td><td><span className="quality-tag">{track.quality}</span></td><td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>
@@ -812,8 +863,10 @@ export default function LibraryWorkspace({
           ) : (
             <>
               <div className="catalog-inspector__play-actions">
-                <button aria-label={`下一首播放 ${selectedTrack.track.title}`} title="下一首播放" className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
-                <button className="text-button text-button--primary catalog-inspector__play" onClick={() => void updateNativeQueue(selectedTrack.track, true)} type="button"><Icon name="play" size={17} />{remote ? "在电脑播放" : "原生播放"}</button>
+                <Tooltip content="下一首播放">
+                  <button aria-label={`下一首播放 ${selectedTrack.track.title}`} className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
+                </Tooltip>
+                <button className="text-button text-button--primary catalog-inspector__play" onClick={() => void updateNativeQueue(selectedTrack.track, true)} type="button"><Icon name="play" size={17} />{remote ? "在电脑播放" : "立即播放"}</button>
               </div>
               <button className="text-button" onClick={() => void updateNativeQueue(selectedTrack.track, false)} type="button"><Icon name="queue" size={17} />{remote ? "加入电脑队列" : "加入本地队列"}</button>
               {trackProvider(selectedTrack.track.id) === "qqmusic" && <button className="text-button" disabled={likePendingIds?.includes(selectedTrack.track.id)} aria-pressed={section === "liked" || likedIds.includes(selectedTrack.track.id)} onClick={() => void handleLiveLike(selectedTrack.track)} type="button"><Icon name="heart" size={17} />{section === "liked" || likedIds.includes(selectedTrack.track.id) ? "取消喜欢" : "喜欢"}</button>}

@@ -93,7 +93,7 @@ describe("Live Spectrum experimental setting", () => {
     render(<App />);
     await waitFor(() => expect(settings.snapshot).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "实时频谱·实验" }));
 
     await waitFor(() => expect(settings.setLiveSpectrum).toHaveBeenCalledWith(true));
@@ -108,7 +108,7 @@ describe("Live Spectrum experimental setting", () => {
     render(<App />);
     await waitFor(() => expect(settings.snapshot).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "实时频谱·实验" }));
 
     expect(await screen.findByText("实时频谱设置保存失败")).toHaveAttribute("role", "status");

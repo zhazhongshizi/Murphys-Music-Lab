@@ -1,0 +1,235 @@
+.saved-queues {
+  container-type: inline-size;
+}
+
+.saved-queues .saved-queues__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.saved-queues .saved-queues__empty {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--paper-muted);
+}
+
+.saved-queues .saved-queues__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.saved-queues .saved-queues__row:hover {
+  border-color: color-mix(in srgb, var(--paper-muted) 50%, var(--line));
+}
+
+.saved-queues.saved-queues--compact .saved-queues__row {
+  padding: 6px 8px;
+  gap: 6px;
+}
+
+.saved-queues .saved-queues__info {
+  flex: 1 1 130px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.saved-queues .saved-queues__name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--paper);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-queues .saved-queues__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--paper-muted);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-queues .saved-queues__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.saved-queues .saved-queues__secondary-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.saved-queues.saved-queues--compact .saved-queues__secondary-actions {
+  display: none;
+}
+
+.saved-queues.saved-queues--compact .saved-queues__row[data-more-open="true"] .saved-queues__secondary-actions {
+  display: inline-flex;
+}
+
+@container (min-width: 460px) {
+  .saved-queues.saved-queues--compact .saved-queues__row:is(:hover, :focus-within) .saved-queues__secondary-actions {
+    display: inline-flex;
+  }
+}
+
+.saved-queues .saved-queues__row button.icon-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.saved-queues .saved-queues__row button.icon-button.icon-button--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--paper-muted);
+}
+
+.saved-queues .saved-queues__row button.icon-button.icon-button--quiet:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--paper);
+}
+
+.saved-queues .saved-queues__row button.icon-button[aria-pressed="true"],
+.saved-queues .saved-queues__row button.icon-button[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--lichen) 55%, transparent);
+  background: color-mix(in srgb, var(--lichen) 16%, transparent);
+  color: var(--lichen);
+}
+
+.saved-queues .saved-queues__row button.icon-button.icon-button--danger:hover:not(:disabled),
+.saved-queues .saved-queues__row button.icon-button.icon-button--danger:focus-visible {
+  border-color: rgb(233 147 133 / 40%);
+  background: rgb(233 147 133 / 12%);
+  color: #f0a397;
+}
+
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__row button.icon-button[aria-pressed="true"],
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__row button.icon-button[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--rh-accent, #b96e2d) 55%, transparent);
+  background: color-mix(in srgb, var(--rh-accent, #b96e2d) 14%, transparent);
+  color: var(--rh-accent, #b96e2d);
+}
+
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__row button.icon-button.icon-button--danger:hover:not(:disabled),
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__row button.icon-button.icon-button--danger:focus-visible {
+  border-color: var(--rh-danger, #a6342e);
+  background: rgb(166 52 46 / 10%);
+  color: var(--rh-danger, #a6342e);
+}
+
+.saved-queues .saved-queues__inline-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.saved-queues .saved-queues__rename-input {
+  flex: 1 1 100px;
+  width: auto;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.saved-queues .saved-queues__rename-conflict {
+  font-size: 11px;
+  color: #f0a397;
+}
+
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__rename-conflict {
+  color: var(--rh-danger, #a6342e);
+}
+
+.saved-queues .saved-queues__confirm-delete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.saved-queues .saved-queues__confirm-text {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--paper);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-queues .saved-queues__confirm-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.saved-queues .saved-queues__confirm-actions button.saved-queues__delete-confirm-btn,
+.saved-queues .saved-queues__confirm-actions button.saved-queues__delete-cancel-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.saved-queues .saved-queues__confirm-actions button.saved-queues__delete-confirm-btn {
+  border-color: rgb(233 147 133 / 45%);
+  background: rgb(233 147 133 / 14%);
+  color: #f0a397;
+}
+
+.saved-queues .saved-queues__confirm-actions button.saved-queues__delete-confirm-btn:hover:not(:disabled) {
+  border-color: rgb(233 147 133 / 70%);
+  background: rgb(233 147 133 / 24%);
+  color: #ffd4cd;
+}
+
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__confirm-actions button.saved-queues__delete-confirm-btn {
+  border-color: rgb(166 52 46 / 45%);
+  background: rgb(166 52 46 / 10%);
+  color: var(--rh-danger, #a6342e);
+}
+
+:is(.rhine-mode, .rhine-local-page) .saved-queues .saved-queues__confirm-actions button.saved-queues__delete-confirm-btn:hover:not(:disabled) {
+  border-color: var(--rh-danger, #a6342e);
+  background: rgb(166 52 46 / 18%);
+  color: #8f241f;
+}

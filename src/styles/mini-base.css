@@ -87,8 +87,15 @@
   white-space: nowrap;
 }
 
+.terminal-mini__header .app-tooltip-anchor {
+  justify-self: end;
+}
+
 .terminal-mini__exit {
   justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 0 8px 12px;
   border: 0;
   background: transparent;
@@ -286,6 +293,14 @@
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: 3px;
+  padding: 6px 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.terminal-volume__blocks:focus-visible {
+  outline: 2px solid #9bc66c;
+  outline-offset: 2px;
 }
 
 .terminal-volume__blocks i {
@@ -322,8 +337,24 @@
 
 .terminal-progress__track {
   position: relative;
+  box-sizing: content-box;
   height: 4px;
+  padding-block: 9px;
   background: rgb(139 163 145 / 28%);
+  background-clip: content-box;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.terminal-progress__track:focus-visible {
+  outline: 2px solid #9bc66c;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.terminal-progress__track.is-dragging .terminal-progress__fill,
+.terminal-progress__track.is-dragging .terminal-progress__cursor {
+  transition: none;
 }
 
 .terminal-progress__fill {
@@ -822,6 +853,7 @@
 
 .terminal-progress__track {
   height: 3px;
+  padding-block: 9.5px;
 }
 
 .terminal-progress__cursor {

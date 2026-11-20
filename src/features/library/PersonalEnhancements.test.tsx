@@ -11,7 +11,7 @@ const stats = { events: [], forgotten: [], startedMs: 100, totalMs: 9000, qualif
 beforeEach(() => { resetPlayerFixture(); actions.mockReset().mockResolvedValue(undefined); });
 afterEach(() => { cleanup(); installPlaybackTransport(null); vi.useRealTimers(); vi.restoreAllMocks(); });
 
-it("队列预览不切换，重命名与删除撤销提供独立操作", async () => {
+it("队列预览不切换，行内重命名与删除确认及撤销提供独立操作", async () => {
   let name = "通勤"; let deleted: string | null = null;
   const transport = vi.fn(async (_command: string, payload?: Record<string, unknown>) => {
     const r = payload!.request as Record<string, unknown>;
@@ -21,18 +21,85 @@ it("队列预览不切换，重命名与删除撤销提供独立操作", async (
     if (r.action === "undoDeleteQueue") { name = deleted!; deleted = null; }
     return { queues: name ? [{ name, count: 1, savedAtMs: 100 }] : [], bookmarks: [], hasPrevious: false, deletedQueue: deleted, previous: null };
   });
-  installPlaybackTransport(transport); render(<SavedQueues />);
-  await screen.findByRole("option", { name: "通勤 · 1 首" });
-  fireEvent.change(screen.getByLabelText("选择保存的队列"), { target: { value: "通勤" } });
-  fireEvent.click(screen.getByRole("button", { name: "预览队列" }));
+  const parentKeyDown = vi.fn();
+  installPlaybackTransport(transport);
+  render(<div onKeyDown={parentKeyDown}><SavedQueues /></div>);
+  await screen.findByText("通勤");
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.getByText(/1 首/)).toBeInTheDocument();
+
+  const previewBtn = screen.getByRole("button", { name: "预览队列 通勤" });
+  expect(previewBtn).not.toHaveAttribute("title");
+  fireEvent.click(previewBtn);
   await screen.findByText(/夜航 · 歌手（保存时选中）/);
   expect(transport.mock.calls.some(([, p]) => (p!.request as { action: string }).action === "loadQueue")).toBe(false);
-  fireEvent.change(screen.getByLabelText("队列名称"), { target: { value: "夜间" } });
-  const rename = screen.getByRole("button", { name: "重命名为输入名称" }); await waitFor(() => expect(rename).toBeEnabled()); fireEvent.click(rename);
-  await screen.findByRole("option", { name: "夜间 · 1 首" });
-  fireEvent.click(screen.getByRole("button", { name: "删除保存" }));
-  const undo = await screen.findByRole("button", { name: "撤销删除" }); await waitFor(() => expect(undo).toBeEnabled()); fireEvent.click(undo);
-  await screen.findByRole("option", { name: "夜间 · 1 首" }); expect(screen.queryByRole("button", { name: "撤销删除" })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "重命名队列 通勤" }));
+  const renameInput = screen.getByRole("textbox", { name: "输入队列 通勤 的新名称" });
+  fireEvent.keyDown(renameInput, { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "输入队列 通勤 的新名称" })).toBeNull();
+  expect(parentKeyDown).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "重命名队列 通勤" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "输入队列 通勤 的新名称" }), { target: { value: "夜间" } });
+  const confirmRename = screen.getByRole("button", { name: "确认重命名" });
+  await waitFor(() => expect(confirmRename).toBeEnabled());
+  fireEvent.click(confirmRename);
+  await screen.findByText("夜间");
+
+  fireEvent.click(screen.getByRole("button", { name: "删除队列 夜间" }));
+  expect(screen.getByText("确认删除《夜间》？")).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("button", { name: "取消删除队列 夜间" }), { key: "Escape" });
+  expect(screen.queryByText("确认删除《夜间》？")).toBeNull();
+  expect(parentKeyDown).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "删除队列 夜间" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认删除队列 夜间" }));
+  const undo = await screen.findByRole("button", { name: "撤销删除" });
+  await waitFor(() => expect(undo).toBeEnabled());
+  fireEvent.click(undo);
+  await screen.findByText("夜间");
+  expect(screen.queryByRole("button", { name: "撤销删除" })).toBeNull();
+});
+
+it("紧凑模式保留切换按钮，点击更多队列操作展开行内重命名与删除", async () => {
+  let queues = [{ name: "通勤", count: 2, savedAtMs: 100 }, { name: "专注", count: 3, savedAtMs: 200 }];
+  let deleted: string | null = null;
+  const transport = vi.fn(async (_command: string, payload?: Record<string, unknown>) => {
+    const r = payload!.request as Record<string, unknown>;
+    if (r.action === "renameQueue") {
+      queues = queues.map(q => q.name === r.name ? { ...q, name: String(r.target) } : q);
+    }
+    if (r.action === "deleteQueue") {
+      deleted = String(r.name);
+      queues = queues.filter(q => q.name !== r.name);
+    }
+    return { queues, bookmarks: [], hasPrevious: false, deletedQueue: deleted, previous: null };
+  });
+  installPlaybackTransport(transport);
+  render(<SavedQueues compact />);
+  fireEvent.click(screen.getByText("保存的播放队列"));
+  await screen.findByText("通勤");
+  expect(screen.getByRole("button", { name: "切换到队列 通勤" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "重命名队列 通勤" })).toBeNull();
+
+  const moreBtn = screen.getByRole("button", { name: "更多队列操作 通勤" });
+  expect(moreBtn).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(moreBtn);
+  expect(moreBtn).toHaveAttribute("aria-expanded", "true");
+
+  fireEvent.click(screen.getByRole("button", { name: "重命名队列 通勤" }));
+  const input = screen.getByRole("textbox", { name: "输入队列 通勤 的新名称" });
+  expect(screen.getByText("专注")).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "晚间" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await screen.findByText("晚间");
+
+  fireEvent.click(screen.getByRole("button", { name: "删除队列 晚间" }));
+  expect(screen.getByText("确认删除《晚间》？")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "确认删除队列 晚间" }));
+  await waitFor(() => expect(screen.queryByText("晚间")).toBeNull());
+  expect(screen.getByText("专注")).toBeInTheDocument();
 });
 
 it("资料库分类、排序与置顶会保留书签封面元数据", async () => {

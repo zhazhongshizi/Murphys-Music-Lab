@@ -20,10 +20,10 @@ afterEach(() => { cleanup(); localStorage.removeItem(UI_MODE_STORAGE_KEY); vi.cl
 it("普通模式不挂载重型界面，切换并退出只卸载界面且保存选择", async () => {
   render(<App />);
   expect(state.mounts).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "更多" }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "莱茵界面" }));
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "莱茵" }));
   fireEvent.click(await screen.findByRole("button", { name: "退出测试莱茵" }));
-  await screen.findByRole("button", { name: "更多" });
+  await screen.findByRole("button", { name: "设置" });
   expect(state.unmounts).toHaveBeenCalledTimes(1);
   expect(state.bridges).toHaveBeenCalledTimes(1);
   expect(localStorage.getItem(UI_MODE_STORAGE_KEY)).toBe("normal");

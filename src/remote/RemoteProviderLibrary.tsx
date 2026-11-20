@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "../components/Icon";
+import { Tooltip } from "../components/Tooltip";
 import type {
   NewProviderId,
   ProviderContainer,
@@ -55,6 +56,25 @@ export interface RemoteProviderLibraryProps {
 
 type NeteaseView = "likes" | "created" | "favorite" | "search";
 type BilibiliView = "created" | "favorite" | "search";
+
+interface PointerGuardState {
+  readonly x: number;
+  readonly y: number;
+  readonly scrollTop: number;
+  readonly scrollEl: Element | null;
+  cancelled: boolean;
+}
+
+interface PlayToastState {
+  readonly title: string;
+  readonly previousTrack: { readonly id: string; readonly title: string } | null;
+}
+
+const POINTER_GUARD_THRESHOLD_PX = 10;
+
+function readScrollTop(scrollEl: Element | null): number {
+  return scrollEl ? scrollEl.scrollTop : window.scrollY;
+}
 
 const ARTWORK_VARIANTS = ["fern", "moon", "tide", "train", "mist"] as const;
 
@@ -172,6 +192,7 @@ export function RemoteProviderLibrary({
   onSelectSource,
 }: RemoteProviderLibraryProps) {
   const currentTrack = usePlayerSelector(getCurrentTrack);
+  const queue = usePlayerSelector((state) => state.queue);
   const [snapshot, setSnapshot] = useState<ProviderSnapshot | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState("");
@@ -197,6 +218,7 @@ export function RemoteProviderLibrary({
   const [contentError, setContentError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
+  const [playToast, setPlayToast] = useState<PlayToastState | null>(null);
   const [trackPage, setTrackPage] = useState<ProviderPage<ProviderTrack> | null>(null);
   const [containers, setContainers] = useState<ProviderPage<ProviderContainer> | null>(null);
   const [videoPage, setVideoPage] = useState<ProviderPage<ProviderVideo> | null>(null);
@@ -204,9 +226,38 @@ export function RemoteProviderLibrary({
 
   const requestTokenRef = useRef(0);
   const actionTokenRef = useRef(0);
+  const toastTimerRef = useRef<number | null>(null);
+  const pointerGuardRef = useRef<PointerGuardState | null>(null);
+  const prefetchedVideoRef = useRef<string | null>(null);
+
+  function clearPlayToast() {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setPlayToast(null);
+  }
+
+  function showPlayToast(
+    title: string,
+    previousTrack: { readonly id: string; readonly title: string } | null,
+  ) {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setPlayToast({ title, previousTrack });
+    toastTimerRef.current = window.setTimeout(() => {
+      toastTimerRef.current = null;
+      setPlayToast(null);
+    }, 5000);
+  }
 
   useEffect(() => () => {
     actionTokenRef.current += 1;
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -258,6 +309,7 @@ export function RemoteProviderLibrary({
   function invalidatePendingActions(clearNotice = false) {
     actionTokenRef.current += 1;
     setActionBusy(false);
+    clearPlayToast();
     if (clearNotice) {
       setActionNotice("");
     }
@@ -286,12 +338,25 @@ export function RemoteProviderLibrary({
 
   useEffect(() => {
     if (!isReady) {
+      prefetchedVideoRef.current = null;
       setTrackPage(null);
       setContainers(null);
       setVideoPage(null);
       setPartsPage(null);
       return;
     }
+    if (
+      providerId === "bilibili" &&
+      selectedVideo &&
+      partPage === 1 &&
+      prefetchedVideoRef.current === selectedVideo.bvid
+    ) {
+      prefetchedVideoRef.current = null;
+      setLoadingContent(false);
+      setContentError("");
+      return;
+    }
+    prefetchedVideoRef.current = null;
     const token = ++requestTokenRef.current;
     setLoadingContent(true);
     setContentError("");
@@ -427,6 +492,7 @@ export function RemoteProviderLibrary({
       const video = await nativeProviderResolveVideo(kw);
       const parts = await nativeProviderVideoParts(video.bvid, 1, 50);
       if (requestTokenRef.current !== token) return;
+      prefetchedVideoRef.current = video.bvid;
       setSelectedVideo(video);
       setPartPage(1);
       setPartsPage(parts);
@@ -464,19 +530,70 @@ export function RemoteProviderLibrary({
     }
   }
 
+  function handleRowPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    const scrollEl = event.currentTarget.closest(".catalog-pane");
+    pointerGuardRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollTop: readScrollTop(scrollEl),
+      scrollEl,
+      cancelled: false,
+    };
+  }
+
+  function updateRowPointerGuard(event: ReactPointerEvent<HTMLButtonElement>) {
+    const guard = pointerGuardRef.current;
+    if (!guard || guard.cancelled) return;
+    const currentScrollTop = readScrollTop(guard.scrollEl);
+    if (
+      Math.hypot(event.clientX - guard.x, event.clientY - guard.y) > POINTER_GUARD_THRESHOLD_PX ||
+      Math.abs(currentScrollTop - guard.scrollTop) > POINTER_GUARD_THRESHOLD_PX
+    ) {
+      guard.cancelled = true;
+    }
+  }
+
+  function handleRowPointerCancel() {
+    if (pointerGuardRef.current) {
+      pointerGuardRef.current.cancelled = true;
+    }
+  }
+
+  function handleGuardedClick(action: () => void) {
+    const guard = pointerGuardRef.current;
+    pointerGuardRef.current = null;
+    if (guard?.cancelled) return;
+    action();
+  }
+
+  async function handleUndoPlay(previous: { readonly id: string; readonly title: string }) {
+    clearPlayToast();
+    await runGuardedAction(`正在切回：${previous.title}…`, async (isCurrent) => {
+      const started = await playerActions.playTrack(previous.id);
+      if (!isCurrent()) return;
+      setActionNotice(started ? `已切回《${previous.title}》` : `未能切回《${previous.title}》`);
+    });
+  }
+
   async function handlePlayTrack(track: ProviderTrack) {
     if (!isProviderTrackPlayable(track)) {
       setActionNotice(`无法播放：${track.title}（${formatProviderAvailability(providerId, track.availability)}）`);
       return;
     }
+    const previousTrack = currentTrack && currentTrack.id !== track.id
+      ? { id: currentTrack.id, title: currentTrack.title }
+      : null;
     await runGuardedAction(`正在准备播放：${track.title}…`, async (isCurrent) => {
-      const queue = await nativeProviderEnqueueTrack(track);
+      const nextQueue = await nativeProviderEnqueueTrack(track);
       if (!isCurrent()) return;
-      await playerActions.hydrateNative(queue);
+      await playerActions.hydrateNative(nextQueue);
       if (!isCurrent()) return;
       const started = await playerActions.playTrack(track.id);
       if (!isCurrent()) return;
       setActionNotice(started ? `正在播放：${track.title}` : `已加入队列，但未能启动播放：${track.title}`);
+      if (started) {
+        showPlayToast(track.title, previousTrack);
+      }
     });
   }
 
@@ -631,6 +748,7 @@ export function RemoteProviderLibrary({
         return;
       }
       if (parts.hasMore || parts.items.length > 1) {
+        prefetchedVideoRef.current = video.bvid;
         setSelectedVideo(video);
         setPartPage(1);
         setPartsPage(parts);
@@ -655,9 +773,15 @@ export function RemoteProviderLibrary({
       await playerActions.hydrateNative(queue);
       if (!isCurrent()) return;
       if (mode === "play") {
+        const previousTrack = currentTrack && currentTrack.id !== single.id
+          ? { id: currentTrack.id, title: currentTrack.title }
+          : null;
         const started = await playerActions.playTrack(single.id);
         if (!isCurrent()) return;
         setActionNotice(started ? `正在播放：${single.title}` : `已加入队列，但未能启动播放：${single.title}`);
+        if (started) {
+          showPlayToast(single.title, previousTrack);
+        }
       } else {
         setActionNotice(`已加入队列：${single.title}`);
       }
@@ -715,6 +839,7 @@ export function RemoteProviderLibrary({
                 const active = currentTrack?.id === track.id;
                 const playable = isProviderTrackPlayable(track);
                 const availabilityText = formatProviderAvailability(providerId, track.availability);
+                const displayTitle = track.video ? `P${track.video.partNumber} · ${track.video.partTitle}` : track.title;
                 return (
                   <tr
                     key={track.id}
@@ -724,15 +849,25 @@ export function RemoteProviderLibrary({
                       <AlbumArtwork compact track={artworkFromProviderTrack(track)} />
                     </td>
                     <td>
-                      <div className="catalog-table__title">
-                        <strong>{track.video ? `P${track.video.partNumber} · ${track.video.partTitle}` : track.title}</strong>
+                      <button
+                        type="button"
+                        className="catalog-table__title remote-provider__row-trigger"
+                        disabled={actionBusy || !playable}
+                        aria-label={`播放 ${displayTitle}`}
+                        onPointerDown={handleRowPointerDown}
+                        onPointerMove={updateRowPointerGuard}
+                        onPointerUp={updateRowPointerGuard}
+                        onPointerCancel={handleRowPointerCancel}
+                        onClick={() => handleGuardedClick(() => void handlePlayTrack(track))}
+                      >
+                        <strong>{displayTitle}</strong>
                         <small>
                           <SourceBadge track={track} />
                           {track.video ? ` · ${track.video.title}` : ""}
                           {!playable ? ` · ${availabilityText}` : ""}
                           <span className="remote-provider__mobile-creator">{` · ${track.artist}`}</span>
                         </small>
-                      </div>
+                      </button>
                     </td>
                     <td className="remote-provider__creator-cell">
                       <span>{track.artist}</span>
@@ -741,30 +876,28 @@ export function RemoteProviderLibrary({
                     <td className="catalog-table__duration remote-provider__duration-cell">{formatDuration(track.durationMs)}</td>
                     <td className="remote-provider__actions-cell">
                       <div className="remote-provider__row-actions">
-                        <button
-                          className="text-button text-button--primary"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handlePlayTrack(track)}
-                          type="button"
-                        >
-                          播放
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handleEnqueueNextTrack(track)}
-                          type="button"
-                        >
-                          下一首
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handleEnqueueTrack(track)}
-                          type="button"
-                        >
-                          加队列
-                        </button>
+                        <Tooltip content="下一首播放">
+                          <button
+                            className="icon-button icon-button--quiet remote-provider__icon-btn"
+                            type="button"
+                            disabled={actionBusy || !playable}
+                            aria-label={`下一首播放 ${displayTitle}`}
+                            onClick={() => void handleEnqueueNextTrack(track)}
+                          >
+                            <Icon name="play-next" size={16} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="加入队列">
+                          <button
+                            className="icon-button icon-button--quiet remote-provider__icon-btn"
+                            type="button"
+                            disabled={actionBusy || !playable}
+                            aria-label={`加入队列 ${displayTitle}`}
+                            onClick={() => void handleEnqueueTrack(track)}
+                          >
+                            <Icon name="queue" size={16} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
@@ -829,13 +962,23 @@ export function RemoteProviderLibrary({
                 return (
                   <tr key={video.bvid} className="catalog-table__row">
                     <td>
-                      <div className="catalog-table__title">
+                      <button
+                        type="button"
+                        className="catalog-table__title remote-provider__row-trigger"
+                        disabled={actionBusy || !playable}
+                        aria-label={`播放或展开分 P ${video.title}`}
+                        onPointerDown={handleRowPointerDown}
+                        onPointerMove={updateRowPointerGuard}
+                        onPointerUp={updateRowPointerGuard}
+                        onPointerCancel={handleRowPointerCancel}
+                        onClick={() => handleGuardedClick(() => void handleVideoAction(video, "play"))}
+                      >
                         <strong>{video.title}</strong>
                         <small>
                           {playable ? "单 P 直接操作，多 P 自动展开选择" : availabilityText}
                           <span className="remote-provider__mobile-creator">{` · ${video.uploader} (${video.bvid})`}</span>
                         </small>
-                      </div>
+                      </button>
                     </td>
                     <td className="remote-provider__creator-cell">
                       <span>{video.uploader}</span>
@@ -844,42 +987,28 @@ export function RemoteProviderLibrary({
                     <td className="catalog-table__duration remote-provider__duration-cell">{formatDuration(video.durationMs)}</td>
                     <td className="remote-provider__actions-cell">
                       <div className="remote-provider__row-actions">
-                        <button
-                          className="text-button text-button--primary"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handleVideoAction(video, "play")}
-                          type="button"
-                        >
-                          播放
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handleVideoAction(video, "next")}
-                          type="button"
-                        >
-                          下一首
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actionBusy || !playable}
-                          onClick={() => void handleVideoAction(video, "enqueue")}
-                          type="button"
-                        >
-                          加队列
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actionBusy}
-                          onClick={() => {
-                            invalidatePendingActions(true);
-                            setSelectedVideo(video);
-                            setPartPage(1);
-                          }}
-                          type="button"
-                        >
-                          查看分 P
-                        </button>
+                        <Tooltip content="下一首播放">
+                          <button
+                            className="icon-button icon-button--quiet remote-provider__icon-btn"
+                            type="button"
+                            disabled={actionBusy || !playable}
+                            aria-label={`下一首播放 ${video.title}`}
+                            onClick={() => void handleVideoAction(video, "next")}
+                          >
+                            <Icon name="play-next" size={16} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="加入队列">
+                          <button
+                            className="icon-button icon-button--quiet remote-provider__icon-btn"
+                            type="button"
+                            disabled={actionBusy || !playable}
+                            aria-label={`加入队列 ${video.title}`}
+                            onClick={() => void handleVideoAction(video, "enqueue")}
+                          >
+                            <Icon name="queue" size={16} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
@@ -1358,6 +1487,29 @@ export function RemoteProviderLibrary({
           </>
         )}
       </section>
+      {playToast ? (
+        <div className="remote-provider__toast" role="status" aria-live="polite">
+          <span className="remote-provider__toast-text">{`正在电脑播放《${playToast.title}》`}</span>
+          {playToast.previousTrack && queue.some((item) => item.id === playToast.previousTrack!.id) ? (
+            <button
+              type="button"
+              className="text-button remote-provider__toast-undo"
+              disabled={actionBusy}
+              onClick={() => void handleUndoPlay(playToast.previousTrack!)}
+            >
+              撤销
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="icon-button icon-button--quiet remote-provider__toast-close"
+            aria-label="关闭播放提示"
+            onClick={clearPlayToast}
+          >
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }

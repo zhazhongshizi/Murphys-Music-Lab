@@ -3,6 +3,7 @@ import { CommitRange } from "../player/CommitRange";
 import { PlaybackNotice } from "../player/PlaybackNotice";
 import { SourceBadge } from "../providers/SourceBadge";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
 import { DeckPlaylistAction } from "./DeckPlaylistAction";
@@ -103,7 +104,9 @@ export function TapeDeck({ playlistTitle, accountKey, authenticated = true, onBa
         {error && <div className="rhine-deck-error" role="alert">{error.message}<button onClick={playerActions.retryPlayback}>重试播放</button></div>}
         <DeckTimeline />
         <div className="rhine-deck-controls">
-          <button className="rhine-deck-mode" onClick={playerActions.cycleMode} aria-label={`${modes[mode]}，点击切换模式`}><Icon name={mode === "shuffle" ? "shuffle" : "repeat"} size={16} /><span>{modes[mode]}</span></button>
+          <Tooltip content={modes[mode]}>
+            <button className="rhine-deck-mode" onClick={playerActions.cycleMode} aria-label={`${modes[mode]}，点击切换模式`}><Icon name={mode === "shuffle" ? "shuffle" : mode === "sequence" ? "sequence" : "repeat"} size={16} /><span>{modes[mode]}</span></button>
+          </Tooltip>
           <div className="rhine-deck-keys"><button aria-label="上一首" disabled={!track} onClick={() => changeTrack(-1)}><Icon name="previous" size={21} /><small>REW</small></button><button className="rhine-deck-play" aria-label={playing ? "暂停" : "播放"} disabled={!track} onClick={playerActions.toggle}><Icon name={playing ? "pause" : "play"} size={24} /><small>{playing ? "PAUSE" : "PLAY"}</small></button><button aria-label="下一首" disabled={!track} onClick={() => changeTrack(1)}><Icon name="next" size={21} /><small>FWD</small></button></div>
           <VolumeDial />
         </div>

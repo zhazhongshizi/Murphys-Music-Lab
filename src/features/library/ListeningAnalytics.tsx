@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAnalytics, type Analytics } from "../../backend/analyticsAdapter";
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { chartPoints, dateObject, duration, localDate, presetRange, validRange, type ChartPoint } from "./analyticsDates";
 import "./listening-analytics.css";
 
@@ -120,7 +122,7 @@ export function ListeningAnalytics({viewNavigation}:{viewNavigation?:ReactNode})
   },[range.start,range.end,preset,revision]);
   function choose(value:string){const next=presetRange(value);setPreset(value);setRange(next);setDraft(next);setValidation("");setRevision(r=>r+1);}
   return <div className="analytics-body">
-    <header className="analytics-card-heading statistics-header"><div><span className="section-label">YOUR MUSIC, OVER TIME</span><h1>听歌统计 2.0</h1><p>让每一次收听，留下可回顾的记录。</p></div><div className="statistics-header-actions">{viewNavigation}<button type="button" onClick={()=>setRevision(r=>r+1)}>刷新分析</button></div></header>
+    <header className="analytics-card-heading statistics-header"><div><span className="section-label">YOUR MUSIC, OVER TIME</span><h1>听歌统计 2.0</h1><p>让每一次收听，留下可回顾的记录。</p></div><div className="statistics-header-actions">{viewNavigation}<Tooltip content="刷新分析"><button type="button" className="icon-button icon-button--quiet" aria-label="刷新分析" onClick={() => setRevision(r => r + 1)}><Icon name="refresh" size={16} /></button></Tooltip></div></header>
     <div className="analytics-date-toolbar"><nav className="personal-actions" aria-label="分析日期预设">{([["today","今天"],["week","近 7 天"],["month","本月"],["year","今年"]] as const).map(([id,label])=><button type="button" key={id} aria-pressed={preset===id} onClick={()=>choose(id)}>{label}</button>)}</nav>
     <form className="personal-actions analytics-range" onSubmit={e=>{e.preventDefault();if(!validRange(draft.start,draft.end)){setValidation("请选择有效的起止日期，开始不晚于结束，最多 366 天。");return;}setValidation("");setPreset("custom");setRange({...draft});setRevision(r=>r+1);}}>
       <label>开始日期 <input type="date" min="1970-01-01" value={draft.start} onChange={e=>setDraft({...draft,start:e.target.value})}/></label>

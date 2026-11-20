@@ -1,11 +1,16 @@
 import { SourceBadge } from "../providers/SourceBadge";
 import { APP_NAME, APP_SHORT_NAME } from "../../app/branding";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type MouseEventHandler,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import {
@@ -96,6 +101,133 @@ function TerminalKeyButton({
   );
 }
 
+function pointerFraction(clientX: number, target: HTMLElement): number | null {
+  const rect = target.getBoundingClientRect();
+  if (rect.width <= 0) return null;
+  return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+}
+
+function useHorizontalSliderDrag(
+  enabled: boolean,
+  onCommit: (fraction: number) => void,
+) {
+  const [draftFraction, setDraftFraction] = useState<number | null>(null);
+  const draggingRef = useRef(false);
+  const pointerIdRef = useRef<number | null>(null);
+  const draftRef = useRef<number | null>(null);
+  const lastReleaseRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const releaseClearTimerRef = useRef<number | null>(null);
+
+  const reset = useCallback(() => {
+    draggingRef.current = false;
+    pointerIdRef.current = null;
+    draftRef.current = null;
+    setDraftFraction(null);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) reset();
+  }, [enabled, reset]);
+
+  useEffect(() => () => {
+    if (releaseClearTimerRef.current !== null) {
+      window.clearTimeout(releaseClearTimerRef.current);
+    }
+  }, []);
+
+  const markReleased = useCallback((clientX: number, clientY: number) => {
+    lastReleaseRef.current = { clientX, clientY };
+    if (releaseClearTimerRef.current !== null) {
+      window.clearTimeout(releaseClearTimerRef.current);
+    }
+    releaseClearTimerRef.current = window.setTimeout(() => {
+      lastReleaseRef.current = null;
+      releaseClearTimerRef.current = null;
+    }, 0);
+  }, []);
+
+  const isMatchingPointer = (event: ReactPointerEvent<HTMLElement>) =>
+    draggingRef.current
+    && (pointerIdRef.current === null || event.pointerId === undefined || event.pointerId === pointerIdRef.current);
+
+  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!enabled || (event.button !== 0 && event.button !== undefined)) return;
+    const fraction = pointerFraction(event.clientX, event.currentTarget);
+    if (fraction === null) return;
+    event.preventDefault();
+    lastReleaseRef.current = null;
+    draggingRef.current = true;
+    pointerIdRef.current = typeof event.pointerId === "number" ? event.pointerId : null;
+    draftRef.current = fraction;
+    setDraftFraction(fraction);
+    if (typeof event.pointerId === "number") {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+  }, [enabled]);
+
+  const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!enabled || !isMatchingPointer(event)) return;
+    const fraction = pointerFraction(event.clientX, event.currentTarget);
+    if (fraction === null) return;
+    draftRef.current = fraction;
+    setDraftFraction(fraction);
+  }, [enabled]);
+
+  const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!isMatchingPointer(event)) return;
+    const fraction = pointerFraction(event.clientX, event.currentTarget) ?? draftRef.current;
+    markReleased(event.clientX, event.clientY);
+    reset();
+    if (typeof event.pointerId === "number" && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    if (enabled && fraction !== null) {
+      onCommit(fraction);
+    }
+  }, [enabled, markReleased, onCommit, reset]);
+
+  const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!isMatchingPointer(event)) return;
+    reset();
+  }, [reset]);
+
+  const onLostPointerCapture = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!isMatchingPointer(event)) return;
+    const fraction = draftRef.current;
+    markReleased(event.clientX, event.clientY);
+    reset();
+    if (enabled && fraction !== null) {
+      onCommit(fraction);
+    }
+  }, [enabled, markReleased, onCommit, reset]);
+
+  const onClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    const released = lastReleaseRef.current;
+    if (released && released.clientX === event.clientX && released.clientY === event.clientY) {
+      lastReleaseRef.current = null;
+      return;
+    }
+    if (!enabled) return;
+    const fraction = pointerFraction(event.clientX, event.currentTarget);
+    if (fraction !== null) {
+      onCommit(fraction);
+    }
+  }, [enabled, onCommit]);
+
+  return {
+    draftFraction,
+    isDragging: draftFraction !== null,
+    handlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onLostPointerCapture,
+      onClick,
+    },
+  };
+}
+
 interface TerminalProgressProps {
   durationMs: number | null;
 }
@@ -103,22 +235,117 @@ interface TerminalProgressProps {
 function TerminalProgress({ durationMs }: TerminalProgressProps) {
   const positionMs = usePlayerSelector(selectPosition);
   const duration = Math.max(0, durationMs ?? 0);
-  const progress = duration === 0 ? 0 : Math.min(1, Math.max(0, positionMs / duration));
+  const commitSeek = useCallback((fraction: number) => {
+    if (duration <= 0) return;
+    playerActions.seek(Math.round(fraction * duration));
+  }, [duration]);
+
+  const { draftFraction, isDragging, handlers } = useHorizontalSliderDrag(duration > 0, commitSeek);
+  const rawDisplayMs = draftFraction !== null ? Math.round(draftFraction * duration) : positionMs;
+  const displayMs = duration === 0 ? 0 : Math.min(duration, Math.max(0, rawDisplayMs));
+  const progress = duration === 0 ? 0 : Math.min(1, Math.max(0, displayMs / duration));
+  const draggingClass = duration > 0 && isDragging ? " is-dragging" : "";
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    let nextMs: number | null = null;
+    if (event.key === "ArrowLeft") {
+      nextMs = Math.max(0, displayMs - 5_000);
+    } else if (event.key === "ArrowRight") {
+      nextMs = Math.min(duration, displayMs + 5_000);
+    } else if (event.key === "PageUp") {
+      nextMs = Math.min(duration, displayMs + 15_000);
+    } else if (event.key === "PageDown") {
+      nextMs = Math.max(0, displayMs - 15_000);
+    } else if (event.key === "Home") {
+      nextMs = 0;
+    } else if (event.key === "End") {
+      nextMs = duration;
+    }
+    if (nextMs === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    playerActions.seek(nextMs);
+  };
+
   return (
     <div className="terminal-progress" data-testid="terminal-progress">
-      <span className="terminal-progress__time">{formatTime(positionMs)}</span>
+      <span className="terminal-progress__time">{formatTime(displayMs)}</span>
       <div
         aria-label="播放进度"
         aria-valuemax={duration}
         aria-valuemin={0}
-        aria-valuenow={Math.min(positionMs, duration)}
-        className="terminal-progress__track"
-        role="progressbar"
+        aria-valuenow={displayMs}
+        aria-valuetext={`${formatTime(displayMs)} / ${formatTime(duration)}`}
+        className={`terminal-progress__track${draggingClass}`}
+        data-tauri-drag-region="false"
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={duration > 0 ? 0 : -1}
+        {...handlers}
       >
         <span className="terminal-progress__fill" style={{ width: `${progress * 100}%` }} />
         <i className="terminal-progress__cursor" style={{ left: `${progress * 100}%` }} />
       </div>
       <span className="terminal-progress__time">{formatTime(duration)}</span>
+    </div>
+  );
+}
+
+interface TerminalVolumeProps {
+  volume: number;
+  muted: boolean;
+}
+
+function TerminalVolume({ volume, muted }: TerminalVolumeProps) {
+  const commitVolume = useCallback((fraction: number) => {
+    playerActions.setVolume(fraction);
+  }, []);
+
+  const { draftFraction, isDragging, handlers } = useHorizontalSliderDrag(true, commitVolume);
+  const displayVol = draftFraction ?? volume;
+  const percent = Math.round(displayVol * 100);
+  const litBlocks = Math.round(displayVol * 12);
+  const showMuted = muted && !isDragging;
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    let nextVol: number | null = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      nextVol = Math.max(0, Math.round((displayVol - 0.05) * 100) / 100);
+    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      nextVol = Math.min(1, Math.round((displayVol + 0.05) * 100) / 100);
+    } else if (event.key === "Home") {
+      nextVol = 0;
+    } else if (event.key === "End") {
+      nextVol = 1;
+    }
+    if (nextVol === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    playerActions.setVolume(nextVol);
+  };
+
+  return (
+    <div className="terminal-volume" aria-label="音量">
+      <span>VOL</span>
+      <div
+        aria-label="音量"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={percent}
+        aria-valuetext={showMuted ? "已静音" : `${percent}%`}
+        className={`terminal-volume__blocks${isDragging ? " is-dragging" : ""}`}
+        data-tauri-drag-region="false"
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={0}
+        {...handlers}
+      >
+        {Array.from({ length: 12 }, (_, index) => (
+          <i aria-hidden="true" className={index < litBlocks && !showMuted ? "is-on" : ""} key={index} />
+        ))}
+      </div>
+      <strong>{showMuted ? "MUTED" : `${percent}%`}</strong>
     </div>
   );
 }
@@ -274,7 +501,6 @@ interface TerminalNowPlayingProps {
   playbackError: string | null;
   upNext: TerminalUpNext;
   onPanelChange: (panel: TerminalPanel) => void;
-  onExit: () => void;
 }
 
 function TerminalNowPlaying({
@@ -287,7 +513,6 @@ function TerminalNowPlaying({
   playbackError,
   upNext,
   onPanelChange,
-  onExit,
 }: TerminalNowPlayingProps) {
   const status = stateLabel(isPlaying, Boolean(currentTrack), Boolean(playbackError));
   return (
@@ -324,15 +549,7 @@ function TerminalNowPlaying({
         </nav>
 
         <section aria-label="播放信息" className="terminal-track-meta">
-          <div className="terminal-volume" aria-label="音量">
-            <span>VOL</span>
-            <div className="terminal-volume__blocks" aria-hidden="true">
-              {Array.from({ length: 12 }, (_, index) => (
-                <i className={index < Math.round(volume * 12) && !muted ? "is-on" : ""} key={index} />
-              ))}
-            </div>
-            <strong>{muted ? "MUTED" : `${Math.round(volume * 100)}%`}</strong>
-          </div>
+          <TerminalVolume muted={muted} volume={volume} />
           <span className="terminal-track-meta__mode">
             <i>SESSION //</i>
             <strong>{MODE_LABELS[mode]}</strong>
@@ -346,7 +563,6 @@ function TerminalNowPlaying({
           <TerminalKeyButton label="LIKE" disabled={!currentTrack || currentTrack.id.startsWith("bilibili:") || currentTrack.id.startsWith("local_")} onClick={() => currentTrack && playerActions.toggleLike(currentTrack.id)} shortcut="F" active={liked} />
           <TerminalKeyButton label="MUTE" onClick={() => playerActions.toggleMute()} shortcut="M" active={muted} />
           <TerminalKeyButton label="MODE" onClick={() => playerActions.cycleMode()} shortcut="O" />
-          <TerminalKeyButton label="GUI" onClick={onExit} shortcut="G" />
         </nav>
 
         <TerminalUpNextRunway model={upNext} />
@@ -440,7 +656,12 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
             <span>{stateLabel(isPlaying, Boolean(currentTrack), Boolean(playbackError))} · VINYL GREENHOUSE</span>
           </div>
         </div>
-        <button className="terminal-mini__exit" data-tauri-drag-region="false" onClick={onExit} type="button">G GUI</button>
+        <Tooltip content="返回标准界面 (G)" side="bottom">
+          <button className="terminal-mini__exit" data-tauri-drag-region="false" onClick={onExit} type="button">
+            <Icon name="restore" size={14} />
+            <span>G GUI</span>
+          </button>
+        </Tooltip>
       </header>
 
       {panel === "now-playing" ? (
@@ -450,7 +671,6 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
           liked={liked}
           mode={mode}
           muted={muted}
-          onExit={onExit}
           onPanelChange={setPanel}
           playbackError={playbackError?.message ?? null}
           upNext={upNext}
@@ -463,7 +683,6 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
           <nav aria-label="终端面板控制" className="terminal-controls terminal-controls--panel">
             <TerminalKeyButton label="NOW PLAYING" onClick={() => setPanel("now-playing")} shortcut="ESC" />
             <TerminalKeyButton label="QUEUE" onClick={() => setPanel("queue")} shortcut="Q" />
-            <TerminalKeyButton label="GUI" onClick={onExit} shortcut="G" />
           </nav>
         </main>
       ) : (
@@ -473,7 +692,6 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
           <nav aria-label="终端面板控制" className="terminal-controls terminal-controls--panel">
             <TerminalKeyButton label="NOW PLAYING" onClick={() => setPanel("now-playing")} shortcut="ESC" />
             <TerminalKeyButton label="LYRICS" onClick={() => setPanel("lyrics")} shortcut="L" />
-            <TerminalKeyButton label="GUI" onClick={onExit} shortcut="G" />
           </nav>
         </main>
       )}

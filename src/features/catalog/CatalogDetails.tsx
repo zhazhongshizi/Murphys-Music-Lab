@@ -6,6 +6,7 @@ import type { CatalogEntity } from "../../contracts/catalogBrowse";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import { ArtistPage } from "../artist/ArtistPage";
 import { Icon } from "../../components/Icon";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import { enqueueAndPlayCatalogTrack, enqueueCatalogTrack, enqueueNextCatalogTrack, replaceAndPlayCatalogTracks } from "../player/catalogQueue";
 import { AlbumArtwork } from "../stage/AlbumArtwork";
 
@@ -99,7 +100,7 @@ function CollectionPage({ entity, onBack, onOpen, onPlayback, active }: {
     finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   return <section className="catalog-detail-page" aria-label={entity.kind === "album" ? "专辑详情" : "歌单详情"}>
-    <header className="catalog-detail-hero"><button type="button" className="text-button" onClick={onBack}>← 返回上一页</button>
+    <header className="catalog-detail-hero"><button type="button" className="text-button" onClick={onBack}><Icon name="back" size={16} />返回上一页</button>
       {detail.kind === "album" && <AlbumArtwork track={{ id: detail.id, title: detail.title, artist: "", coverCacheKey: detail.coverCacheKey, accent: "#789575", artworkVariant: "fern" }} />}
       <div><span className="section-label">{entity.kind === "album" ? "ALBUM RECORD" : "PLAYLIST RECORD"}</span><h1>{detail.title}</h1>
         <p>{detail.kind === "album" ? detail.publishDate || "发行日期未知" : `${detail.songCount} 首歌曲`}</p>
@@ -116,8 +117,7 @@ function CollectionPage({ entity, onBack, onOpen, onPlayback, active }: {
         <div><strong>{song.title}</strong><small>{song.artists.map((artist, i) => <span key={`${artist.id}:${i}`}>
           {i > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>}
         </span>)} · {song.albumId ? <button type="button" onClick={() => { const album = albumFromSong(song); if (album) onOpen(album); }}>{song.album}</button> : song.album}</small></div>
-        <span className="catalog-detail-song-actions"><button className="play-next-button" type="button" title="下一首播放" aria-label={`下一首播放 ${song.title}`} disabled={busy} onClick={() => void act(song, "next")}><Icon name="play-next" size={20} /></button>
-          <button type="button" disabled={busy} aria-label={`播放 ${song.title}`} onClick={() => void act(song, "play")}>播放</button><button type="button" disabled={busy} aria-label={`加入队列 ${song.title}`} onClick={() => void act(song, "enqueue")}>＋</button></span>
+        <TrackRowActions className="catalog-detail-song-actions" title={song.title} disabled={busy} onPlay={() => void act(song, "play")} onNext={() => void act(song, "next")} onEnqueue={() => void act(song, "enqueue")} />
       </li>)}</ol>
       <nav className="catalog-browse-pages" aria-label="详情歌曲分页"><button type="button" disabled={busy || pageNumber === 1} onClick={() => setPageNumber(p => p - 1)}>上一页</button><span>第 {pageNumber} 页{page.total !== undefined ? ` · ${page.total} 首` : ""}</span><button type="button" disabled={busy || !page.hasMore || pageNumber >= 100} onClick={() => setPageNumber(p => p + 1)}>下一页</button></nav>
     </>}

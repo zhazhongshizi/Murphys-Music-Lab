@@ -2,14 +2,21 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { switchQueue } from "../../backend/personalAdapter";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
 import type { QueueSnapshot } from "../../contracts/queue";
 import { QueueDrawer } from "./QueueDrawer";
 import { playerActions, resetPlayerFixture } from "./playerStore";
 
+vi.mock("../../backend/personalAdapter", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../backend/personalAdapter")>()),
+  switchQueue: vi.fn(),
+}));
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.mocked(switchQueue).mockReset();
   vi.restoreAllMocks();
   document.body.classList.remove("queue-drag-active");
   resetPlayerFixture();
@@ -111,7 +118,8 @@ describe("播放队列抽屉", () => {
     await user.click(view.container.querySelector<HTMLButtonElement>('.queue-list__item[data-queue-track-id="fixture-large-31"] .queue-list__track')!);
     expect(play).toHaveBeenCalledWith("fixture-large-31");
   });
-  it("保持封面、歌曲信息和操作按钮处于同一行的三个网格列", () => {
+  it("保持拖拽手柄、封面、歌曲信息和操作按钮处于同一行的四个网格列，且筛选只剩一首或只读时不渲染手柄", async () => {
+    const user = userEvent.setup();
     const view = render(<QueueDrawer onClose={vi.fn()} open />);
     const items = Array.from(view.container.querySelectorAll(".queue-list__item"));
 
@@ -119,11 +127,34 @@ describe("播放队列抽屉", () => {
     expect(view.container.querySelector('[aria-label="播放队列分页"]')).toBeNull();
     for (const item of items) {
       expect(Array.from(item.children).map((child) => child.className)).toEqual([
+        "queue-list__drag-handle",
         "album-artwork album-artwork--compact",
         "queue-list__info",
         "queue-list__actions",
       ]);
     }
+
+    view.rerender(<QueueDrawer editable={false} onClose={vi.fn()} open />);
+    expect(view.container.querySelectorAll(".queue-list__drag-handle")).toHaveLength(0);
+    for (const item of Array.from(view.container.querySelectorAll(".queue-list__item"))) {
+      expect(Array.from(item.children).map((child) => child.className)).toEqual([
+        "album-artwork album-artwork--compact",
+        "queue-list__info",
+        "queue-list__actions",
+      ]);
+    }
+
+    view.rerender(<QueueDrawer onClose={vi.fn()} open presentation="rhine-detail" />);
+    await user.type(screen.getByRole("searchbox", { name: "在播放队列搜索" }), "暮色温室");
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    const filteredItems = Array.from(view.container.querySelectorAll(".queue-list__item"));
+    expect(filteredItems).toHaveLength(1);
+    expect(view.container.querySelectorAll(".queue-list__drag-handle")).toHaveLength(0);
+    expect(Array.from(filteredItems[0]!.children).map((child) => child.className)).toEqual([
+      "album-artwork album-artwork--compact",
+      "queue-list__info",
+      "queue-list__actions",
+    ]);
   });
 
   it("莱茵详情布局显示同一播放队列并可从曲目切歌", async () => {
@@ -391,5 +422,183 @@ describe("播放队列抽屉", () => {
     act(() => vi.advanceTimersByTime(180));
     expect(view.container.querySelector(".queue-drawer")).toBeNull();
     expect(view.container.querySelector(".queue-scrim")).toBeNull();
+  });
+
+  it("0ms 手柄起拖：pointerdown 立即激活拖动与浮层并提交 moveTrackTo", async () => {
+    vi.useFakeTimers();
+    const move = vi.spyOn(playerActions, "moveTrackTo").mockResolvedValue();
+    const view = render(<QueueDrawer onClose={vi.fn()} open />);
+    const { items } = prepareDragGeometry(view.container);
+    const firstItem = items[0]!;
+    const handle = firstItem.querySelector<HTMLElement>("[data-queue-drag-handle]");
+    expect(handle).not.toBeNull();
+
+    firePointer(handle!, "pointerdown", { clientX: 20, clientY: 110, pointerId: 11 });
+
+    // 不推进任何定时器（0ms）即可立即激活拖动
+    expect(document.body).toHaveClass("queue-drag-active");
+    expect(document.querySelector(".queue-drag-preview")).toBeInTheDocument();
+    expect(firstItem).toHaveClass("queue-list__item--dragging");
+
+    firePointer(window, "pointermove", { clientX: 120, clientY: 375, pointerId: 11 });
+    firePointer(window, "pointerup", { clientX: 120, clientY: 375, pointerId: 11 });
+
+    await act(async () => Promise.resolve());
+    expect(move).toHaveBeenCalledTimes(1);
+    expect(move).toHaveBeenCalledWith("fixture-dusk-greenhouse", 4);
+    expect(document.body).not.toHaveClass("queue-drag-active");
+  });
+
+  it.each(["drawer", "rhine-detail"] as const)(
+    "nativeMode 清空队列在 %s 下显示撤销条，点击撤销仅调用一次 switchQueue 并展示恢复文案",
+    async (presentation) => {
+      const user = userEvent.setup();
+      await hydrateLargeQueue(5, 0, 20);
+      vi.mocked(switchQueue).mockResolvedValueOnce();
+      vi.spyOn(playerActions, "clearQueue").mockImplementation(() => {
+        void Promise.resolve().then(() =>
+          playerActions.hydrateNative(
+            { generation: 21, selectedIndex: null, items: [] },
+            {
+              state: "idle",
+              generation: 21,
+              positionMs: 0,
+              durationMs: null,
+              volume: 0.72,
+              muted: false,
+              currentTrack: null,
+              failure: null,
+            },
+          ),
+        );
+      });
+
+      render(<QueueDrawer onClose={vi.fn()} open presentation={presentation} />);
+      await user.click(screen.getByRole("button", { name: "清空播放队列" }));
+
+      expect(await screen.findByText("已清空播放队列")).toBeInTheDocument();
+      const undoButton = screen.getByRole("button", { name: "撤销" });
+      expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+
+      await user.click(undoButton);
+      expect(switchQueue).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText("已恢复队列，点击播放继续")).toBeInTheDocument();
+    },
+  );
+
+  it("撤销条在队列再度非空或 generation 变化时立即隐藏", async () => {
+    const user = userEvent.setup();
+    const mockAsyncEmpty = (nextGeneration: number) =>
+      vi.spyOn(playerActions, "clearQueue").mockImplementationOnce(() => {
+        void Promise.resolve().then(() =>
+          playerActions.hydrateNative(
+            { generation: nextGeneration, selectedIndex: null, items: [] },
+            {
+              state: "idle",
+              generation: nextGeneration,
+              positionMs: 0,
+              durationMs: null,
+              volume: 0.72,
+              muted: false,
+              currentTrack: null,
+              failure: null,
+            },
+          ),
+        );
+      });
+
+    await hydrateLargeQueue(5, 0, 20);
+    mockAsyncEmpty(21);
+    render(<QueueDrawer onClose={vi.fn()} open />);
+    await user.click(screen.getByRole("button", { name: "清空播放队列" }));
+    expect(await screen.findByText("已清空播放队列")).toBeInTheDocument();
+
+    // 队列再度非空时立即隐藏
+    await hydrateLargeQueue(2, 0, 21);
+    expect(screen.queryByText("已清空播放队列")).toBeNull();
+
+    // 重新清空后 generation 变化（即使队列仍为空）也立即隐藏
+    mockAsyncEmpty(22);
+    await user.click(screen.getByRole("button", { name: "清空播放队列" }));
+    expect(await screen.findByText("已清空播放队列")).toBeInTheDocument();
+
+    await act(async () => {
+      await playerActions.hydrateNative(
+        { generation: 23, selectedIndex: null, items: [] },
+        {
+          state: "idle",
+          generation: 23,
+          positionMs: 0,
+          durationMs: null,
+          volume: 0.72,
+          muted: false,
+          currentTrack: null,
+          failure: null,
+        },
+      );
+    });
+    expect(screen.queryByText("已清空播放队列")).toBeNull();
+  });
+
+  it("撤销条在 8000ms 后自动隐藏；switchQueue 失败展示错误且不重试；浏览器预览模式不显示撤销条", async () => {
+    vi.useFakeTimers();
+    await hydrateLargeQueue(5, 0, 20);
+    let clearUpdate: Promise<void> | undefined;
+    let nextGen = 21;
+    vi.spyOn(playerActions, "clearQueue").mockImplementation(() => {
+      const gen = nextGen++;
+      clearUpdate = playerActions.hydrateNative(
+        { generation: gen, selectedIndex: null, items: [] },
+        {
+          state: "idle",
+          generation: gen,
+          positionMs: 0,
+          durationMs: null,
+          volume: 0.72,
+          muted: false,
+          currentTrack: null,
+          failure: null,
+        },
+      );
+    });
+
+    const view = render(<QueueDrawer onClose={vi.fn()} open />);
+    fireEvent.click(screen.getByRole("button", { name: "清空播放队列" }));
+    await act(async () => {
+      await clearUpdate;
+    });
+    expect(screen.getByText("已清空播放队列")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(7999));
+    expect(screen.getByText("已清空播放队列")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("已清空播放队列")).toBeNull();
+
+    // 再次清空并测试 switchQueue reject
+    await hydrateLargeQueue(5, 0, 22);
+    nextGen = 23;
+    vi.mocked(switchQueue).mockRejectedValueOnce(new Error("restore failed"));
+    fireEvent.click(screen.getByRole("button", { name: "清空播放队列" }));
+    await act(async () => {
+      await clearUpdate;
+    });
+    expect(screen.getByText("已清空播放队列")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(switchQueue).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("未能恢复队列，请检查本地存储或从已存队列切换。")).toBeInTheDocument();
+
+    // 浏览器预览模式（!nativeMode）清空后不出现撤销条
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    resetPlayerFixture();
+    view.rerender(<QueueDrawer onClose={vi.fn()} open />);
+    fireEvent.click(screen.getByRole("button", { name: "清空播放队列" }));
+    expect(screen.getByText("0 首 · 本地队列")).toBeInTheDocument();
+    expect(screen.queryByText("已清空播放队列")).toBeNull();
+    expect(screen.queryByRole("button", { name: "撤销" })).toBeNull();
   });
 });

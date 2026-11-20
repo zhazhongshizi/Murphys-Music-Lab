@@ -77,7 +77,7 @@ describe("React Terminal Mini Mode", () => {
     expect(screen.getByTestId("terminal-mini")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入终端模式" })).not.toBeInTheDocument();
     await waitFor(() => expect(enterMiniMode).toHaveBeenCalledTimes(2));
-    await user.click(screen.getAllByRole("button", { name: "G GUI" })[0]!);
+    await user.click(screen.getByRole("button", { name: "G GUI" }));
     await screen.findByRole("button", { name: "进入终端模式" });
     expect(restoreNormal).toHaveBeenCalledWith(normalWindowSnapshot);
     expect(localStorage.getItem(UI_MODE_STORAGE_KEY)).toBe("normal");
@@ -115,7 +115,7 @@ describe("React Terminal Mini Mode", () => {
     expect(enterMiniMode).toHaveBeenCalledTimes(1);
     expect(bridgeMount).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getAllByRole("button", { name: "G GUI" })[0]!);
+    await user.click(screen.getByRole("button", { name: "G GUI" }));
     expect(screen.getByTestId("terminal-mini")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入终端模式" })).not.toBeInTheDocument();
     expect(restoreNormal).toHaveBeenCalledWith(normalWindowSnapshot);
@@ -135,7 +135,7 @@ describe("React Terminal Mini Mode", () => {
 
     await user.click(screen.getByRole("button", { name: "进入终端模式" }));
     await screen.findByTestId("terminal-mini");
-    await user.click(screen.getAllByRole("button", { name: "G GUI" })[0]!);
+    await user.click(screen.getByRole("button", { name: "G GUI" }));
 
     expect(await screen.findByRole("button", { name: "进入终端模式" })).toBeInTheDocument();
     expect(screen.queryByTestId("terminal-mini")).not.toBeInTheDocument();
@@ -285,5 +285,153 @@ describe("React Terminal Mini Mode", () => {
     await waitFor(() => expect(enterMiniMode).toHaveBeenCalledTimes(1));
     finishEnter?.({ snapshot: normalWindowSnapshot, applied: true });
     expect(await screen.findByTestId("terminal-mini")).toBeInTheDocument();
+  });
+
+  it("仅保留顶栏唯一的 G GUI 返回按钮并在面板间一致退出", async () => {
+    const onExit = vi.fn();
+    render(<TerminalMiniMode onExit={onExit} />);
+
+    const assertSingleExitButton = () => {
+      const exitButtons = screen.getAllByRole("button", { name: "G GUI" });
+      expect(exitButtons).toHaveLength(1);
+      expect(exitButtons[0]).toHaveClass("terminal-mini__exit");
+      expect(exitButtons[0]).not.toHaveAttribute("title");
+    };
+
+    assertSingleExitButton();
+
+    fireEvent.keyDown(window, { key: "l" });
+    expect(screen.getByRole("region", { name: "歌词" })).toBeInTheDocument();
+    assertSingleExitButton();
+
+    fireEvent.keyDown(window, { key: "q" });
+    expect(screen.getByRole("region", { name: "播放队列" })).toBeInTheDocument();
+    assertSingleExitButton();
+
+    fireEvent.click(screen.getByRole("button", { name: "G GUI" }));
+    expect(onExit).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: "g" });
+    expect(onExit).toHaveBeenCalledTimes(2);
+  });
+
+  it("支持进度条指针拖拽实时预览、点击跳转与键盘步进（不触发全局双倍步进）", () => {
+    const seek = vi.spyOn(playerActions, "seek");
+    const seekBy = vi.spyOn(playerActions, "seekBy");
+    render(<TerminalMiniMode onExit={() => undefined} />);
+
+    const slider = screen.getByRole("slider", { name: "播放进度" });
+    const duration = Number(slider.getAttribute("aria-valuemax"));
+    expect(duration).toBeGreaterThan(30_000);
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      right: 300,
+      top: 0,
+      bottom: 22,
+      width: 200,
+      height: 22,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(slider, { button: 0, clientX: 150, pointerId: 1 });
+    expect(slider).toHaveClass("is-dragging");
+    expect(slider).toHaveAttribute("aria-valuenow", String(Math.round(duration * 0.25)));
+    expect(seek).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(slider, { clientX: 200, pointerId: 1 });
+    expect(slider).toHaveAttribute("aria-valuenow", String(Math.round(duration * 0.5)));
+    expect(seek).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(slider, { clientX: 200, pointerId: 1 });
+    expect(slider).not.toHaveClass("is-dragging");
+    expect(seek).toHaveBeenCalledWith(Math.round(duration * 0.5));
+
+    seek.mockClear();
+    fireEvent.click(slider, { clientX: 250 });
+    expect(seek).toHaveBeenCalledWith(Math.round(duration * 0.75));
+
+    seek.mockClear();
+    seekBy.mockClear();
+    slider.focus();
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(seek).toHaveBeenLastCalledWith(Math.round(duration * 0.75) + 5_000);
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(seek).toHaveBeenLastCalledWith(Math.round(duration * 0.75));
+    fireEvent.keyDown(slider, { key: "PageUp" });
+    expect(seek).toHaveBeenLastCalledWith(Math.min(duration, Math.round(duration * 0.75) + 15_000));
+    fireEvent.keyDown(slider, { key: "PageDown" });
+    fireEvent.keyDown(slider, { key: "Home" });
+    expect(seek).toHaveBeenLastCalledWith(0);
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(seek).toHaveBeenLastCalledWith(duration);
+    expect(seekBy).not.toHaveBeenCalled();
+  });
+
+  it("支持 12 段音量条拖拽、静音解除与键盘调节（不触发全局快捷键）", () => {
+    playerActions.toggleMute();
+    const setVolume = vi.spyOn(playerActions, "setVolume");
+    const seekBy = vi.spyOn(playerActions, "seekBy");
+    render(<TerminalMiniMode onExit={() => undefined} />);
+
+    const slider = screen.getByRole("slider", { name: "音量" });
+    expect(slider).toHaveAttribute("aria-valuetext", "已静音");
+    expect(screen.getByText("MUTED")).toBeInTheDocument();
+    expect(slider.querySelectorAll("i.is-on")).toHaveLength(0);
+
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 120,
+      top: 0,
+      bottom: 20,
+      width: 120,
+      height: 20,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(slider, { button: 0, clientX: 30, pointerId: 2 });
+    expect(slider).toHaveAttribute("aria-valuenow", "25");
+    expect(slider).toHaveAttribute("aria-valuetext", "25%");
+    expect(screen.getByText("25%")).toBeInTheDocument();
+    expect(slider.querySelectorAll("i.is-on")).toHaveLength(3);
+    expect(setVolume).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(slider, { clientX: 60, pointerId: 2 });
+    expect(slider).toHaveAttribute("aria-valuenow", "50");
+    expect(slider.querySelectorAll("i.is-on")).toHaveLength(6);
+
+    fireEvent.pointerUp(slider, { clientX: 60, pointerId: 2 });
+    expect(setVolume).toHaveBeenCalledWith(0.5);
+    expect(screen.queryByText("MUTED")).not.toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+
+    setVolume.mockClear();
+    seekBy.mockClear();
+    slider.focus();
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(setVolume).toHaveBeenCalledTimes(1);
+    expect(setVolume).toHaveBeenLastCalledWith(0.55);
+
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
+    expect(setVolume).toHaveBeenCalledTimes(2);
+    expect(setVolume).toHaveBeenLastCalledWith(0.6);
+
+    fireEvent.keyDown(slider, { key: "ArrowDown" });
+    expect(setVolume).toHaveBeenCalledTimes(3);
+    expect(setVolume).toHaveBeenLastCalledWith(0.55);
+
+    fireEvent.keyDown(slider, { key: "ArrowLeft" });
+    expect(setVolume).toHaveBeenCalledTimes(4);
+    expect(setVolume).toHaveBeenLastCalledWith(0.5);
+
+    fireEvent.keyDown(slider, { key: "Home" });
+    expect(setVolume).toHaveBeenLastCalledWith(0);
+
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(setVolume).toHaveBeenLastCalledWith(1);
+    expect(seekBy).not.toHaveBeenCalled();
   });
 });

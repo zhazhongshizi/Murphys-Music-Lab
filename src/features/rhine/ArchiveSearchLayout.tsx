@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
+import { Icon } from "../../components/Icon";
 
 export function ArchiveSearchHeading({ onClose }: { onClose: () => void }) {
-  return <header className="rhine-search-heading"><button type="button" onClick={onClose}>← 返回档案</button><span className="rhine-eyebrow">ARCHIVE / 音乐检索</span></header>;
+  return <header className="rhine-search-heading"><button type="button" onClick={onClose}><Icon name="back" size={16} />返回档案</button><span className="rhine-eyebrow">ARCHIVE / 音乐检索</span></header>;
 }
 
 export function ArchiveSearchBody({ history, children }: { history?: ReactNode; children: ReactNode }) {

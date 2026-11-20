@@ -74,7 +74,7 @@ export function RemoteApp() {
   }
   if (!paired) return <main className="remote-pair">
     <span className="section-label">{APP_NAME} · REMOTE</span>
-    <h1>连接你的音乐</h1><p>在电脑的「更多 → 局域网遥控」中查看连接码。</p>
+    <h1>连接你的音乐</h1><p>在电脑的「设置 → 局域网遥控」中查看连接码。</p>
     <form onSubmit={(event) => { event.preventDefault(); void connect(); }}>
       <label htmlFor="pair-code">连接码</label>
       <input id="pair-code" type="password" autoComplete="off" value={code} onChange={(event) => setCode(event.target.value)} required />
@@ -88,8 +88,8 @@ export function RemoteApp() {
         <nav className="top-bar__nav remote-nav" aria-label="远程导航">
           {([['discover', 'library', '曲库'], ['search', 'search', '搜索'], ['liked', 'heart', '喜欢']] as const).map(([id, icon, label]) =>
             <button key={id} type="button" aria-pressed={section === id && (remoteSource === "qqmusic" || remoteSource === "local")} onClick={() => { artistNavigation.closeArtist(false); if (remoteSource === "local") setRemoteSource("qqmusic"); setSection(id); }}><Icon name={icon} size={18} /><span>{label}</span></button>)}
-          {([['netease', '网易云'], ['bilibili', 'Bilibili']] as const).map(([sourceId, label]) =>
-            <button key={sourceId} type="button" aria-pressed={section !== null && remoteSource === sourceId} onClick={() => selectRemoteSource(sourceId)}><Icon name="folder-music" size={16} /><span>{label}</span></button>)}
+          {([['netease', 'cloud', '网易云'], ['bilibili', 'video', 'Bilibili']] as const).map(([sourceId, icon, label]) =>
+            <button key={sourceId} type="button" aria-pressed={section !== null && remoteSource === sourceId} onClick={() => selectRemoteSource(sourceId)}><Icon name={icon} size={16} /><span>{label}</span></button>)}
         </nav>
         <span role="status">{connection === "online" ? "已连接" : "连接中断，正在重连…"}</span>
         <button onClick={() => { artistNavigation.closeArtist(false); setQueueOpen(false); disconnectRemote(); }}>断开</button>

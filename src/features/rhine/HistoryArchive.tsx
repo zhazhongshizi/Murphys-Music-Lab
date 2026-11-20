@@ -73,14 +73,14 @@ export default function HistoryArchive({ active, quality, superPerformance, rend
   function turn(delta: number) { setPage(currentPage + delta); setSelectedId(null); setNotice(""); setDetail(false); }
   return <section className="rhine-history" data-inspecting={detail && !!chosen} aria-label="最近播放磁带阵列">
     <header className="rhine-history-heading">
-      <div className="rhine-history-heading-title"><button className="rhine-back" onClick={onBack}>← 返回档案</button><h1>最近播放</h1><span>{matches.length} 首</span><p className="rhine-eyebrow">LISTENING HISTORY</p></div>
+      <div className="rhine-history-heading-title"><button className="rhine-back" onClick={onBack}><Icon name="back" size={16} />返回档案</button><h1>最近播放</h1><span>{matches.length} 首</span><p className="rhine-eyebrow">LISTENING HISTORY</p></div>
       <label className="rhine-history-search"><Icon name="search" size={15} /><span>搜索歌曲或歌手</span><input type="search" aria-label="搜索最近播放" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelectedId(null); setDetail(false); }} placeholder="搜索歌曲或歌手" /></label>
     </header>
     {rows.length > 0 ? <HistoryCassetteArray renderer={renderer} frameLimit={frameLimit} spatialUpscaling={spatialUpscaling} tracks={rows} selected={selected} detail={detail && !!chosen} active={active} quality={quality} superPerformance={superPerformance} onSelect={select} onOpen={open} />
       : <div className="rhine-history-empty" role={failed ? "alert" : "status"}>{!native ? "最近播放需要在桌面客户端中使用" : failed ? <>最近播放读取失败 <button onClick={() => setRetry(value => value + 1)}>重试</button></> : entries === null ? "正在读取最近播放…" : needle ? "没有匹配的歌曲" : "还没有播放记录，收听后歌曲会放入磁带阵列"}</div>}
     {chosen && (detail ? <section className="rhine-document rhine-history-document rhine-history-glass" aria-label="历史歌曲档案">
       <i className="rhine-history-screw" aria-hidden="true" /><i className="rhine-history-screw" aria-hidden="true" />
-      <button className="rhine-back" onClick={() => setDetail(false)}>← 返回最近播放阵列</button>
+      <button className="rhine-back" onClick={() => setDetail(false)}><Icon name="back" size={16} />返回最近播放阵列</button>
       <p className="rhine-eyebrow">TAPE / {String(currentPage * PAGE_SIZE + selected + 1).padStart(3, "0")}</p>
       <h2>{chosen.title}</h2><p><SongArtistLinks track={chosen} /></p>
       <SourceBadge track={chosen} /><dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
@@ -91,7 +91,7 @@ export default function HistoryArchive({ active, quality, superPerformance, rend
       <div className="rhine-history-song-head"><SongCover cacheKey={chosen.coverCacheKey} title={chosen.title} /><div><h2>{chosen.title}</h2><SongArtistLinks track={chosen} /></div></div>
       <div className="rhine-history-ruler" aria-hidden="true" />
       <SourceBadge track={chosen} /><dl className="rhine-history-metadata"><div><dt>上次播放</dt><dd>{dateFormat.format(chosen.playedAtUnixMs)}</dd></div><div><dt>所属专辑</dt><dd>{chosen.album || "暂无专辑信息"}</dd></div></dl>
-      <div className="rhine-history-actions"><button className="rhine-history-primary" disabled={busy} onClick={() => void play(selected)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />{busy ? "正在装载…" : "播放"}</button><button onClick={() => open(selected)} aria-label="抽取磁带 · 查看歌曲 ↗"><svg className="icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7h16v-7M12 15V3m-4 4 4-4 4 4" /></svg>抽取磁带</button></div>
+      <div className="rhine-history-actions"><button className="rhine-history-primary" disabled={busy} onClick={() => void play(selected)} aria-label={`播放 ${chosen.title}`}><Icon name="play" size={16} />{busy ? "正在装载…" : "播放"}</button><button onClick={() => open(selected)} aria-label="抽取磁带 · 查看歌曲 ↗"><Icon name="eject" size={16} />抽取磁带</button></div>
     </section>)}
     <footer className="rhine-catalog rhine-history-footer" hidden={detail && !!chosen}>
       <div className="rhine-card-list" aria-label="选择最近播放歌曲">{rows.map((entry, index) => <button key={entry.id} aria-label={`选择 ${entry.title}`} aria-pressed={selected === index} onClick={() => select(index)} onDoubleClick={() => open(index)}><SongCover cacheKey={entry.coverCacheKey} title={entry.title} /><span className="rhine-history-card-copy"><strong>{entry.title}</strong><small>{entry.artist}</small></span></button>)}</div>

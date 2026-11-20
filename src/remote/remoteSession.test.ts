@@ -266,10 +266,9 @@ it("expands Bilibili video parts on Remote and enqueues playable cid items into 
   );
 
   fireEvent.click(await screen.findByRole("button", { name: "查看视频" }));
-  fireEvent.click(await screen.findByRole("button", { name: "查看分 P" }));
+  fireEvent.click(await screen.findByRole("button", { name: "播放或展开分 P 视频原题" }));
   await screen.findByText("P2 · 第二 P 原题");
-  const addButtons = await screen.findAllByRole("button", { name: "加队列" });
-  fireEvent.click(addButtons[1]!);
+  fireEvent.click(await screen.findByRole("button", { name: "加入队列 P2 · 第二 P 原题" }));
 
   await waitFor(() =>
     expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({

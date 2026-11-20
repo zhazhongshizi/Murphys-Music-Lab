@@ -62,7 +62,7 @@ describe("应用外壳键盘与状态契约", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const trigger = screen.getByRole("button", { name: "更多" });
+    const trigger = screen.getByRole("button", { name: "设置" });
     await user.click(trigger);
     const normal = screen.getByRole("menuitemradio", { name: "正常" });
     await waitFor(() => expect(normal).toHaveFocus());
@@ -82,11 +82,11 @@ describe("应用外壳键盘与状态契约", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("在更多菜单选择并保留确认后的默认音质", async () => {
+  it("在设置菜单选择并保留确认后的默认音质", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const trigger = screen.getByRole("button", { name: "更多" });
+    const trigger = screen.getByRole("button", { name: "设置" });
     await user.click(trigger);
     expect(screen.getByRole("menuitemradio", { name: "高品质 320k" }))
       .toHaveAttribute("aria-checked", "true");
@@ -101,7 +101,7 @@ describe("应用外壳键盘与状态契约", () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemradio", { name: "空内容" }));
 
     const content = container.querySelector<HTMLElement>(".app-shell__content");
@@ -166,7 +166,7 @@ describe("应用外壳键盘与状态契约", () => {
 
     await user.click(screen.getByRole("button", { name: "曲库" }));
     await screen.findByRole("heading", { name: "发现音乐" });
-    await user.click(screen.getByRole("button", { name: /纸月光/ }));
+    await user.click(screen.getByRole("button", { name: /^纸月光/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中曲目" });
     await user.click(within(inspector).getByRole("button", { name: "立即播放" }));
 
@@ -217,5 +217,35 @@ describe("应用外壳键盘与状态契约", () => {
 
     act(() => playerActions.next());
     expect(renderCount).toBeGreaterThan(initialRenderCount);
+  });
+
+  it("喜欢红心已迁至底栏且顶栏不再包含，进入曲库后仍常驻并可切换", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".top-bar .top-bar__liked")).toBeNull();
+    const likeButton = screen.getByRole("button", { name: "喜欢《暮色温室》" });
+    expect(likeButton.closest(".player-bar__title-row")).not.toBeNull();
+    expect(likeButton).toHaveAttribute("aria-pressed", "false");
+    expect(likeButton).not.toHaveClass("player-bar__liked");
+
+    await user.click(likeButton);
+    const likedButton = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    expect(likedButton).toHaveAttribute("aria-pressed", "true");
+    expect(likedButton).toHaveClass("player-bar__liked");
+
+    await user.click(screen.getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+    expect(container.querySelector(".top-bar .top-bar__liked")).toBeNull();
+
+    const libraryLikeButton = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    expect(libraryLikeButton.closest(".player-bar__title-row")).not.toBeNull();
+    expect(libraryLikeButton).toHaveAttribute("aria-pressed", "true");
+    expect(libraryLikeButton).toHaveClass("player-bar__liked");
+
+    await user.click(libraryLikeButton);
+    const unlikedButton = screen.getByRole("button", { name: "喜欢《暮色温室》" });
+    expect(unlikedButton).toHaveAttribute("aria-pressed", "false");
+    expect(unlikedButton).not.toHaveClass("player-bar__liked");
   });
 });

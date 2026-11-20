@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getPlaylistSongs } from "../../backend/catalogAdapter";
 import { readPlaylistSongs, invalidatePlaylistSongs } from "./readPlaylistSongs";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { PlaylistSummary } from "../../contracts/library";
 import { enqueueCatalogTracks } from "../player/catalogQueue";
@@ -23,11 +24,12 @@ interface PlaylistSongListProps {
   accountKey?: string;
   onSongsRemoved?: (ids: readonly string[]) => void;
   onPageRead?: (page: CatalogSongPage) => void;
+  onRowDoubleClick?: (track: CatalogSong) => void;
 }
 
 export default function PlaylistSongList({
   playlist, initialPage, currentTrackId, disabled, onBusyChange, renderCells,
-  allowRemoval = true, accountKey = "", onSongsRemoved, onPageRead,
+  allowRemoval = true, accountKey = "", onSongsRemoved, onPageRead, onRowDoubleClick,
 }: PlaylistSongListProps) {
   const [query, setQuery] = useState("");
   const [browsePage, setBrowsePage] = useState(initialPage.page);
@@ -176,7 +178,11 @@ export default function PlaylistSongList({
             })} />
           {searching ? "全选搜索结果" : "全选本页"}
         </label>
-        <button type="button" className="text-button" disabled={locked} onClick={refreshSongs}>刷新歌单</button>
+        <Tooltip content="刷新歌单">
+          <button type="button" className="icon-button icon-button--quiet" disabled={locked} aria-label="刷新歌单" onClick={refreshSongs}>
+            <Icon name="refresh" size={16} />
+          </button>
+        </Tooltip>
         <span className="playlist-songs__count">已选 {checked.size} 首</span>
         <button className="text-button" type="button" disabled={locked || checked.size === 0} onClick={() => setChecked(new Map())}>清空选择</button>
         <button className="text-button text-button--primary" type="button" disabled={locked || checked.size === 0} onClick={() => void addSelected()}>
@@ -196,10 +202,26 @@ export default function PlaylistSongList({
           <table className={`catalog-table playlist-songs__table${canRemove ? " playlist-songs__table--editable" : ""}`}>
             <thead><tr><th scope="col"><span className="sr-only">选择歌曲</span>#</th><th scope="col">封面</th><th scope="col">曲目</th><th scope="col">歌手</th><th scope="col">专辑</th><th scope="col">音质</th><th scope="col">时长</th>{canRemove && <th scope="col">操作</th>}</tr></thead>
             <tbody>{rows.map((song) => (
-              <tr key={`${song.track.id}-${song.position}`} className={[currentTrackId === song.track.id ? "catalog-table__active" : "", checked.has(song.track.id) ? "playlist-songs__selected" : ""].join(" ")}>
+              <tr
+                key={`${song.track.id}-${song.position}`}
+                className={[currentTrackId === song.track.id ? "catalog-table__active" : "", checked.has(song.track.id) ? "playlist-songs__selected" : ""].join(" ")}
+                onDoubleClick={(e) => {
+                  if (!onRowDoubleClick) return;
+                  if ((e.target as HTMLElement).closest("button:not(.catalog-table__title), a, input, label")) return;
+                  onRowDoubleClick(song.track);
+                }}
+              >
                 <td><label className="playlist-songs__check"><input type="checkbox" aria-label={`选择 ${song.track.title}`} checked={checked.has(song.track.id)} disabled={locked} onChange={() => toggle(song)} /><span>{String(song.position + 1).padStart(2, "0")}</span></label></td>
                 {renderCells(song.track)}
-                {canRemove && <td><button className="text-button" type="button" disabled={locked} aria-label={`将《${song.track.title}》移出歌单`} onClick={() => removal.request([song.track])}>移出歌单</button></td>}
+                {canRemove && (
+                  <td>
+                    <Tooltip content="移出歌单">
+                      <button className="icon-button icon-button--quiet icon-button--danger" type="button" disabled={locked} aria-label={`将《${song.track.title}》移出歌单`} onClick={() => removal.request([song.track])}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                    </Tooltip>
+                  </td>
+                )}
               </tr>
             ))}</tbody>
           </table>

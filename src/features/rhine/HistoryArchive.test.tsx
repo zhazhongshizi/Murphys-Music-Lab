@@ -36,7 +36,7 @@ it("selection and extraction never start playback; playing uses the selected met
   expect(mocks.play).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "播放 歌曲2" }));
   await waitFor(() => expect(mocks.play).toHaveBeenCalledWith(expect.objectContaining(rows[2]!)));
-  fireEvent.click(screen.getByRole("button", { name: "← 返回最近播放阵列" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回最近播放阵列" }));
   expect(screen.getByRole("heading", { name: "歌曲2" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "选择 歌曲4" }));
   fireEvent.click(screen.getByRole("button", { name: "播放 歌曲4" }));

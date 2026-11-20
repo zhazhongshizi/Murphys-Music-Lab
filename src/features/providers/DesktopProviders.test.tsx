@@ -401,7 +401,7 @@ it("Rhine shares QQ search layout, keeps histories per source and returns to the
   fireEvent.click(screen.getByRole("button", { name: "清空搜索历史" }));
   expect(localStorage.getItem("qqmusic_bilibili_search_history_v1")).toBe("[]");
   expect(localStorage.getItem("qqmusic_netease_search_history_v1")).toContain("网易关键词");
-  fireEvent.click(screen.getByRole("button", { name: "← 返回档案" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回档案" }));
   await screen.findByRole("button", { name: "打开收藏夹" });
   expect(view.container.querySelector(".rhine-search")).toBeNull();
 });
@@ -418,8 +418,8 @@ it("Rhine returns from a favorite video to its folder without duplicating the ba
   await screen.findByRole("button", { name: "全部分 P 加入队列" });
   expect(screen.queryByRole("button", { name: "返回视频列表" })).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "自建容器" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "← 返回收藏夹" }));
-  await screen.findByRole("button", { name: "← 返回收藏夹列表" });
+  fireEvent.click(screen.getByRole("button", { name: "返回收藏夹" }));
+  await screen.findByRole("button", { name: "返回收藏夹列表" });
   expect(screen.getByRole("heading", { name: "自建容器" })).toBeInTheDocument();
 });
 it("a concurrent session observation gets one bounded local snapshot reread and no platform startup", async () => {
@@ -526,7 +526,7 @@ it.each(["read", "replace", "hydrate"] as const)("leaving a playlist cancels pla
     else if (phase === "replace") expect(nativeQueueReplace).toHaveBeenCalledTimes(1);
     else expect(playerActions.hydrateNative).toHaveBeenCalledTimes(1);
   });
-  fireEvent.click(within(detail).getByRole("button", { name: "← 返回歌单列表" }));
+  fireEvent.click(within(detail).getByRole("button", { name: "返回歌单列表" }));
   await screen.findByRole("button", { name: "打开歌单" });
   await act(async () => { gate.resolve(); });
   expect(nativeQueuePlay).not.toHaveBeenCalled();

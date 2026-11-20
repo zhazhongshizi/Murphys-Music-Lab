@@ -12,6 +12,7 @@ import type {
 } from "../../contracts/providers";
 import { nativeQueueEnqueueNext, nativeQueuePlay, nativeQueueReplace } from "../../backend/nativeQueueAdapter";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { getCurrentTrack, playerActions, usePlayerSelector } from "../player/playerStore";
 import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
 import { PlaylistActionIcon } from "../rhine/PlaylistActionIcon";
@@ -1993,25 +1994,27 @@ function ReadyWorkspace({
                       <td className="catalog-table__duration">{formatDuration(row.durationMs)}</td>
                       {canRemoveFromContainer && (
                         <td onClick={e => e.stopPropagation()}>
-                          <button
-                            className="text-button"
-                            type="button"
-                            disabled={busy || Boolean(lastWrite)}
-                            aria-label={`将《${row.title}》移出收藏夹`}
-                            onClick={() =>
-                              void write({
-                                providerId: id,
-                                accountId: status.account.id,
-                                operation: {
-                                  kind: "removeItems",
-                                  containerId: container!.id,
-                                  trackIds: [`bilibili:video:${row.bvid}:1`],
-                                },
-                              })
-                            }
-                          >
-                            移出收藏夹
-                          </button>
+                          <Tooltip content="移出收藏夹">
+                            <button
+                              className="icon-button icon-button--quiet icon-button--danger"
+                              type="button"
+                              disabled={busy || Boolean(lastWrite)}
+                              aria-label={`将《${row.title}》移出收藏夹`}
+                              onClick={() =>
+                                void write({
+                                  providerId: id,
+                                  accountId: status.account.id,
+                                  operation: {
+                                    kind: "removeItems",
+                                    containerId: container!.id,
+                                    trackIds: [`bilibili:video:${row.bvid}:1`],
+                                  },
+                                })
+                              }
+                            >
+                              <Icon name="trash" size={16} />
+                            </button>
+                          </Tooltip>
                         </td>
                       )}
                     </tr>,
@@ -2098,25 +2101,27 @@ function ReadyWorkspace({
                       <td className="catalog-table__duration">{formatDuration(row.durationMs)}</td>
                       {canRemoveFromContainer && (
                         <td onClick={e => e.stopPropagation()}>
-                          <button
-                            className="text-button"
-                            type="button"
-                            disabled={busy || Boolean(lastWrite)}
-                            aria-label={`将《${row.title}》移出歌单`}
-                            onClick={() =>
-                              void write({
-                                providerId: id,
-                                accountId: status.account.id,
-                                operation: {
-                                  kind: "removeItems",
-                                  containerId: container!.id,
-                                  trackIds: [row.id],
-                                },
-                              })
-                            }
-                          >
-                            移出歌单
-                          </button>
+                          <Tooltip content="移出歌单">
+                            <button
+                              className="icon-button icon-button--quiet icon-button--danger"
+                              type="button"
+                              disabled={busy || Boolean(lastWrite)}
+                              aria-label={`将《${row.title}》移出歌单`}
+                              onClick={() =>
+                                void write({
+                                  providerId: id,
+                                  accountId: status.account.id,
+                                  operation: {
+                                    kind: "removeItems",
+                                    containerId: container!.id,
+                                    trackIds: [row.id],
+                                  },
+                                })
+                              }
+                            >
+                              <Icon name="trash" size={16} />
+                            </button>
+                          </Tooltip>
                         </td>
                       )}
                     </tr>,

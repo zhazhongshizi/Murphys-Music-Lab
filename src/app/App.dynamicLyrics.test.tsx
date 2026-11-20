@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StrictMode } from "react";
@@ -46,7 +46,7 @@ describe("Windows 动态歌词实验开关", () => {
     render(<App />);
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(false));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
 
     expect(screen.getAllByText("实验性功能").length).toBeGreaterThan(0);
     expect(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" }))
@@ -61,7 +61,7 @@ describe("Windows 动态歌词实验开关", () => {
     render(<App />);
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(true));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     const item = screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" });
     expect(item).toHaveAttribute("aria-checked", "false");
 
@@ -77,7 +77,7 @@ describe("Windows 动态歌词实验开关", () => {
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(false));
     expect(window.localStorage.getItem(WINDOWS_DYNAMIC_LYRICS_STORAGE_KEY)).toBeNull();
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" }))
       .toHaveAttribute("aria-checked", "false");
   });
@@ -96,7 +96,7 @@ describe("Windows 动态歌词实验开关", () => {
     const rendered = render(<App />);
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledTimes(1));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" }));
     rendered.unmount();
     startupSync.resolve({ enabled: false });
@@ -123,7 +123,7 @@ describe("Windows 动态歌词实验开关", () => {
     render(<App />);
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(false));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" }));
     expect(mocks.setEnabled).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(WINDOWS_DYNAMIC_LYRICS_STORAGE_KEY)).toBeNull();
@@ -148,7 +148,7 @@ describe("Windows 动态歌词实验开关", () => {
     render(<App />);
 
     await waitFor(() => expect(window.localStorage.getItem(WINDOWS_DYNAMIC_LYRICS_STORAGE_KEY)).toBe("enabled"));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" }));
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(false));
 
@@ -162,14 +162,18 @@ describe("Windows 动态歌词实验开关", () => {
     render(<App />);
 
     await waitFor(() => expect(mocks.setEnabled).toHaveBeenCalledWith(false));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.keyboard("{End}");
     expect(screen.getByRole("menuitemcheckbox", { name: "Windows 动态歌词" })).toHaveFocus();
     await user.keyboard("{ArrowUp}");
     expect(screen.getByRole("menuitemcheckbox", { name: "实时频谱·实验" })).toHaveFocus();
     await user.keyboard("{ArrowUp}");
-    expect(screen.getByRole("menuitemradio", { name: "莱茵界面" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "迷你" })).toHaveFocus();
     await user.keyboard("{ArrowUp}");
-    expect(screen.getByRole("menuitemradio", { name: "光晕：增强" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "莱茵" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(within(screen.getByRole("group", { name: "界面模式" })).getByRole("menuitemradio", { name: "标准" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitemradio", { name: "增强" })).toHaveFocus();
   });
 });

@@ -9,6 +9,7 @@ import { StageLyricsPanel } from "./StageLyricsPanel";
 import { ScrollingLyrics } from "./ScrollingLyrics";
 import {
   getCurrentTrack,
+  playerActions,
   usePlayerSelector,
   type PlayerSnapshot,
 } from "../player/playerStore";
@@ -43,12 +44,17 @@ function StageNeedleScale({ track }: { track: NonNullable<ReturnType<typeof getC
   return <NeedleScale progress={progress} />;
 }
 
+const seekLyricLine = (atMs: number) => {
+  playerActions.seek(atMs);
+};
+
 function StageScrollingLyrics({ track }: { track: NonNullable<ReturnType<typeof getCurrentTrack>> }) {
   const activeIndex = usePlayerSelector((snapshot) => lyricIndexAt(snapshot.positionMs, track.lyrics));
   return (
     <ScrollingLyrics
       lyrics={track.lyrics}
       activeIndex={activeIndex}
+      onSeek={seekLyricLine}
     />
   );
 }

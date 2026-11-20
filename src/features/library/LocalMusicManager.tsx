@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { localCatalog, type CatalogRequest, type CatalogStatus, type ImportMode } from "../../backend/localCatalogAdapter";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import "./local-music-manager.css";
 
 const failureLabels: Record<string, string> = {
@@ -77,7 +79,7 @@ export default function LocalMusicManager({ onChanged, disabled = false }: { onC
   return <>
     <button ref={trigger} className="text-button local-manager-trigger" type="button" onClick={() => setOpen(true)}>管理音乐目录</button>
     {open && createPortal(<dialog ref={dialog} className="local-manager" aria-labelledby="local-manager-title" onCancel={event => { event.preventDefault(); close(); }}>
-      <header><div><span className="section-label">LOCAL COLLECTION</span><h2 id="local-manager-title">音乐目录</h2></div><button type="button" onClick={close} aria-label="关闭目录管理">关闭</button></header>
+      <header><div><span className="section-label">LOCAL COLLECTION</span><h2 id="local-manager-title">音乐目录</h2></div><Tooltip content="关闭"><button type="button" className="icon-button icon-button--quiet" onClick={close} aria-label="关闭目录管理"><Icon name="close" size={16} /></button></Tooltip></header>
       <p>从已有文件夹建立曲库。扫描只在手动添加、重新定位或重新扫描时运行。</p>
       <div className="local-manager-import"><label>目录导入方式<select value={mode} disabled={locked} onChange={e => setMode(e.target.value as ImportMode)}>
         <option value="reference">引用模式 · 不复制文件</option><option value="copy">复制模式 · 保存到应用媒体目录</option></select></label>

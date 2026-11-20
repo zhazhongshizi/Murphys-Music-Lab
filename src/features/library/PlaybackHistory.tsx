@@ -5,6 +5,8 @@ import { getPlaybackHistory, type HistoryEntry } from "../../backend/historyAdap
 import { playHistoryEntry } from "../player/historyPlayback";
 import { usePlayerSelector } from "../player/playerStore";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import "./playback-history.css";
 
 const PAGE_SIZE = 20;
@@ -58,7 +60,7 @@ export default function PlaybackHistory() {
 
   return <section className="catalog-pane playback-history" aria-label="本地播放历史">
     <header className="catalog-pane__header"><div><h1>最近播放</h1><p>仅保存在这台设备 · 同一首歌显示最近一次播放</p></div>
-      <button type="button" className="text-button" disabled={!native} onClick={() => setRetry((value) => value + 1)}>刷新历史</button>
+      <Tooltip content="刷新历史"><button type="button" className="icon-button icon-button--quiet" aria-label="刷新历史" disabled={!native} onClick={() => setRetry((value) => value + 1)}><Icon name="refresh" size={16} /></button></Tooltip>
     </header>
     <label className="catalog-search"><Icon name="search" size={18} /><span className="sr-only">搜索本地历史</span><input type="search" placeholder="搜索历史歌曲或歌手" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} /></label>
     {notice && <p role="alert">{notice}</p>}
@@ -67,7 +69,7 @@ export default function PlaybackHistory() {
       : entries === null ? <div className="catalog-empty" role="status"><p>正在读取本地历史…</p></div>
       : visible.length === 0 ? <div className="catalog-empty"><p>{normalized ? "没有找到匹配的历史歌曲" : "还没有播放记录"}</p><span>{normalized ? "试试其他歌曲名或歌手。" : "播放歌曲后会自动记录，无需登录即可查看。"}</span></div>
       : <><div className="catalog-table-wrap"><table className="catalog-table"><thead><tr><th scope="col">歌曲</th><th scope="col">歌手</th><th scope="col">最近播放</th><th scope="col">操作</th></tr></thead>
-        <tbody>{visible.map((entry) => <tr key={entry.id}><td>{entry.title}<SourceBadge track={entry} /></td><td><SongArtistLinks track={entry} /></td><td><time dateTime={new Date(entry.playedAtUnixMs).toISOString()}>{dateFormat.format(entry.playedAtUnixMs)}</time></td><td><button type="button" className="text-button" disabled={busy} aria-label={`播放 ${entry.title}`} onClick={() => void play(entry)}>播放</button></td></tr>)}</tbody>
+        <tbody>{visible.map((entry) => <tr key={entry.id}><td>{entry.title}<SourceBadge track={entry} /></td><td><SongArtistLinks track={entry} /></td><td><time dateTime={new Date(entry.playedAtUnixMs).toISOString()}>{dateFormat.format(entry.playedAtUnixMs)}</time></td><td><TrackRowActions title={entry.title} disabled={busy} onPlay={() => void play(entry)} /></td></tr>)}</tbody>
       </table></div><nav className="playback-history__pages" aria-label="历史分页"><button type="button" className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages} · {filtered.length} 首</span><button type="button" className="text-button" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></nav></>}
   </section>;
 }

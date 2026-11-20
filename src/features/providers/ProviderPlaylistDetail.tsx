@@ -100,12 +100,12 @@ export function ProviderPlaylistDetail({ id, container, video, data, loading, fa
   const backText = video
     ? container
       ? id === "bilibili"
-        ? "← 返回收藏夹"
-        : "← 返回歌单"
-      : "← 返回"
+        ? "返回收藏夹"
+        : "返回歌单"
+      : "返回"
     : id === "netease"
-      ? "← 返回歌单列表"
-      : "← 返回收藏夹列表";
+      ? "返回歌单列表"
+      : "返回收藏夹列表";
   const removeButtonLabel = id === "netease" ? "从当前歌单移出选中" : "从当前收藏夹移出选中";
   const itemUnit = video ? "个分 P" : id === "netease" ? "首" : "项";
   return <RhinePlaylistDocument title={video?.title ?? container!.title} description={video ? `UP：${video.uploader}` : container!.description || "音乐档案"}

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { addSongsToPlaylist, getLibraryPlaylists, LibraryAdapterError } from "../../backend/libraryAdapter";
 import { installPlaybackTransport } from "../../backend/playbackTransport";
+import { Icon } from "../../components/Icon";
 import type { PlaylistPage } from "../../contracts/library";
 import { PlayerBar } from "../player/PlayerBar";
 import { resetPlayerFixture } from "../player/playerStore";
@@ -28,8 +29,10 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.resetAllMocks();
   installPlaybackTransport(null);
+  resetPlayerFixture();
 });
 
 it("点击才读取歌单；切歌后仍将点击时的歌曲加入选定歌单，只提交一次", async () => {
@@ -143,13 +146,75 @@ it("远端播放时隐藏添加歌单入口", () => {
   expect(container.firstChild).toBeNull();
 });
 
-it("主界面底部播放栏播放 QQ 音乐歌曲时展示将歌曲添加进歌单按钮", async () => {
+it("主界面底部播放栏播放 QQ 音乐歌曲时展示图标化加入 QQ 音乐歌单按钮", async () => {
   resetPlayerFixture();
   const user = userEvent.setup();
   render(<PlayerBar onOpenQueue={() => {}} queueOpen={false} />);
-  const trigger = screen.getByRole("button", { name: "将歌曲添加进歌单" });
+  const trigger = screen.getByRole("button", { name: "加入 QQ 音乐歌单" });
   expect(trigger.closest(".player-bar__library")).not.toBeNull();
+  expect(trigger).toHaveClass("provider-library-trigger--icon");
+  expect(trigger).not.toHaveAttribute("title");
   await user.click(trigger);
   expect(getLibraryPlaylists).toHaveBeenCalledExactlyOnceWith("created", 1, 50);
   expect(await screen.findByRole("combobox", { name: "目标歌单：工作" })).toBeInTheDocument();
+});
+
+it("iconOnly 在网易歌曲与 B 站视频下渲染 ProviderLibraryActions 的 playlist-add 图标并点击展开云端表单", async () => {
+  const user = userEvent.setup();
+  const { container: playlistIconHost, unmount: unmountPlaylistIcon } = render(<Icon name="playlist-add" size={18} />);
+  const expectedIconMarkup = playlistIconHost.querySelector("svg")!.outerHTML;
+  unmountPlaylistIcon();
+  const { container: folderIconHost, unmount: unmountFolderIcon } = render(<Icon name="folder-music" size={18} />);
+  const legacyFolderMarkup = folderIconHost.querySelector("svg")!.outerHTML;
+  unmountFolderIcon();
+
+  const view = render(<DeckPlaylistAction track={{ id: "netease:track:2", title: "网易歌曲" }} variant="default" iconOnly />);
+  const neteaseTrigger = screen.getByRole("button", { name: "网易云喜欢 / 歌单" });
+  expect(neteaseTrigger).toHaveClass("provider-library-trigger--icon");
+  expect(neteaseTrigger).not.toHaveAttribute("title");
+  expect(neteaseTrigger.querySelector("svg")?.outerHTML).toBe(expectedIconMarkup);
+  expect(neteaseTrigger.querySelector("svg")?.outerHTML).not.toBe(legacyFolderMarkup);
+
+  await user.click(neteaseTrigger);
+  expect(document.querySelector(".provider-library-form")).toBeInTheDocument();
+  expect(screen.getByText("网易歌曲：网易歌曲")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "关闭云端操作" }));
+  view.rerender(<DeckPlaylistAction track={{ id: "bilibili:video:BV1xx411c7mD:123456", title: "B站视频" }} variant="default" iconOnly />);
+  const bilibiliTrigger = screen.getByRole("button", { name: "添加到 B 站收藏夹" });
+  expect(bilibiliTrigger).toHaveClass("provider-library-trigger--icon");
+  expect(bilibiliTrigger).not.toHaveAttribute("title");
+  expect(bilibiliTrigger.querySelector("svg")?.outerHTML).toBe(expectedIconMarkup);
+
+  await user.click(bilibiliTrigger);
+  expect(screen.getByText(/视频本体.*B站视频/)).toBeInTheDocument();
+});
+
+it("iconOnly 禁用时仍包裹在 .app-tooltip-anchor 中并在悬停时显示禁用原因 Tooltip", () => {
+  vi.useFakeTimers();
+  const view = render(<DeckPlaylistAction track={track} authenticated={false} variant="default" iconOnly />);
+
+  const anchor = view.container.querySelector(".app-tooltip-anchor");
+  const trigger = screen.getByRole("button", { name: "加入 QQ 音乐歌单" });
+  expect(trigger).toBeDisabled();
+  expect(anchor).not.toBeNull();
+  expect(anchor!.contains(trigger)).toBe(true);
+
+  fireEvent.pointerOver(anchor!, { bubbles: true });
+  act(() => {
+    vi.advanceTimersByTime(400);
+  });
+  expect(screen.getByRole("tooltip")).toHaveTextContent("登录后可添加到歌单");
+
+  fireEvent.pointerOut(anchor!, { bubbles: true });
+  view.rerender(<DeckPlaylistAction track={undefined} authenticated variant="default" iconOnly />);
+  const emptyAnchor = view.container.querySelector(".app-tooltip-anchor");
+  expect(screen.getByRole("button", { name: "加入 QQ 音乐歌单" })).toBeDisabled();
+  expect(emptyAnchor).not.toBeNull();
+
+  fireEvent.pointerOver(emptyAnchor!, { bubbles: true });
+  act(() => {
+    vi.advanceTimersByTime(400);
+  });
+  expect(screen.getByRole("tooltip")).toHaveTextContent("请选择在线歌曲");
 });

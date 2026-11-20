@@ -48,10 +48,10 @@ it("the top favorite entry reads collected folders and resets detail and paginat
   expect(screen.getByRole("button", {name:"收藏的他人收藏夹"})).toHaveAttribute("aria-pressed","true");
   expect(document.querySelector(".rhine-provider-bar")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name:"打开收藏夹"}));
-  await screen.findByRole("button", {name:"← 返回收藏夹列表"});
+  await screen.findByRole("button", {name:"返回收藏夹列表"});
   fireEvent.click(screen.getByRole("button", {name:"收藏的他人收藏夹"}));
   await screen.findByRole("button", {name:"打开收藏夹"});
-  expect(screen.queryByRole("button", {name:"← 返回收藏夹列表"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", {name:"返回收藏夹列表"})).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", {name:"下一页"}));
   await waitFor(() => expect(api.nativeProviderLibraryContainers).toHaveBeenLastCalledWith("bilibili","favorite",2,50));
   fireEvent.click(screen.getByRole("button", {name:"收藏的他人收藏夹"}));

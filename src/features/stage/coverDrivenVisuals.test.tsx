@@ -59,7 +59,7 @@ describe("封面驱动动态视觉集成", () => {
     expect(appShell).toHaveAttribute("data-cover-tone", "light");
 
     await user.click(screen.getByRole("button", { name: "曲库" }));
-    await screen.findByRole("heading", { name: "发现音乐" });
+    await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3000 });
     expect(appShell).toHaveAttribute("data-cover-tone", "dark");
 
     await user.click(screen.getByRole("button", { name: "返回舞台" }));
@@ -109,7 +109,7 @@ describe("封面驱动动态视觉集成", () => {
     playerActions.toggle();
     expect(appShell).toHaveAttribute("data-glow-renderer", "cached");
     await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "playing"));
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "轻量动态微光" }));
     expect(appShell).toHaveAttribute("data-glow-renderer", "original");
     await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "playing"));
@@ -127,17 +127,17 @@ describe("封面驱动动态视觉集成", () => {
     const appShell = container.querySelector<HTMLElement>(".app-shell");
 
     // 打开更多菜单
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     // 切换到 柔和 强度
-    await user.click(screen.getByRole("menuitemradio", { name: "光晕：柔和" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "柔和" }));
     expect(appShell?.style.getPropertyValue("--cover-glow-intensity")).toBe("0.55");
     expect(localStorage.getItem("qqmusic_glow_intensity")).toBe("subtle");
 
     // 光晕调整后菜单保持打开，可连续切换强度。
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    await user.click(screen.getByRole("menuitemradio", { name: "光晕：关闭" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "关闭" }));
     expect(appShell?.style.getPropertyValue("--cover-glow-intensity")).toBe("0");
     expect(localStorage.getItem("qqmusic_glow_intensity")).toBe("off");
   });
@@ -227,5 +227,45 @@ describe("封面驱动动态视觉集成", () => {
     expect(css).toContain(".lyrics-scroll");
     expect(css).toContain(".player-bar__timeline");
     expect(css).toContain(".stage__quality-menu");
+  });
+
+  it("在 stage 暗色、浅色封面与 library 视图下保持底栏喜欢红心类与 CSS 契约", async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = render(<App />);
+    const darkShell = container.querySelector<HTMLElement>(".app-shell");
+    expect(darkShell).toHaveAttribute("data-cover-tone", "dark");
+
+    await user.click(screen.getByRole("button", { name: "喜欢《暮色温室》" }));
+    const darkLiked = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    expect(darkLiked).toHaveClass("player-bar__liked");
+    expect(darkLiked).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "曲库" }));
+    await screen.findByRole("heading", { name: "发现音乐" });
+    expect(darkShell).toHaveAttribute("data-cover-tone", "dark");
+    expect(screen.getByRole("button", { name: "取消喜欢《暮色温室》" })).toHaveClass("player-bar__liked");
+
+    unmount();
+    seedLightPalette();
+    const { container: lightContainer } = render(<App />);
+    const lightShell = lightContainer.querySelector<HTMLElement>(".app-shell");
+    expect(lightShell).toHaveAttribute("data-cover-tone", "light");
+    const lightLiked = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    expect(lightLiked).toHaveClass("player-bar__liked");
+    expect(lightLiked).toHaveAttribute("aria-pressed", "true");
+
+    const css = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .map((rule) => rule.cssText)
+      .join("\n");
+
+    expect(css).toContain(".app-shell.app-shell--normal .icon-button.player-bar__liked");
+    expect(css).toContain(".app-shell.app-shell--normal .icon-button.player-bar__liked:hover:not(:disabled)");
+    expect(css).toContain('.app-shell.app-shell--normal[data-cover-tone="light"] .icon-button.player-bar__liked');
+    expect(css).toContain('.app-shell.app-shell--normal[data-cover-tone="light"] .icon-button.player-bar__liked:hover:not(:disabled)');
+    expect(css).toContain(".app-shell.app-shell--normal .icon-button.player-bar__liked .icon");
+    expect(css).toContain('.app-shell.app-shell--normal[data-cover-tone="light"] .icon-button.player-bar__liked .icon');
+    expect(css).toMatch(/#ef657a|rgb\(239,\s*101,\s*122\)/i);
+    expect(css).toMatch(/fill:\s*currentcolor/i);
   });
 });

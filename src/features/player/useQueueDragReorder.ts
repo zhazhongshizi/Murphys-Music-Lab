@@ -293,6 +293,11 @@ export function useQueueDragReorder({
       return;
     }
 
+    const fromHandle = target instanceof Element && Boolean(target.closest("[data-queue-drag-handle]"));
+    if (fromHandle) {
+      event.preventDefault();
+    }
+
     latestPointerRef.current = { x: event.clientX, y: event.clientY };
     const removeListeners = () => {
       window.removeEventListener("pointermove", onWindowPointerMove);
@@ -312,12 +317,16 @@ export function useQueueDragReorder({
       holdTimer: null,
       removeListeners,
     };
-    session.holdTimer = window.setTimeout(activateDrag, HOLD_DELAY_MS);
     sessionRef.current = session;
     window.addEventListener("pointermove", onWindowPointerMove, { passive: false });
     window.addEventListener("pointerup", onWindowPointerUp);
     window.addEventListener("pointercancel", onWindowPointerCancel);
     window.addEventListener("keydown", onWindowKeyDown, true);
+    if (fromHandle) {
+      activateDrag();
+    } else {
+      session.holdTimer = window.setTimeout(activateDrag, HOLD_DELAY_MS);
+    }
   }
 
   function onClickCapture(event: ReactMouseEvent<HTMLElement>) {

@@ -326,3 +326,21 @@
   padding: 0 3px;
   opacity: 0.85;
 }
+
+.terminal-progress__track:hover .terminal-progress__cursor,
+.terminal-progress__track:focus-visible .terminal-progress__cursor,
+.terminal-progress__track.is-dragging .terminal-progress__cursor {
+  box-shadow: 0 0 0 3px rgb(155 198 108 / 22%), 0 0 10px rgb(155 198 108 / 45%);
+}
+
+.terminal-progress__track:hover .terminal-progress__fill,
+.terminal-progress__track:focus-visible .terminal-progress__fill,
+.terminal-progress__track.is-dragging .terminal-progress__fill {
+  box-shadow: 0 0 8px rgb(155 198 108 / 38%);
+}
+
+.terminal-volume__blocks:hover i.is-on,
+.terminal-volume__blocks:focus-visible i.is-on,
+.terminal-volume__blocks.is-dragging i.is-on {
+  box-shadow: 0 0 6px rgb(155 198 108 / 35%);
+}

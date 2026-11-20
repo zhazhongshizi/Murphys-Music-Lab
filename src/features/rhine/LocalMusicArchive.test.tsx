@@ -42,7 +42,7 @@ it("plays or queues the selected local metadata only on an explicit action", asy
   expect(mocks.play).not.toHaveBeenCalled();
   fireEvent.click(within(detail).getByRole("button", { name: "播放 本地歌曲3" }));
   await waitFor(() => expect(mocks.play).toHaveBeenCalledExactlyOnceWith(tracks[2]));
-  fireEvent.click(screen.getByRole("button", { name: "← 返回本地音乐阵列" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回本地音乐阵列" }));
   expect(screen.getByRole("region", { name: "当前选中本地曲目" })).toHaveTextContent("本地歌曲3");
 });
 it("retains two-step deletion and clamps the final page after reloading", async () => {
@@ -56,7 +56,7 @@ it("retains two-step deletion and clamps the final page after reloading", async 
   await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(tracks[8]!.id));
   expect(await screen.findByRole("heading", { name: "本地歌曲8" })).toBeInTheDocument();
   expect(mocks.apply).toHaveBeenCalledWith(session);
-  fireEvent.click(screen.getByRole("button", { name: "← 返回本地音乐阵列" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回本地音乐阵列" }));
   expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
 });
 it("imports through the existing controller and recovers a failed read", async () => {

@@ -2,6 +2,8 @@ import { type RecommendationKind } from "../../backend/catalogDiscoveryAdapter";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
 import type { CatalogEntity, CatalogEntityPage } from "../../contracts/catalogBrowse";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import { AlbumArtwork } from "../stage/AlbumArtwork";
 import { useRecommendations } from "./useRecommendations";
 import { AlbumLink } from "./CatalogDetails";
@@ -31,8 +33,7 @@ export function RecommendationPanel({ kind, accountKey, active = true, onOpen }:
           disabled={busy || !active || !page?.items.length}
           title={kind === "radar" ? "清空当前播放列表，加入全部雷达推荐并播放" : "将全部猜你喜欢追加到当前播放列表"}
           onClick={() => void actAll()}><Icon name={kind === "radar" ? "play" : "cassette-add"} size={16} />{kind === "radar" ? "播放雷达推荐" : "全部添加进播放列表中"}</button>}
-        <button type="button" className="text-button" disabled={busy || !active}
-          onClick={refresh}>刷新推荐</button>
+        <Tooltip content="刷新推荐"><button type="button" className="icon-button icon-button--quiet" aria-label="刷新推荐" disabled={busy || !active} onClick={refresh}><Icon name="refresh" size={16} /></button></Tooltip>
       </div></header>
     {error ? <p role="alert">推荐暂时不可用，检查网络后可刷新重试。</p> :
       !page ? <p role="status">正在读取推荐…</p> : <>
@@ -50,10 +51,7 @@ export function RecommendationPanel({ kind, accountKey, active = true, onOpen }:
             <div><strong>{song.title}</strong><small>{song.artists.map((artist, index) =>
               <span key={`${artist.id}:${index}`}>{index > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => onOpen({ kind: "artist", ...artist })}>{artist.name}</button>}</span>)}
               {" · "}<AlbumLink track={song} onOpen={onOpen} /></small></div>
-            <span className="catalog-detail-song-actions"><button type="button" className="play-next-button"
-              disabled={busy} aria-label={`下一首播放 ${song.title}`} title="下一首播放" onClick={() => void act(song, "next")}><Icon name="play-next" size={20} /></button>
-              <button type="button" disabled={busy} aria-label={`播放 ${song.title}`} onClick={() => void act(song, "play")}>播放</button>
-              <button type="button" disabled={busy} aria-label={`加入队列 ${song.title}`} onClick={() => void act(song, "enqueue")}>＋</button></span>
+            <TrackRowActions className="catalog-detail-song-actions" title={song.title} disabled={busy} onPlay={() => void act(song, "play")} onNext={() => void act(song, "next")} onEnqueue={() => void act(song, "enqueue")} />
           </li>)}</ol>}
       {kind !== "guess" && <nav className="catalog-browse-pages" aria-label="推荐分页">
         <button type="button" disabled={busy || pageNumber === 1} onClick={() => goToPage(pageNumber - 1)}>上一页</button>

@@ -28,10 +28,14 @@ export function SmartShuffleToggle({ presentation = "menu" }: { presentation?: "
     ? status.likesLoaded ? "已开启 · 随机模式生效 · 下次启动保持开启" : "已开启时间加权 · 开关已保存，喜欢列表暂未同步"
     : "已关闭 · 开关自动保存，开启后久未听优先";
   const control = <button type="button" role={presentation === "rhine" ? "switch" : "menuitemcheckbox"} aria-checked={status.enabled}
-      aria-label="智能随机 · 遗忘度" className={presentation === "rhine" ? "rhine-smart-shuffle-button" : undefined}
+      aria-label="智能随机 · 遗忘度"
+      className={presentation === "rhine" ? "rhine-smart-shuffle-button settings-switch" : "stage-menu__switch-item"}
       disabled={!native || busy} onClick={() => void toggle()}
       title="仅影响随机播放：久未听和喜欢的歌曲适当优先，减少近期重复。自动保存开关，下次启动沿用。">
-      <span>{busy ? "智能随机：正在读取…" : "智能随机 · 遗忘度"}</span><i aria-hidden="true" />
+      <span>{busy ? "智能随机：正在读取…" : "智能随机 · 遗忘度"}</span>
+      <span className="settings-switch__track" aria-hidden="true">
+        <span className="settings-switch__thumb" />
+      </span>
     </button>;
   if (presentation === "rhine") return <div className="rhine-smart-shuffle">
     <p className="rhine-eyebrow">实验性功能</p>{control}

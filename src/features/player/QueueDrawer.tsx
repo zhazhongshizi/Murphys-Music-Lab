@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SourceBadge } from "../providers/SourceBadge";
 
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { AlbumArtwork } from "../stage/AlbumArtwork";
 import {
   getCurrentTrack,
@@ -14,9 +15,18 @@ import { useQueueDragReorder } from "./useQueueDragReorder";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
 import { SavedQueues } from "../library/PersonalLibrary";
 import { hasPlaybackTransport } from "../../backend/playbackTransport";
+import { switchQueue } from "../../backend/personalAdapter";
 
 const selectQueue = (snapshot: PlayerSnapshot) => snapshot.queue;
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
+const selectGeneration = (snapshot: PlayerSnapshot) => snapshot.generation;
+
+type ClearUndoState =
+  | { phase: "arming"; baselineGeneration: number }
+  | { phase: "ready"; clearedGeneration: number }
+  | { phase: "restoring"; clearedGeneration: number }
+  | { phase: "restored"; message: string }
+  | { phase: "error"; message: string };
 
 const FOCUSABLE_SELECTOR = [
   "button:not(:disabled)",
@@ -40,16 +50,19 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
   const queue = usePlayerSelector(selectQueue);
   const currentTrack = usePlayerSelector(getCurrentTrack);
   const nativeMode = usePlayerSelector(selectNativeMode);
+  const generation = usePlayerSelector(selectGeneration);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [rhinePage, setRhinePage] = useState(1);
   const [rendered, setRendered] = useState(open);
+  const [clearUndo, setClearUndo] = useState<ClearUndoState | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const queueListRef = useRef<HTMLOListElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   const wasRhineOpenRef = useRef(false);
+  const mountedRef = useRef(true);
   const previousListViewRef = useRef({ page: 1, query: "" });
   const filteredQueue = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -156,6 +169,73 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
   }
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clearUndo) return;
+    if (!open || !nativeMode) {
+      setClearUndo(null);
+      return;
+    }
+    if (clearUndo.phase === "arming") {
+      if (queue.length === 0) {
+        setClearUndo({ phase: "ready", clearedGeneration: generation });
+      } else if (generation !== clearUndo.baselineGeneration) {
+        setClearUndo(null);
+      }
+      return;
+    }
+    if (clearUndo.phase === "ready" && (queue.length > 0 || generation !== clearUndo.clearedGeneration)) {
+      setClearUndo(null);
+    }
+  }, [clearUndo, queue.length, generation, nativeMode, open]);
+
+  useEffect(() => {
+    if (!clearUndo) return;
+    const timeoutMs = clearUndo.phase === "arming"
+      ? 5000
+      : clearUndo.phase === "ready"
+        ? 8000
+        : clearUndo.phase === "restored"
+          ? 5000
+          : null;
+    if (timeoutMs === null) return;
+    const timer = window.setTimeout(() => {
+      setClearUndo(null);
+    }, timeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [clearUndo]);
+
+  function handleClearQueue() {
+    if (queue.length === 0) return;
+    if (nativeMode) {
+      setClearUndo({ phase: "arming", baselineGeneration: generation });
+    } else {
+      setClearUndo(null);
+    }
+    playerActions.clearQueue();
+  }
+
+  async function handleUndoClear() {
+    if (clearUndo?.phase !== "ready") return;
+    setClearUndo({ phase: "restoring", clearedGeneration: clearUndo.clearedGeneration });
+    try {
+      await switchQueue();
+      if (mountedRef.current) {
+        setClearUndo({ phase: "restored", message: "已恢复队列，点击播放继续" });
+      }
+    } catch {
+      if (mountedRef.current) {
+        setClearUndo({ phase: "error", message: "未能恢复队列，请检查本地存储或从已存队列切换。" });
+      }
+    }
+  }
+
+  useEffect(() => {
     if (open) {
       setRendered(true);
       return;
@@ -172,6 +252,37 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
   const reducedMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const closing = !open && rendered && presentation === "drawer" && !reducedMotion;
   if (!open && !closing) return null;
+
+  const canDrag = editable && queue.length >= 2 && !searchQuery.trim();
+  const clearUndoBanner = clearUndo && clearUndo.phase !== "arming" ? (
+    <div
+      className={clearUndo.phase === "error" ? "queue-drawer__undo queue-drawer__undo--error" : "queue-drawer__undo"}
+      role="status"
+    >
+      {clearUndo.phase === "ready" || clearUndo.phase === "restoring" ? (
+        <>
+          <span>已清空播放队列</span>
+          <button
+            disabled={clearUndo.phase === "restoring"}
+            onClick={() => void handleUndoClear()}
+            type="button"
+          >
+            撤销
+          </button>
+          <button onClick={() => setClearUndo(null)} type="button">
+            关闭
+          </button>
+        </>
+      ) : (
+        <>
+          <span>{clearUndo.message}</span>
+          <button onClick={() => setClearUndo(null)} type="button">
+            关闭
+          </button>
+        </>
+      )}
+    </div>
+  ) : null;
 
   const queueList = queue.length === 0 ? (
     <div className="queue-list__empty" role="status">
@@ -191,6 +302,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
           && drag.dragView.indicatorEdge === "after";
         const itemClassName = [
           "queue-list__item",
+          canDrag ? "queue-list__item--draggable" : "",
           active ? "queue-list__item--active" : "",
           dragging ? "queue-list__item--dragging" : "",
           indicatorBefore ? "queue-list__item--drop-before" : "",
@@ -211,6 +323,11 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
               visibleIndex,
             )}
           >
+            {canDrag ? (
+              <span aria-hidden="true" className="queue-list__drag-handle" data-queue-drag-handle="true">
+                <Icon name="grip" size={14} />
+              </span>
+            ) : null}
             <AlbumArtwork compact track={track} />
             <div className="queue-list__info">
             <button
@@ -231,33 +348,39 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
             <small><SongArtistLinks track={track} /> · {presentation === "rhine-detail" ? track.album || track.actualQuality : track.actualQuality}</small>
             </div>
             <div className="queue-list__actions" hidden={!editable}>
-              <button
-                aria-label={`上移《${track.title}》`}
-                className="mini-button"
-                disabled={index === 0}
-                onClick={() => playerActions.moveTrack(track.id, -1)}
-                type="button"
-              >
-                <Icon name="up" size={16} />
-              </button>
-              <button
-                aria-label={`下移《${track.title}》`}
-                className="mini-button"
-                disabled={index === queue.length - 1}
-                onClick={() => playerActions.moveTrack(track.id, 1)}
-                type="button"
-              >
-                <Icon name="down" size={16} />
-              </button>
-              <button
-                aria-label={`从队列移除《${track.title}》`}
-                className="mini-button mini-button--danger"
-                disabled={!nativeMode && queue.length <= 1}
-                onClick={() => playerActions.removeTrack(track.id)}
-                type="button"
-              >
-                <Icon name="trash" size={16} />
-              </button>
+              <Tooltip content="上移">
+                <button
+                  aria-label={`上移《${track.title}》`}
+                  className="mini-button queue-list__move"
+                  disabled={index === 0}
+                  onClick={() => playerActions.moveTrack(track.id, -1)}
+                  type="button"
+                >
+                  <Icon name="up" size={16} />
+                </button>
+              </Tooltip>
+              <Tooltip content="下移">
+                <button
+                  aria-label={`下移《${track.title}》`}
+                  className="mini-button queue-list__move"
+                  disabled={index === queue.length - 1}
+                  onClick={() => playerActions.moveTrack(track.id, 1)}
+                  type="button"
+                >
+                  <Icon name="down" size={16} />
+                </button>
+              </Tooltip>
+              <Tooltip content="从队列移除">
+                <button
+                  aria-label={`从队列移除《${track.title}》`}
+                  className="mini-button mini-button--danger"
+                  disabled={!nativeMode && queue.length <= 1}
+                  onClick={() => playerActions.removeTrack(track.id)}
+                  type="button"
+                >
+                  <Icon name="trash" size={16} />
+                </button>
+              </Tooltip>
             </div>
           </li>
         );
@@ -287,19 +410,20 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
         role="region"
         tabIndex={-1}
       >
-        <button className="rhine-back" onClick={onClose} type="button">← 返回磁带机</button>
+        <button className="rhine-back" onClick={onClose} type="button"><Icon name="back" size={16} />返回磁带机</button>
         <div className="rhine-queue-document__heading">
           <div><p className="rhine-eyebrow">UP NEXT / LOCAL QUEUE</p><h2 id="player-queue-title">播放队列</h2></div>
           <button
             aria-label="清空播放队列"
-            className="queue-drawer__clear"
+            className="queue-drawer__clear icon-button--danger"
             disabled={queue.length === 0}
             hidden={!editable}
-            onClick={() => playerActions.clearQueue()}
+            onClick={handleClearQueue}
             type="button"
           ><Icon name="trash" size={15} /><span>清空</span></button>
         </div>
         <p className="rhine-queue-document__summary">{queue.length} 首 · 本地队列</p>
+        {clearUndoBanner}
         {hasPlaybackTransport() && <SavedQueues compact />}
         <div className="rhine-document-actions rhine-queue-document__actions">
           <span>{queue.length} 首歌曲</span>
@@ -320,7 +444,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
         </nav>}
         {dragPreview}
         <p aria-live="polite" className="sr-only">{drag.announcement}</p>
-        <p className="queue-drawer__hint">长按歌曲可拖动排序；也可使用按钮精确移动。</p>
+        <p className="queue-drawer__hint">拖动左侧手柄或长按歌曲可排序；也可使用按钮精确移动。</p>
       </section>
     </>;
   }
@@ -347,21 +471,23 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
             <h2 id="player-queue-title">播放队列</h2>
           </div>
           <div className="queue-drawer__header-actions">
-            <button
-              aria-label="关闭播放队列"
-              className="icon-button icon-button--quiet"
-              onClick={onClose}
-              ref={closeButtonRef}
-              type="button"
-            >
-              <Icon name="close" />
-            </button>
+            <Tooltip content="关闭播放队列" side="bottom">
+              <button
+                aria-label="关闭播放队列"
+                className="icon-button icon-button--quiet"
+                onClick={onClose}
+                ref={closeButtonRef}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </Tooltip>
             <button
               hidden={!editable}
               aria-label="清空播放队列"
-              className="queue-drawer__clear"
+              className="queue-drawer__clear icon-button--danger"
               disabled={queue.length === 0}
-              onClick={() => playerActions.clearQueue()}
+              onClick={handleClearQueue}
               type="button"
             >
               <Icon name="trash" size={15} />
@@ -370,6 +496,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
           </div>
         </header>
         <p className="queue-drawer__summary">{queue.length} 首 · 本地队列</p>
+        {clearUndoBanner}
         {hasPlaybackTransport() && <SavedQueues compact />}
         {queueList}
         {pageCount > 1 && <nav className="queue-drawer__pages" aria-label="队列分页">
@@ -382,7 +509,7 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
           {drag.announcement}
         </p>
         <p className="queue-drawer__hint">
-          {!editable ? "点击歌曲可在电脑上播放；队列整理请在电脑端完成。" : nativeMode ? "长按歌曲可拖动排序，顺序会保存在本地。" : "长按歌曲可拖动排序；也可使用按钮精确移动。"}
+          {!editable ? "点击歌曲可在电脑上播放；队列整理请在电脑端完成。" : nativeMode ? "拖动左侧手柄或长按歌曲可排序，顺序会保存在本地。" : "拖动左侧手柄或长按歌曲可排序；也可使用按钮精确移动。"}
         </p>
       </section>
     </>

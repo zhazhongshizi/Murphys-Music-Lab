@@ -181,27 +181,32 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   resetPlayerFixture();
 });
 
 describe("RemoteProviderLibrary parity & safety", () => {
-  it("U01 & F04: renders per-row play/next/enqueue buttons and never fakes playback success when playTrack returns false", async () => {
+  it("U01 & F04: renders per-row trigger/next/enqueue buttons without native title and never fakes playback success when playTrack returns false", async () => {
     vi.mocked(playerActions.playTrack).mockResolvedValueOnce(false);
     render(<RemoteProviderLibrary providerId="netease" onBack={vi.fn()} onSelectSource={vi.fn()} />);
 
     await screen.findByText("远端歌曲一");
     const row = screen.getByText("远端歌曲一").closest("tr")!;
-    const playBtn = within(row).getByRole("button", { name: "播放" });
-    const nextBtn = within(row).getByRole("button", { name: "下一首" });
-    const addBtn = within(row).getByRole("button", { name: "加队列" });
+    const playBtn = within(row).getByRole("button", { name: "播放 远端歌曲一" });
+    const nextBtn = within(row).getByRole("button", { name: "下一首播放 远端歌曲一" });
+    const addBtn = within(row).getByRole("button", { name: "加入队列 远端歌曲一" });
     expect(playBtn).toBeEnabled();
     expect(nextBtn).toBeEnabled();
     expect(addBtn).toBeEnabled();
+    expect(playBtn).not.toHaveAttribute("title");
+    expect(nextBtn).not.toHaveAttribute("title");
+    expect(addBtn).not.toHaveAttribute("title");
 
     fireEvent.click(playBtn);
     await screen.findByText("已加入队列，但未能启动播放：远端歌曲一");
     expect(screen.queryByText(/正在播放/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/正在电脑播放/)).not.toBeInTheDocument();
   });
 
   it("F03: NetEase likes and playlist expose distinct play-all and enqueue-all actions with >1000 truncation protection", async () => {
@@ -235,12 +240,12 @@ describe("RemoteProviderLibrary parity & safety", () => {
     await screen.findByText("远端测试视频");
 
     const row = screen.getByText("远端测试视频").closest("tr")!;
-    fireEvent.click(within(row).getByRole("button", { name: "加队列" }));
+    fireEvent.click(within(row).getByRole("button", { name: "加入队列 远端测试视频" }));
     await waitFor(() => expect(api.nativeProviderEnqueueTrack).toHaveBeenCalledWith(part1));
     expect(playerActions.playTrack).not.toHaveBeenCalled();
 
     vi.mocked(api.nativeProviderVideoParts).mockResolvedValue(page([part1, part2]));
-    fireEvent.click(within(row).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(row).getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
     await screen.findByText("P2 · 第二 P");
     await screen.findByText(/该视频包含多个分 P/);
     expect(playerActions.playTrack).not.toHaveBeenCalled();
@@ -263,13 +268,13 @@ describe("RemoteProviderLibrary parity & safety", () => {
     await screen.findByText("远端歌曲二");
 
     const blockedRow = screen.getByText("远端歌曲二").closest("tr")!;
-    expect(within(blockedRow).getByRole("button", { name: "播放" })).toBeDisabled();
-    expect(within(blockedRow).getByRole("button", { name: "加队列" })).toBeDisabled();
+    expect(within(blockedRow).getByRole("button", { name: "播放 远端歌曲二" })).toBeDisabled();
+    expect(within(blockedRow).getByRole("button", { name: "加入队列 远端歌曲二" })).toBeDisabled();
     expect(screen.getByText(/需要登录/)).toBeInTheDocument();
     expect(screen.queryByText("在线")).not.toBeInTheDocument();
 
     const okRow = screen.getByText("远端歌曲一").closest("tr")!;
-    fireEvent.click(within(okRow).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(okRow).getByRole("button", { name: "播放 远端歌曲一" }));
     fireEvent.click(screen.getByRole("button", { name: "创建的歌单" }));
     await screen.findByText("远端自建歌单");
 
@@ -456,7 +461,7 @@ describe("RemoteProviderLibrary parity & safety", () => {
     await screen.findByText("自建收藏夹");
     fireEvent.click(screen.getByRole("button", { name: "查看视频" }));
     await screen.findByText("远端测试视频");
-    fireEvent.click(screen.getByRole("button", { name: "查看分 P" }));
+    fireEvent.click(screen.getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
     await screen.findByText("P1 · 第 1 P");
 
     fireEvent.click(screen.getByRole("button", { name: "播放全部分 P" }));
@@ -591,7 +596,7 @@ describe("RemoteProviderLibrary parity & safety", () => {
 
     // 1. Click play on old search result (nativeProviderVideoParts in flight), then immediately re-submit the SAME keyword
     const oldRow = screen.getByText("远端测试视频").closest("tr")!;
-    fireEvent.click(within(oldRow).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(oldRow).getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
     expect(screen.getByText(`正在读取视频分 P：${video1.title}…`)).toBeInTheDocument();
 
     fireEvent.submit(searchInput.closest("form")!);
@@ -606,7 +611,7 @@ describe("RemoteProviderLibrary parity & safety", () => {
     expect(screen.queryByText(/正在播放/)).not.toBeInTheDocument();
 
     // 2. Click play on old search result again, then immediately submit a NEW search keyword
-    fireEvent.click(within(oldRow).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(oldRow).getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
     expect(screen.getByText(`正在读取视频分 P：${video1.title}…`)).toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: "新词" } });
@@ -626,7 +631,7 @@ describe("RemoteProviderLibrary parity & safety", () => {
 
     // 3. Click play on new search result, then immediately resolve a BV input
     const newRow = screen.getByText("新搜索视频").closest("tr")!;
-    fireEvent.click(within(newRow).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(newRow).getByRole("button", { name: "播放或展开分 P 新搜索视频" }));
     expect(screen.getByText(`正在读取视频分 P：${newVideo.title}…`)).toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: resolvedVideo.bvid } });
@@ -660,7 +665,7 @@ describe("RemoteProviderLibrary parity & safety", () => {
     await screen.findByText("远端歌曲一");
 
     const songRow = screen.getByText("远端歌曲一").closest("tr")!;
-    fireEvent.click(within(songRow).getByRole("button", { name: "播放" }));
+    fireEvent.click(within(songRow).getByRole("button", { name: "播放 远端歌曲一" }));
     fireEvent.click(screen.getByRole("button", { name: "歌单" }));
     await screen.findByText("远端自建歌单");
 
@@ -761,4 +766,112 @@ describe("RemoteProviderLibrary parity & safety", () => {
       view.unmount();
     },
   );
+
+  it("P2-02 (1): clicking track row trigger plays and shows 5s toast that auto-dismisses, and omits toast when playTrack returns false", async () => {
+    render(<RemoteProviderLibrary providerId="netease" onBack={vi.fn()} onSelectSource={vi.fn()} />);
+    await screen.findByText("远端歌曲一");
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const rowTrigger = screen.getByRole("button", { name: "播放 远端歌曲一" });
+    fireEvent.click(rowTrigger);
+    await screen.findByText("正在电脑播放《远端歌曲一》");
+    expect(playerActions.playTrack).toHaveBeenCalledExactlyOnceWith(track1.id);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByText("正在电脑播放《远端歌曲一》")).not.toBeInTheDocument();
+
+    vi.mocked(playerActions.playTrack).mockResolvedValueOnce(false);
+    fireEvent.click(rowTrigger);
+    await screen.findByText("已加入队列，但未能启动播放：远端歌曲一");
+    expect(screen.queryByText(/正在电脑播放/)).not.toBeInTheDocument();
+  });
+
+  it("P2-02 (2): pointermove exceeding 10px cancels row click to prevent accidental playback during scroll", async () => {
+    render(<RemoteProviderLibrary providerId="netease" onBack={vi.fn()} onSelectSource={vi.fn()} />);
+    await screen.findByText("远端歌曲一");
+
+    const rowTrigger = screen.getByRole("button", { name: "播放 远端歌曲一" });
+    fireEvent.pointerDown(rowTrigger, { clientX: 120, clientY: 200 });
+    fireEvent.pointerMove(rowTrigger, { clientX: 120, clientY: 215 });
+    fireEvent.pointerUp(rowTrigger, { clientX: 120, clientY: 215 });
+    fireEvent.click(rowTrigger);
+
+    expect(api.nativeProviderEnqueueTrack).not.toHaveBeenCalled();
+    expect(playerActions.playTrack).not.toHaveBeenCalled();
+    expect(screen.queryByText(/正在电脑播放/)).not.toBeInTheDocument();
+
+    // Small movement within 10px still triggers playback
+    fireEvent.pointerDown(rowTrigger, { clientX: 120, clientY: 200 });
+    fireEvent.pointerMove(rowTrigger, { clientX: 123, clientY: 204 });
+    fireEvent.pointerUp(rowTrigger, { clientX: 123, clientY: 204 });
+    fireEvent.click(rowTrigger);
+
+    await waitFor(() => expect(playerActions.playTrack).toHaveBeenCalledExactlyOnceWith(track1.id));
+  });
+
+  it("P2-02 (3): clicking undo on toast restores previous track when it exists in queue", async () => {
+    act(() => {
+      playerActions.applyAuthoritativeSession({
+        requestedQuality: "320k",
+        mode: "sequence",
+        queue: {
+          generation: 10,
+          selectedIndex: 0,
+          items: [
+            { id: "prev-1", title: "上一首老歌", artist: "歌手 X", album: "", durationMs: 150_000 },
+            api.providerTrackToQueueTrack(track1),
+          ],
+        },
+        player: {
+          state: "playing",
+          generation: 10,
+          currentTrack: { id: "prev-1", title: "上一首老歌", artist: "歌手 X" },
+          positionMs: 10_000,
+          durationMs: 150_000,
+          volume: 0.7,
+          muted: false,
+          failure: null,
+        },
+      });
+    });
+
+    render(<RemoteProviderLibrary providerId="netease" onBack={vi.fn()} onSelectSource={vi.fn()} />);
+    await screen.findByText("远端歌曲一");
+
+    fireEvent.click(screen.getByRole("button", { name: "播放 远端歌曲一" }));
+    await screen.findByText("正在电脑播放《远端歌曲一》");
+
+    const undoButton = screen.getByRole("button", { name: "撤销" });
+    fireEvent.click(undoButton);
+
+    await waitFor(() => expect(playerActions.playTrack).toHaveBeenLastCalledWith("prev-1"));
+    await screen.findByText("已切回《上一首老歌》");
+    expect(screen.queryByText("正在电脑播放《远端歌曲一》")).not.toBeInTheDocument();
+  });
+
+  it("P2-02 (4): multi-P Bilibili row trigger only expands parts without playing, while single-P plays immediately and shows toast", async () => {
+    render(<RemoteProviderLibrary providerId="bilibili" initialTab="search" onBack={vi.fn()} onSelectSource={vi.fn()} />);
+    const searchInput = await screen.findByRole("searchbox", { name: "搜索 Bilibili 视频或输入 BV/AV 号" });
+    fireEvent.change(searchInput, { target: { value: "测试" } });
+    fireEvent.submit(searchInput.closest("form")!);
+    await screen.findByText("远端测试视频");
+
+    // Multi-P video: clicking row expands parts picker without playing
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValueOnce(page([part1, part2]));
+    fireEvent.click(screen.getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
+    await screen.findByText("P2 · 第二 P");
+    expect(playerActions.playTrack).not.toHaveBeenCalled();
+    expect(screen.queryByText(/正在电脑播放/)).not.toBeInTheDocument();
+
+    // Return to search result and test single-P video: clicking row plays immediately with toast
+    fireEvent.click(screen.getByRole("button", { name: "返回视频列表" }));
+    await screen.findByText("远端测试视频");
+
+    vi.mocked(api.nativeProviderVideoParts).mockResolvedValueOnce(page([part1]));
+    fireEvent.click(screen.getByRole("button", { name: "播放或展开分 P 远端测试视频" }));
+    await waitFor(() => expect(playerActions.playTrack).toHaveBeenCalledExactlyOnceWith(part1.id));
+    await screen.findByText("正在电脑播放《分 P 一》");
+  });
 });

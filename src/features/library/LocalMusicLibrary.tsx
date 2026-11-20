@@ -12,6 +12,7 @@ import type {
   LocalMusicTrack,
 } from "../../contracts/localMusic";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import LocalMusicManager from "./LocalMusicManager";
 import { AlbumArtwork, type ArtworkTrack } from "../stage/AlbumArtwork";
 import {
@@ -278,8 +279,36 @@ export default function LocalMusicLibrary({ remote = false, rhine }: { remote?: 
               <tbody>{visibleTracks.slice(currentPage * 100, (currentPage + 1) * 100).map((track, index) => {
                 const active = currentTrack?.id === track.id;
                 return (
-                  <tr className={active ? "catalog-table__active" : undefined} key={track.id}>
-                    <td><span className={active ? "catalog-needle catalog-needle--active" : "catalog-needle"}>{active ? <span className="sr-only">当前曲目</span> : String(index + 1).padStart(2, "0")}</span></td>
+                  <tr
+                    className={active ? "catalog-table__active" : undefined}
+                    key={track.id}
+                    onDoubleClick={(e) => {
+                      if (deleteBusy || importBusy || track.available === false) return;
+                      if ((e.target as HTMLElement).closest("button:not(.catalog-table__title), a, input")) return;
+                      setSelectedId(track.id);
+                      setArmedDeleteId("");
+                      void handleQueue(track, true);
+                    }}
+                  >
+                    <td className="catalog-table__index-cell">
+                      <span className={active ? "catalog-needle catalog-needle--active" : "catalog-needle"}>{active ? <span className="sr-only">当前曲目</span> : String(index + 1).padStart(2, "0")}</span>
+                      <Tooltip content="立即播放">
+                        <button
+                          type="button"
+                          className="icon-button icon-button--quiet catalog-table__quick-play"
+                          aria-label={`立即播放 ${track.title}`}
+                          disabled={deleteBusy || importBusy || track.available === false}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(track.id);
+                            setArmedDeleteId("");
+                            void handleQueue(track, true);
+                          }}
+                        >
+                          <Icon name="play" size={14} />
+                        </button>
+                      </Tooltip>
+                    </td>
                     <td><AlbumArtwork compact track={artworkTrack(track)} /></td>
                     <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setArmedDeleteId(""); }} type="button"><strong>{track.title}</strong><small>{track.available === false ? "文件不可用 · 请重新定位或扫描目录" : track.referenced ? "引用文件" : "受管理的复制文件"}</small></button></td>
                     <td>{track.artist}</td><td>{track.album}</td><td><span className="quality-tag">{track.format.toUpperCase()}</span></td><td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>

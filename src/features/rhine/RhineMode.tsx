@@ -49,6 +49,10 @@ function RhineNavButton({ icon, label, shortLabel, active, onClick, buttonRef, d
   </button>;
 }
 
+const seekLyricLine = (atMs: number) => {
+  playerActions.seek(atMs);
+};
+
 function Lyrics() {
   const track = usePlayerSelector(getCurrentTrack);
   const position = usePlayerSelector(s => {
@@ -57,7 +61,7 @@ function Lyrics() {
     while (index >= 0 && (lyrics[index]?.atMs ?? Infinity) > s.positionMs) index--;
     return index;
   });
-  return track?.lyrics.length ? <ScrollingLyrics lyrics={track.lyrics} activeIndex={position} /> : <p>当前歌曲暂无歌词</p>;
+  return track?.lyrics.length ? <ScrollingLyrics lyrics={track.lyrics} activeIndex={position} onSeek={seekLyricLine} /> : <p>当前歌曲暂无歌词</p>;
 }
 
 function PlaylistDetail({ playlist, onBack, onPlayback, allowRemoval, accountKey, onSongsRemoved }: {
@@ -324,13 +328,16 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
       <nav className="rhine-navigation" aria-label="档案分类">
         <RhineNavButton icon="cassette-add" label="创建的歌单" shortLabel="我的歌单" active={navigation === "created"} onClick={() => goArchive("created")} />
         <RhineNavButton icon="cassette-heart" label={source === "bilibili" ? "收藏的他人收藏夹" : "收藏的歌单"} shortLabel="收藏" active={navigation === "favorite"} onClick={() => goArchive("favorite")} />
+        <span aria-orientation="vertical" className="rhine-nav-divider" role="separator" />
         <RhineNavButton icon="search" label="搜索" shortLabel="搜索" active={navigation === "search"} onClick={() => { if (source === "local") selectSource("qqmusic"); cancelPageTransition(); closeSettings(); setLocalPage(null); setSearch(true); setDeck(false); setLyrics(false); setQueue(false); }} />
         <RhineNavButton disabled={source !== "qqmusic"} icon="discovery" label="发现音乐" shortLabel="发现" active={navigation === "discover"} onClick={openDiscovery} />
+        <span aria-orientation="vertical" className="rhine-nav-divider" role="separator" />
         <RhineNavButton icon="folder-music" label="本地音乐" shortLabel="本地" active={navigation === "local"} onClick={() => goLocalPage("local")} />
         <RhineNavButton icon="history" label="最近播放" shortLabel="最近" active={navigation === "history"} onClick={() => goLocalPage("history")} />
         <RhineNavButton icon="library" label="资料库" shortLabel="资料库" active={navigation === "collection"} onClick={() => { cancelPageTransition(); closeSettings(); setLocalPage("collection"); }} />
         <RhineNavButton icon="statistics" label="听歌统计" shortLabel="统计" active={navigation === "statistics"} onClick={() => { cancelPageTransition(); closeSettings(); setLocalPage("statistics"); }} />
         <RhineNavButton icon="memory-tape" label="回忆磁带" shortLabel="回忆" active={navigation === "memories"} onClick={() => { cancelPageTransition(); closeSettings(); setLocalPage("memories"); }} />
+        <span aria-orientation="vertical" className="rhine-nav-divider" role="separator" />
         <RhineNavButton buttonRef={settingsTrigger} icon="settings" label="设置" shortLabel="设置" active={navigation === "settings"} onClick={() => { cancelPageTransition(); artistNavigation.closeArtist(false); setLocalPage(null); settingsTrigger.current?.focus(); setSettingsOpen(true); }} />
       </nav><WindowControls />
     </header>
@@ -347,7 +354,7 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
         onSceneChange={setDiscoveryData} onClose={closeDiscovery} onDeck={discoveryToDeck}
         motionDisabled={settings.superPerformance || (playing && (settings.disableCassetteMotionWhilePlaying || settings.reduceCassetteMotionWhilePlaying))} /></Suspense>}
       {localPage === "local" ? <Suspense fallback={<p role="status">正在载入本地音乐磁带…</p>}><LocalMusicLibrary rhine={{ component: LocalMusicArchive, renderer: settings.renderer, frameLimit: settings.frameLimit, spatialUpscaling: settings.spatialUpscaling, active: active && !booting && !artistNavigation.artist, quality: settings.quality, superPerformance: settings.superPerformance, onBack: () => goArchive(kind), onDeck: () => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); } }} /></Suspense> : localPage === "history" ? <Suspense fallback={<p role="status">正在载入最近播放磁带…</p>}><HistoryArchive renderer={settings.renderer} frameLimit={settings.frameLimit} spatialUpscaling={settings.spatialUpscaling} active={active && !booting && !artistNavigation.artist} quality={settings.quality} superPerformance={settings.superPerformance} onBack={() => goArchive(kind)} onDeck={() => { setLocalPage(null); setSearch(false); setLyrics(false); setQueue(false); setDeck(true); }} /></Suspense> : localPage && localPage !== "discover" ? <section key={localPage} className="rhine-local-page">
-        <div className="rhine-local-page-actions"><button onClick={() => setLocalPage(null)}>← 返回档案</button><span className="rhine-local-coordinate" aria-hidden="true">ARCHIVE MODULE / {localPage === "memories" ? "MEMORY TAPES" : localPage === "collection" ? "COLLECTION" : "LISTENING DATA"}</span><button onClick={() => { closeSettings(); setLocalPage(null); setQueue(false); setDeck(true); }}>进入磁带机 ↗</button></div>
+        <div className="rhine-local-page-actions"><button onClick={() => setLocalPage(null)}><Icon name="back" size={16} />返回档案</button><span className="rhine-local-coordinate" aria-hidden="true">ARCHIVE MODULE / {localPage === "memories" ? "MEMORY TAPES" : localPage === "collection" ? "COLLECTION" : "LISTENING DATA"}</span><button onClick={() => { closeSettings(); setLocalPage(null); setQueue(false); setDeck(true); }}>进入磁带机 ↗</button></div>
         <div className="rhine-local-page-content"><Suspense fallback={<p role="status">正在打开…</p>}>{localPage === "collection" ? <PersonalLibrary /> : localPage === "memories" ? <MemoryTapeArchive settings={settings} active={active && !booting && !artistNavigation.artist} /> : <ListeningStatistics />}</Suspense></div>
       </section> : !localPage && !discoveryClosing ? <>
       <div className="rhine-index"><span>{deck ? "TAPE TRANSPORT" : "COLLECTION"} / {String((deck ? trackIndex : stageSelected) + 1).padStart(2, "0")}</span><i /><span>{deck ? "ANALOG FORM / DIGITAL SOUND" : "音乐，由此展开"}</span></div>
@@ -373,7 +380,7 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
         </>
       ) : null}
       {deck && !queue && <TapeDeck accountKey={`${auth.state}:${accountId ?? "guest"}:${authRecovering}`} authenticated={auth.state === "authenticated" && !authRecovering} playlistTitle={stageSearch ? "搜索试听" : providerSource ? providerScene.titles[providerScene.selected] : playlist?.title} onBack={backFromDeck} onLyrics={() => setLyrics(v => !v)} onQueue={() => { setLyrics(false); setQueue(true); }} />}
-      {lyrics && <section className="rhine-document rhine-lyrics" aria-label="当前歌词"><button onClick={() => setLyrics(false)}>← 返回磁带机</button><Lyrics /></section>}
+      {lyrics && <section className="rhine-document rhine-lyrics" aria-label="当前歌词"><button onClick={() => setLyrics(false)}><Icon name="back" size={16} />返回磁带机</button><Lyrics /></section>}
       <QueueDrawer open={queue} onClose={() => setQueue(false)} presentation="rhine-detail" />
       {settingsOpen && <RhineSettingsPanel settings={settings}
         onRendererChange={renderer => setSettings(current => ({ ...current, renderer }))}
@@ -383,7 +390,7 @@ export default function RhineMode({ auth, authRecovering, active, onExit, onAcco
         onSuperPerformanceChange={superPerformance => setSettings(current => ({ ...current, superPerformance }))}
         onCassetteMotionChange={mode => setSettings(current => ({ ...current, disableCassetteMotionWhilePlaying: mode === "disabled", reduceCassetteMotionWhilePlaying: mode === "reduced" }))}
         onReset={() => setSettings(defaultRhineSettings())}
-        backLabel={deck ? "← 返回磁带机" : stageSearch ? "← 返回搜索" : "← 返回档案"}
+        backLabel={deck ? "返回磁带机" : stageSearch ? "返回搜索" : "返回档案"}
         onClose={() => closeSettings(true)}
         onAccount={() => { closeSettings(); onAccount(); }}
         onExit={() => { closeSettings(); onExit(); }} />}

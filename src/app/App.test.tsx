@@ -43,15 +43,17 @@ describe("黑胶温室应用外壳", () => {
     await user.type(search, "潮汐");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /潮汐来信/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^潮汐来信/ })).toBeInTheDocument();
     });
   });
 
-  it("可从更多菜单预览并退出部分数据状态", async () => {
+  it("可从设置菜单预览并退出部分数据状态", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    const settingsTrigger = screen.getByRole("button", { name: "设置" });
+    expect(settingsTrigger).toHaveAttribute("id", "settings-trigger");
+    await user.click(settingsTrigger);
     await user.click(screen.getByRole("menuitemradio", { name: "部分内容" }));
 
     expect(screen.getByText("已显示可用内容").closest("[role='status']")).toHaveTextContent("已显示可用内容");
@@ -63,7 +65,9 @@ describe("黑胶温室应用外壳", () => {
   it("在歌词区域显示设置，调整后保持打开并支持返回", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    const settingsTrigger = screen.getByRole("button", { name: "设置" });
+    expect(settingsTrigger).toHaveAttribute("id", "settings-trigger");
+    await user.click(settingsTrigger);
     const settings = screen.getByRole("region", { name: "设置" });
     expect(settings.closest(".stage-lyrics-panel")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "展开歌曲列表" })).not.toBeInTheDocument();
@@ -73,7 +77,7 @@ describe("黑胶温室应用外壳", () => {
     expect(settings).toBeVisible();
     await user.click(screen.getByRole("button", { name: "关闭设置" }));
     expect(screen.queryByRole("region", { name: "设置" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "更多" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "设置" })).toHaveFocus();
   });
 
   it("从曲库和空队列仍可打开设置", async () => {
@@ -82,9 +86,31 @@ describe("黑胶温室应用外壳", () => {
     await user.click(screen.getByRole("button", { name: "曲库" }));
     expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
     act(() => playerActions.clearQueue());
-    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     expect(screen.getByRole("region", { name: "设置" })).toBeVisible();
     expect(screen.getByText("队列是空的")).toBeVisible();
+  });
+
+  it("进入曲库后点击底栏封面或曲名可直接返回播放舞台", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回舞台查看《暮色温室》" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "返回播放舞台" }));
+    expect(screen.getByRole("heading", { name: "暮色温室" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "发现音乐" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "返回舞台查看《暮色温室》" }));
+    expect(screen.getByRole("heading", { name: "暮色温室" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
   });
 
   it("支持空格键播放快捷键", async () => {

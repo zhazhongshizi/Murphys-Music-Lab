@@ -227,7 +227,7 @@ it("未登录也可直接进入本地音乐和最近播放并返回档案", asyn
   expect(await screen.findByRole("region", { name: "本地音乐磁带阵列" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "最近播放" }));
   expect(await screen.findByRole("region", { name: "最近播放磁带阵列" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "← 返回档案" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回档案" }));
   expect(screen.getByText("登录后访问你的音乐档案")).toBeInTheDocument();
 });
 it("画质参数、超级性能和播放起伏开关即时持久化，重置后恢复默认", async () => {
@@ -330,7 +330,7 @@ it("设置页保留搜索关键词和同一个暂停场景，返回或切换搜�
   expect(search).toHaveAttribute("hidden");
   expect(input).toHaveValue("保存的关键词");
   expect(screen.getByRole("button", { name: "搜索" })).toHaveAttribute("aria-pressed", "false");
-  fireEvent.click(within(page).getByRole("button", { name: "← 返回搜索" }));
+  fireEvent.click(within(page).getByRole("button", { name: "返回搜索" }));
   expect(search).not.toHaveAttribute("hidden");
   expect(input).toHaveValue("保存的关键词");
   expect(scene).toHaveAttribute("data-active", "false");

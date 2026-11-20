@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { APP_NAME } from "../../app/branding";
 import { hasPlaybackTransport } from "../../backend/playbackTransport";
 import { updatesControl, type UpdateRequest, type UpdateSnapshot } from "../../backend/updateAdapter";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import "./update-settings.css";
 
 const messages: Record<UpdateSnapshot["state"], string> = {
@@ -43,7 +45,7 @@ export default function UpdateSettings({ presentation = "normal" }: { presentati
   return <>
     <button ref={trigger} type="button" className={presentation === "rhine" ? "rhine-update-trigger" : undefined} role={presentation === "normal" ? "menuitem" : undefined} onClick={() => setOpen(true)}>版本与更新</button>
     {open && createPortal(<dialog className="update-dialog" ref={dialog} aria-labelledby="update-title" onKeyDown={event => event.stopPropagation()} onCancel={event => { event.preventDefault(); close(); }}>
-      <header><div><span>APPLICATION / RELEASES</span><h2 id="update-title">版本与更新</h2></div><button type="button" aria-label="关闭更新设置" onClick={close}>关闭</button></header>
+      <header><div><span>APPLICATION / RELEASES</span><h2 id="update-title">版本与更新</h2></div><Tooltip content="关闭"><button type="button" className="icon-button icon-button--quiet" aria-label="关闭更新设置" onClick={close}><Icon name="close" size={16} /></button></Tooltip></header>
       {snapshot ? <>
         <p className="update-version">{APP_NAME} <strong>{snapshot.currentVersion}</strong><small>{snapshot.buildChannel === "Debug" ? "Debug · 开发测试版本" : "Release · 发行构建"}</small></p>
         <label className="update-auto"><input type="checkbox" checked={snapshot.automatic} disabled={checking} onChange={e => void run({ action: "setAutomatic", enabled: e.target.checked })} />启动后检查更新</label>

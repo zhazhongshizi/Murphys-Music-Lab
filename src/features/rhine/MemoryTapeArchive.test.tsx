@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import MemoryTapeArchive, { memoryMotion } from "./MemoryTapeArchive";
 import { defaultRhineSettings } from "./rhineSettings";
@@ -65,4 +66,47 @@ it("页面隐藏或入队处理中不自动刷新",async()=>{
   await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});expect(transport).toHaveBeenCalledTimes(count);
   visibility.mockReturnValue("visible");await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});expect(transport).toHaveBeenCalledTimes(count+1);
   view.unmount();
+});
+it("直接点击3D磁带预览可翻面并与翻面按钮状态同步，提示徽章在3D容器外",async()=>{
+  render(<MemoryTapeArchive settings={defaultRhineSettings()}/>);await open();
+  const preview=screen.getByRole("button",{name:"点击磁带翻面查看编号"});
+  const toolButton=screen.getByRole("button",{name:"翻面查看编号"});
+  expect(preview).toHaveAttribute("aria-pressed","false");
+  expect(preview).not.toHaveClass("is-flipped");
+  expect(toolButton).toHaveAttribute("aria-pressed","false");
+  const badge=preview.querySelector(".memory-preview__flip-badge");
+  expect(badge).not.toBeNull();
+  expect(badge).toHaveAttribute("aria-hidden","true");
+  expect(badge?.closest(".memory-flip-inner")).toBeNull();
+
+  fireEvent.click(preview);
+  const flippedPreview=screen.getByRole("button",{name:"点击磁带翻回正面"});
+  expect(flippedPreview).toBe(preview);
+  expect(preview).toHaveAttribute("aria-pressed","true");
+  expect(preview).toHaveClass("is-flipped");
+  expect(toolButton).toHaveAttribute("aria-pressed","true");
+
+  fireEvent.click(preview);
+  expect(screen.getByRole("button",{name:"点击磁带翻面查看编号"})).toBe(preview);
+  expect(preview).toHaveAttribute("aria-pressed","false");
+  expect(preview).not.toHaveClass("is-flipped");
+  expect(toolButton).toHaveAttribute("aria-pressed","false");
+});
+it("3D磁带预览可获得键盘焦点并支持Enter与Space翻面",async()=>{
+  const user=userEvent.setup();
+  render(<MemoryTapeArchive settings={defaultRhineSettings()}/>);await open();
+  const preview=screen.getByRole("button",{name:"点击磁带翻面查看编号"});
+  const toolButton=screen.getByRole("button",{name:"翻面查看编号"});
+  preview.focus();
+  expect(preview).toHaveFocus();
+
+  await user.keyboard("{Enter}");
+  expect(preview).toHaveAttribute("aria-pressed","true");
+  expect(preview).toHaveAccessibleName("点击磁带翻回正面");
+  expect(toolButton).toHaveAttribute("aria-pressed","true");
+
+  await user.keyboard(" ");
+  expect(preview).toHaveAttribute("aria-pressed","false");
+  expect(preview).toHaveAccessibleName("点击磁带翻面查看编号");
+  expect(toolButton).toHaveAttribute("aria-pressed","false");
 });

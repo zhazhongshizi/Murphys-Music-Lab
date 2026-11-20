@@ -49,7 +49,7 @@ function DiscoveryContent({ active, visible = active, accountKey, accessMessage,
     }}>
     <div className="discovery-rack-heading" ref={header}>
       <header className="discovery-header"><div><p className="rhine-eyebrow">DISCOVERY / MUSIC ARCHIVE</p><h1>发现音乐</h1></div>
-        <nav aria-label="发现页面导航"><button type="button" onClick={onClose}>← 返回档案</button>{onDeck&&<button type="button" onClick={onDeck}>进入磁带机 ↗</button>}</nav></header>
+        <nav aria-label="发现页面导航"><button type="button" onClick={onClose}><Icon name="back" size={16} />返回档案</button>{onDeck&&<button type="button" onClick={onDeck}>进入磁带机 ↗</button>}</nav></header>
       <div hidden={!!entity || !!accessMessage}><DiscoveryTabs value={kind} includeNewSongs={false} onChange={value=>{const next=value as RecommendationKind;setKind(next);setVisited(v=>v.includes(next)?v:[...v,next]);}} /></div>
     </div>
     {accessMessage && <div className="discovery-rack-state"><p role="status">{accessMessage}</p></div>}

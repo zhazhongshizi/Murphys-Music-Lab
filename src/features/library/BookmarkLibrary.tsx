@@ -1,5 +1,7 @@
 import { lazy, Suspense, useRef, useState } from "react";
 import { changeCollections, type Bookmark } from "../../backend/personalAdapter";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { AlbumArtwork } from "../stage/AlbumArtwork";
 import { ArtistAvatar } from "../artist/ArtistAvatar";
 import { SavedQueues } from "./SavedQueues";
@@ -34,7 +36,7 @@ export function PersonalLibrary() {
       {!rows.length && <p className="bookmark-empty">{data.bookmarks.length ? "没有匹配的书签，试试其他分类或关键词。" : "在专辑或歌手详情点击“加入我的资料库”，即可在这里找到。"}</p>}
       <ul className="personal-list bookmark-list">{rows.slice((currentPage - 1) * 30, currentPage * 30).map(b => <li key={`${b.kind}:${b.id}`}>
         <button type="button" className="bookmark-open" onClick={() => open(b)}>{b.kind === "album" ? <AlbumArtwork compact track={{ id: b.id, title: b.title, artist: "", coverCacheKey: b.coverCacheKey ?? undefined, accent: "#789575", artworkVariant: "fern" }} /> : <ArtistAvatar size="compact" artist={{ id: b.id, name: b.title, avatarCacheKey: b.coverCacheKey ?? undefined }} />}<span><strong>{b.title}</strong><small>{b.pinned ? "置顶 · " : ""}{b.kind === "album" ? "专辑" : "歌手"}</small></span></button>
-        <div className="personal-actions"><button type="button" disabled={busy} aria-label={`${b.pinned ? "取消置顶" : "置顶"} ${b.title}`} onClick={() => void mutate({ action: "pinBookmark", kind: b.kind, id: b.id, pinned: !b.pinned })}>{b.pinned ? "取消置顶" : "置顶"}</button><button type="button" disabled={busy} aria-label={`移除书签 ${b.title}`} onClick={() => void mutate({ action: "bookmark", kind: b.kind, id: b.id, title: b.title, saved: false })}>移除</button></div>
+        <div className="personal-actions"><Tooltip content={b.pinned ? "取消置顶" : "置顶"}><button type="button" className="icon-button icon-button--quiet bookmark-pin-button" aria-pressed={!!b.pinned} aria-label={`${b.pinned ? "取消置顶" : "置顶"} ${b.title}`} disabled={busy} onClick={() => void mutate({ action: "pinBookmark", kind: b.kind, id: b.id, pinned: !b.pinned })}><Icon name="pin" size={16} /></button></Tooltip><Tooltip content="移除书签"><button type="button" className="icon-button icon-button--quiet icon-button--danger" aria-label={`移除书签 ${b.title}`} disabled={busy} onClick={() => void mutate({ action: "bookmark", kind: b.kind, id: b.id, title: b.title, saved: false })}><Icon name="trash" size={16} /></button></Tooltip></div>
       </li>)}</ul>
       {rows.length > 30 && <nav className="personal-actions" aria-label="资料库分页"><button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage} / {Math.ceil(rows.length / 30)}</span><button type="button" disabled={currentPage * 30 >= rows.length} onClick={() => setPage(currentPage + 1)}>下一页</button></nav>}
     </>}

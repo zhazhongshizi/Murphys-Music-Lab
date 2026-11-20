@@ -3,6 +3,9 @@ import { enqueueMemoryTape, getMemoryTape, getMemoryTapes, type MemoryTape, type
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
 import { playerActions } from "../player/playerStore";
 import { duration } from "../library/analyticsDates";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import type { RhineSettings } from "./rhineSettings";
 import "./memory-tapes.css";
 
@@ -75,7 +78,7 @@ export default function MemoryTapeArchive({settings,active=true}:{settings:Rhine
   }
   const current=detail?.tape;
   return <section className="memory-archive" aria-label="回忆磁带" data-motion={memoryMotion(settings)} data-active={active} data-frame-limit={settings.frameLimit}>
-    <header className="memory-header"><div><span className="memory-eyebrow">RHINE / PERSONAL ARCHIVE</span><h1>回忆磁带</h1><p>按月收好，你听过的声音。</p></div><button type="button" disabled={busy} onClick={()=>setRevision(r=>r+1)}>刷新档案</button></header>
+    <header className="memory-header"><div><span className="memory-eyebrow">RHINE / PERSONAL ARCHIVE</span><h1>回忆磁带</h1><p>按月收好，你听过的声音。</p></div><Tooltip content="刷新档案"><button type="button" className="icon-button icon-button--quiet memory-refresh-button" aria-label="刷新档案" disabled={busy} onClick={() => setRevision(r => r + 1)}><Icon name="refresh" size={16} /></button></Tooltip></header>
     <div className="memory-layout"><section className="memory-cabinet" aria-label="月度磁带档案柜">
       <div className="memory-section-title"><span>MONTHLY COLLECTION</span><small>最新月份在前</small></div>
       {listError?<p role="alert">磁带档案读取失败。<button onClick={()=>setRevision(r=>r+1)}>重试档案</button></p>:!page?<p role="status">正在整理月度磁带…</p>:!page.items.length?<div className="memory-empty"><strong>还没有回忆磁带</strong><p>开始听歌后，有记录的月份会自动生成磁带。不会从缺失记录中补造历史。</p></div>:<>
@@ -89,11 +92,11 @@ export default function MemoryTapeArchive({settings,active=true}:{settings:Rhine
       {!month?<div className="memory-empty memory-empty-detail"><span className="memory-empty-reels" aria-hidden="true">◎ ─ ◎</span><h2>从档案柜取出一张磁带</h2><p>查看那个月的收听记录，再把想听的歌放回队列。</p></div>:detailError?<p role="alert">这张磁带读取失败。<button onClick={()=>setRevision(r=>r+1)}>重试磁带</button></p>:!current||!detail?<p role="status">正在打开 {month} 磁带…</p>:<div className="memory-open" key={month}>
         <div className="memory-section-title"><h2 ref={heading} tabIndex={-1}>{current.month} / 回忆档案</h2><button type="button" disabled={busy} onClick={eject}>取出磁带</button></div>
         <div className="memory-overview"><div className="memory-specimen">
-        <div className={`memory-preview ${flipped?"is-flipped":""} ${loaded?"is-loaded":""}`} key={`${month}-${loaded}`}><div className="memory-flip-inner">
+        <button type="button" className={`memory-preview ${flipped?"is-flipped":""} ${loaded?"is-loaded":""}`} key={`${month}-${loaded}`} aria-pressed={flipped} aria-label={flipped?"点击磁带翻回正面":"点击磁带翻面查看编号"} onClick={()=>setFlipped(v=>!v)}><div className="memory-flip-inner">
           <div className="memory-shell-edge memory-shell-left" aria-hidden="true"/><div className="memory-shell-edge memory-shell-right" aria-hidden="true"/>
           <div className="memory-shell-edge memory-shell-top" aria-hidden="true"/><div className="memory-shell-edge memory-shell-bottom" aria-hidden="true"/>
           <div className="memory-front"><TapeFace tape={current}/></div><div className="memory-back"><TapeFace tape={current} back/></div>
-        </div></div>
+        </div><span className="memory-preview__flip-badge" aria-hidden="true"><Icon name="rotate" size={13} /></span></button>
         <div className="memory-detail-tools"><span className={`memory-status memory-status-${current.status}`}>{STATUS[current.status]}</span><button type="button" aria-pressed={flipped} onClick={()=>setFlipped(v=>!v)}>翻面查看编号</button></div>
         </div><div className="memory-telemetry">
         <div className="memory-summary"><strong>{duration(current.totalMs)}</strong><span>{current.qualifiedPlays} 次有效收听 · {current.trackCount} 首歌曲</span></div>
@@ -106,7 +109,7 @@ export default function MemoryTapeArchive({settings,active=true}:{settings:Rhine
         {notice&&<p className="memory-notice" role="status">{notice}</p>}
         <ol className="memory-tracks" start={offset+1}>{detail.songs.map((song,i)=><li key={song.id} data-unavailable={song.availability==="unavailable"}>
           <span className="memory-rank">{String(offset+i+1).padStart(2,"0")}</span><div className="memory-track-info"><strong>{song.title}</strong><span>{song.artist}</span><small>{song.qualifiedPlays} 次 · {duration(song.listenedMs)}</small><small>{song.availability==="unavailable"?"不可用 · 本地文件缺失或曲目标识失效":failed.includes(song.id)?"暂时无法播放 · 可重试":song.availability==="local"?"本地文件可读取":"在线曲目 · 播放时确认"}</small></div>
-          <div className="memory-track-actions"><button disabled={busy||song.availability==="unavailable"} aria-label={`回放 ${song.title}`} onClick={()=>void enqueue([song],true)}>回放</button><button disabled={busy||song.availability==="unavailable"} aria-label={`加入队列 ${song.title}`} onClick={()=>void enqueue([song])}>＋</button></div>
+          <TrackRowActions variant="rhine" className="memory-track-actions" title={song.title} playLabel={`回放 ${song.title}`} playTooltip="回放" disabled={busy || song.availability === "unavailable"} onPlay={() => void enqueue([song], true)} onEnqueue={() => void enqueue([song])} />
         </li>)}</ol>
         {!detail.songs.length&&<p>此页暂无可展示曲目。</p>}
         <nav className="memory-pagination" aria-label="磁带曲目分页"><button disabled={busy||offset===0} onClick={()=>{setOffset(v=>v-50);setDetail(null);setNotice("");}}>上一页</button><span>第 {offset/50+1} 页</span><button disabled={busy||!detail.hasMore} onClick={()=>{setOffset(v=>v+50);setDetail(null);setNotice("");}}>下一页</button></nav>

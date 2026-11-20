@@ -1,8 +1,267 @@
-.remote-settings { padding: 8px 12px 14px; display: grid; gap: 10px; min-width: 0; }
-.remote-settings p { margin: 0; color: var(--normal-subtle); font-size: 12px; line-height: 1.6; }
-.remote-settings label { display: grid; gap: 5px; color: var(--normal-muted); font-size: 12px; }
-.remote-settings input { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px; border: 1px solid var(--normal-edge); border-radius: 7px; background: rgb(0 0 0 / 18%); color: var(--normal-paper); font: 12px var(--font-data); user-select: text; }
-.remote-settings input:focus-visible { outline: 2px solid var(--normal-paper); outline-offset: 2px; }
+.remote-settings__switch-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.remote-settings__switch-row .settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  color: var(--paper-muted, var(--normal-muted));
+  text-align: left;
+}
+
+.remote-settings__switch-row .settings-switch[aria-checked="true"] {
+  color: var(--paper, var(--normal-paper));
+}
+
+.remote-settings__switch-row .settings-switch__track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 32px;
+  height: 18px;
+  padding: 2px;
+  border: 1px solid var(--line, var(--normal-edge));
+  border-radius: 999px;
+  background: var(--surface, rgb(255 255 255 / 12%));
+  flex-shrink: 0;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.remote-settings__switch-row .settings-switch__thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper-muted, var(--normal-muted));
+  transform: translateX(0);
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__track {
+  border-color: var(--lichen, #b8c77a);
+  background: var(--lichen, #b8c77a);
+}
+
+.remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__thumb {
+  background: var(--vinyl, #111410);
+  transform: translateX(14px);
+}
+
+.remote-settings {
+  padding: 8px 12px 14px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.remote-settings p {
+  margin: 0;
+  color: var(--patina, var(--normal-subtle));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.remote-settings__field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.remote-settings label {
+  display: grid;
+  gap: 5px;
+  color: var(--paper-muted, var(--normal-muted));
+  font-size: 12px;
+}
+
+.remote-settings__field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.remote-settings input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 9px;
+  border: 1px solid var(--line, var(--normal-edge));
+  border-radius: 7px;
+  background: var(--surface, rgb(0 0 0 / 18%));
+  color: var(--paper, var(--normal-paper));
+  font: 12px var(--font-data);
+  user-select: text;
+}
+
+.remote-settings input:focus-visible {
+  outline: 2px solid var(--paper, var(--normal-paper));
+  outline-offset: 2px;
+}
+
+.remote-settings .remote-settings__field-row .remote-settings__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--line, var(--normal-edge));
+  border-radius: 7px;
+  background: var(--surface, rgb(255 255 255 / 6%));
+  color: var(--paper-muted, var(--normal-muted));
+}
+
+.remote-settings .remote-settings__field-row .remote-settings__copy-btn:hover:not(:disabled) {
+  background: var(--surface-raised, rgb(255 255 255 / 12%));
+  color: var(--paper, var(--normal-paper));
+  border-color: var(--lichen, var(--normal-paper));
+}
+
+.remote-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-settings .remote-settings__actions .remote-settings__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, var(--normal-edge));
+  border-radius: 8px;
+  background: var(--surface, rgb(255 255 255 / 6%));
+  color: var(--paper, var(--normal-paper));
+  font-size: 12px;
+  text-align: center;
+}
+
+.remote-settings .remote-settings__actions .remote-settings__action-btn:hover:not(:disabled),
+.remote-settings .remote-settings__actions .remote-settings__action-btn[aria-expanded="true"] {
+  background: var(--surface-raised, rgb(255 255 255 / 12%));
+  border-color: var(--lichen, var(--normal-paper));
+  color: var(--paper, var(--normal-paper));
+}
+
+.remote-settings__qr-panel {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgb(17 20 16 / 14%);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f2328;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
+}
+
+.remote-settings__qr-frame {
+  width: min(176px, 100%);
+  aspect-ratio: 1;
+  background: #ffffff;
+}
+
+.remote-settings__qr-frame svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.remote-settings .remote-settings__qr-hint,
+.remote-settings .remote-settings__qr-fallback {
+  margin: 0;
+  color: #424a53;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.app-shell.app-shell--normal[data-cover-tone="light"] .remote-settings input {
+  background: rgb(255 255 255 / 64%);
+  border-color: rgb(32 45 61 / 20%);
+  color: var(--paper);
+}
+
+.app-shell.app-shell--normal[data-cover-tone="light"] .remote-settings .remote-settings__field-row .remote-settings__copy-btn,
+.app-shell.app-shell--normal[data-cover-tone="light"] .remote-settings .remote-settings__actions .remote-settings__action-btn {
+  background: rgb(255 255 255 / 58%);
+  border-color: rgb(32 45 61 / 20%);
+  color: var(--paper);
+}
+
+.remote-control-settings--rhine .remote-settings__switch-row .settings-switch,
+.rhine-mode .remote-settings__switch-row .settings-switch {
+  color: var(--rh-ink);
+}
+
+.remote-control-settings--rhine .remote-settings__switch-row .settings-switch__track,
+.rhine-mode .remote-settings__switch-row .settings-switch__track {
+  border-color: var(--rh-edge);
+  background: var(--rh-surface-3);
+}
+
+.remote-control-settings--rhine .remote-settings__switch-row .settings-switch__thumb,
+.rhine-mode .remote-settings__switch-row .settings-switch__thumb {
+  background: var(--rh-ink-2);
+}
+
+.remote-control-settings--rhine .remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__track,
+.rhine-mode .remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__track {
+  border-color: var(--rh-accent);
+  background: var(--rh-accent);
+}
+
+.remote-control-settings--rhine .remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__thumb,
+.rhine-mode .remote-settings__switch-row .settings-switch[aria-checked="true"] .settings-switch__thumb {
+  background: #ffffff;
+}
+
+.remote-control-settings--rhine .remote-settings p,
+.rhine-mode .remote-settings p {
+  color: var(--rh-ink-3);
+}
+
+.remote-control-settings--rhine .remote-settings label,
+.rhine-mode .remote-settings label {
+  color: var(--rh-ink-2);
+}
+
+.remote-control-settings--rhine .remote-settings input,
+.rhine-mode .remote-settings input {
+  border-radius: 2px;
+  border-color: var(--rh-edge);
+  background: var(--rh-surface-1);
+  color: var(--rh-ink);
+}
+
+.remote-control-settings--rhine .remote-settings .remote-settings__field-row .remote-settings__copy-btn,
+.remote-control-settings--rhine .remote-settings .remote-settings__actions .remote-settings__action-btn,
+.rhine-mode .remote-settings .remote-settings__field-row .remote-settings__copy-btn,
+.rhine-mode .remote-settings .remote-settings__actions .remote-settings__action-btn {
+  border-radius: 2px;
+  border-color: var(--rh-edge);
+  background: var(--rh-surface-1);
+  color: var(--rh-ink);
+}
+
+.remote-control-settings--rhine .remote-settings__qr-panel,
+.rhine-mode .remote-settings__qr-panel {
+  border-radius: 2px;
+  border-color: var(--rh-edge);
+}
 
 .remote-control-settings--rhine :is(.remote-control-panel, .remote-control-actions button, .remote-control-qr, .remote-control-pin strong) {
   border-radius: 2px;

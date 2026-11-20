@@ -42,3 +42,99 @@ export function shortcutLabel(shortcut: string) {
   return [...SHORTCUT_MODIFIERS.filter(item => modifiers.includes(item.value)).map(item => item.label),
     SHORTCUT_KEYS.find(item => item.value === key)?.label ?? key].join(" + ");
 }
+
+export const SHORTCUT_KEY_CODES: ReadonlySet<string> = new Set(SHORTCUT_KEYS.map(item => item.value));
+
+const MODIFIER_ORDER = SHORTCUT_MODIFIERS.map(item => item.value);
+
+const MODIFIER_CODES = new Set([
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "MetaLeft",
+  "MetaRight",
+  "OSLeft",
+  "OSRight",
+  "Control",
+  "Alt",
+  "Shift",
+  "Meta",
+  "Super",
+]);
+
+export function defaultShortcutForAction(action: ShortcutAction): string {
+  const found = SHORTCUT_ACTIONS.find(item => item.action === action);
+  return `Control+Alt+${found?.key ?? "Space"}`;
+}
+
+export function isModifierKeyCode(code: string): boolean {
+  return MODIFIER_CODES.has(code);
+}
+
+export function canonicalShortcut(shortcut: string): string {
+  const { key, modifiers } = shortcutParts(shortcut);
+  const ordered = MODIFIER_ORDER.filter(mod => modifiers.includes(mod));
+  return [...ordered, key].join("+");
+}
+
+export type ShortcutRecordResult =
+  | { status: "ok"; shortcut: string }
+  | { status: "modifier-only" }
+  | { status: "missing-modifier" }
+  | { status: "unsupported"; code: string };
+
+export interface RecordedKeyInput {
+  code: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+}
+
+export function formatRecordedShortcut(input: RecordedKeyInput): ShortcutRecordResult {
+  const code = input.code.trim();
+  if (!code || isModifierKeyCode(code)) {
+    return { status: "modifier-only" };
+  }
+  if (!SHORTCUT_KEY_CODES.has(code)) {
+    return { status: "unsupported", code };
+  }
+  const modifiers: string[] = [];
+  if (input.ctrlKey) modifiers.push("Control");
+  if (input.altKey) modifiers.push("Alt");
+  if (input.shiftKey) modifiers.push("Shift");
+  if (input.metaKey) modifiers.push("Super");
+  if (modifiers.length === 0) {
+    return { status: "missing-modifier" };
+  }
+  return { status: "ok", shortcut: [...modifiers, code].join("+") };
+}
+
+export interface ShortcutConflict {
+  action: ShortcutAction;
+  label: string;
+  shortcut: string;
+}
+
+export function findShortcutConflict(
+  bindings: readonly ShortcutBinding[],
+  targetAction: ShortcutAction,
+  candidateShortcut: string,
+): ShortcutConflict | null {
+  const normalized = canonicalShortcut(candidateShortcut);
+  for (const binding of bindings) {
+    if (binding.action === targetAction) continue;
+    if (canonicalShortcut(binding.shortcut) === normalized) {
+      const actionMeta = SHORTCUT_ACTIONS.find(item => item.action === binding.action);
+      return {
+        action: binding.action,
+        label: actionMeta?.label ?? binding.action,
+        shortcut: binding.shortcut,
+      };
+    }
+  }
+  return null;
+}

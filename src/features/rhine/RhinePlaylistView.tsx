@@ -1,12 +1,14 @@
 import type { KeyboardEventHandler, ReactNode } from "react";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import { SongCover } from "./SongCover";
 
-export function RhinePlaylistDocument({ title, description, eyebrow, count, actions, onBack, backLabel = "← 返回档案阵列", backName, onKeyDown, children }: {
+export function RhinePlaylistDocument({ title, description, eyebrow, count, actions, onBack, backLabel = "返回档案阵列", backName, onKeyDown, children }: {
   title: string; description: string; eyebrow: string; count: ReactNode; actions?: ReactNode;
   onBack: () => void; backLabel?: string; backName?: string; onKeyDown?: KeyboardEventHandler<HTMLElement>; children: ReactNode;
 }) {
   return <section className="rhine-document rhine-playlist-document" aria-label="歌单详情" onKeyDown={onKeyDown}>
-    <button className="rhine-back" aria-label={backName} onClick={onBack}>{backLabel}</button>
+    <button className="rhine-back" aria-label={backName} onClick={onBack}><Icon name="back" size={16} />{backLabel.replace(/^←\s*/, "")}</button>
     <p className="rhine-eyebrow">{eyebrow}</p>
     <h2>{title}</h2><p>{description || "音乐档案"}</p>
     <div className="rhine-document-actions"><span>{count}</span>{actions && <span className="rhine-playlist-heading-actions">{actions}</span>}</div>
@@ -21,7 +23,9 @@ export function RhinePlaylistSearch({ value, onChange, onSubmit, onRefresh, onCl
   return <form className="rhine-playlist-search rhine-search-form" onSubmit={e => { e.preventDefault(); onSubmit(); }}>
     <input type="search" aria-label="在歌单内搜索" placeholder={placeholder} maxLength={100} value={value} onChange={e => onChange(e.target.value)} />
     <button type="submit" disabled={!value.trim()}>搜索</button>
-    <button type="button" disabled={disabled} onClick={onRefresh}>刷新歌单</button>
+    <Tooltip content="刷新歌单">
+      <button type="button" className="rhine-playlist-icon-button" aria-label="刷新歌单" disabled={disabled} onClick={onRefresh}><Icon name="refresh" size={16} /></button>
+    </Tooltip>
     {searching && <button type="button" onClick={onClear}>清除</button>}
   </form>;
 }

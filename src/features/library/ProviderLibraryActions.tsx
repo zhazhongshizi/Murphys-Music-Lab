@@ -7,6 +7,7 @@ import { trackProvider } from "../../contracts/providerIdentity";
 import { playerActions } from "../player/playerStore";
 import PlaylistPicker from "./PlaylistPicker";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
 import "./providerLibraryActions.css";
 
 type Track = { id: string; title: string };
@@ -151,9 +152,34 @@ export function ProviderLibraryActions({ track, variant = "default", initialCont
   const [captured, setCaptured] = useState<Track | null>(null);
   const providerId = captured ? trackProvider(captured.id) : track ? trackProvider(track.id) : null;
   if (isRemotePlayback() || (providerId !== "netease" && providerId !== "bilibili")) return null;
-  const label = captured ? "关闭云端操作" : providerId === "bilibili" ? "添加到收藏夹 / 移出" : "网易喜欢 / 歌单操作";
+  const defaultLabel = captured ? "关闭云端操作" : providerId === "bilibili" ? "添加到收藏夹 / 移出" : "网易喜欢 / 歌单操作";
+  const label = iconOnly && variant === "default"
+    ? captured
+      ? "关闭云端操作"
+      : providerId === "bilibili"
+        ? "添加到 B 站收藏夹"
+        : "网易云喜欢 / 歌单"
+    : defaultLabel;
+  const triggerClassName = iconOnly
+    ? variant === "default"
+      ? "icon-button icon-button--quiet provider-library-trigger provider-library-trigger--icon"
+      : "rhine-playlist-icon-button provider-library-trigger"
+    : variant === "rhine"
+      ? "rhine-action-pill provider-library-trigger"
+      : "text-button provider-library-trigger";
+  const trigger = (
+    <button
+      className={triggerClassName}
+      type="button"
+      aria-label={label}
+      aria-expanded={Boolean(captured)}
+      onClick={() => setCaptured(captured ? null : track ? { ...track } : null)}
+    >
+      {iconOnly ? <Icon name="playlist-add" size={18} /> : label}
+    </button>
+  );
   return <div className="provider-library-actions" data-variant={variant}>
-    <button className={iconOnly ? "rhine-playlist-icon-button provider-library-trigger" : variant === "rhine" ? "rhine-action-pill provider-library-trigger" : "text-button provider-library-trigger"} type="button" aria-label={label} title={iconOnly ? label : undefined} aria-expanded={Boolean(captured)} onClick={() => setCaptured(captured ? null : track ? { ...track } : null)}>{iconOnly ? <Icon name="folder-music" size={20} /> : label}</button>
+    {iconOnly ? <Tooltip content={label}>{trigger}</Tooltip> : trigger}
     {captured && <Form key={captured.id} track={captured} providerId={providerId} variant={variant} initialContainer={initialContainer} />}
   </div>;
 }

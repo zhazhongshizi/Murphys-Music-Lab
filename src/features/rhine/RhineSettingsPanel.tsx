@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { Icon } from "../../components/Icon";
 import {
   matchingPreset,
   presetLabels,
@@ -156,7 +157,7 @@ export function RhineSettingsPanel({
 
   return <section className="rhine-settings-page" aria-label="系统设置" onKeyDown={handleKeyDown}>
     <header className="rhine-settings-page-heading">
-      <button ref={backButton} type="button" className="rhine-settings-back" onClick={onClose}>{backLabel}</button>
+      <button ref={backButton} type="button" className="rhine-settings-back" onClick={onClose}><Icon name="back" size={16} />{backLabel.replace(/^←\s*/, "")}</button>
       <span className="rhine-eyebrow">SYSTEM / 系统设置</span>
     </header>
     <div className="rhine-settings-layout">

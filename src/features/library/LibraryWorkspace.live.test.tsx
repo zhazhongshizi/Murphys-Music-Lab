@@ -224,17 +224,57 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     expect(screen.getByText("QQ / LIVE")).toBeInTheDocument();
   });
 
-  it("搜索去抖后只保留新 generation，并可加入后交给原生播放器", async () => {
+  it("搜索去抖后只保留新 generation，并可加入后开始播放", async () => {
     const user = userEvent.setup();
     renderWorkspace("search");
     await user.type(screen.getByRole("combobox"), "晴天");
     expect((await screen.findAllByText("晴天")).length).toBeGreaterThan(0);
     expect(searchMock).toHaveBeenCalledWith("晴天", expect.any(Number), 1);
 
-    await user.click(screen.getByRole("button", { name: "原生播放" }));
+    await user.click(screen.getByRole("button", { name: "立即播放" }));
     await waitFor(() => expect(enqueueMock).toHaveBeenCalled());
     expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
-    expect(await screen.findByText("已交给 Windows 原生播放器")).toBeInTheDocument();
+    expect(await screen.findByText("已开始播放")).toBeInTheDocument();
+  });
+
+  it("曲库表格双击行或点击快捷播放按钮可立即播放，双击交互按钮不误触发", async () => {
+    const user = userEvent.setup();
+    renderWorkspace("discover");
+    const titleButton = await screen.findByRole("button", { name: /^晴天/ });
+    const row = titleButton.closest("tr")!;
+
+    await user.dblClick(within(row).getByRole("button", { name: "查看歌手 周杰伦" }));
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(playMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "返回上一页" }));
+    const refreshedRow = (await screen.findByRole("button", { name: /^晴天/ })).closest("tr")!;
+    await user.dblClick(refreshedRow);
+    await waitFor(() => expect(enqueueMock).toHaveBeenCalledTimes(1));
+    expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
+    expect(await screen.findByText("已开始播放")).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "立即播放" })).toBeInTheDocument();
+    await user.click(within(refreshedRow).getByRole("button", { name: "立即播放 晴天" }));
+    await waitFor(() => expect(enqueueMock).toHaveBeenCalledTimes(2));
+    expect(playMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("歌单详情双击歌曲行与点击封面快捷播放按钮均可立即播放", async () => {
+    const user = userEvent.setup();
+    renderWorkspace("playlists");
+    await user.click((await screen.findAllByRole("button", { name: "打开歌单" }))[0]!);
+    await screen.findByRole("heading", { name: "我喜欢" });
+
+    const songRow = (await screen.findByRole("button", { name: /^晴天/ })).closest("tr")!;
+    await user.dblClick(songRow);
+    await waitFor(() => expect(enqueueMock).toHaveBeenCalledTimes(1));
+    expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
+    expect(await screen.findByText("已开始播放")).toBeInTheDocument();
+
+    await user.click(within(songRow).getByRole("button", { name: "立即播放 晴天" }));
+    await waitFor(() => expect(enqueueMock).toHaveBeenCalledTimes(2));
+    expect(playMock).toHaveBeenCalledTimes(2);
   });
 
   it("从真实歌单卡片打开详情并返回列表", async () => {

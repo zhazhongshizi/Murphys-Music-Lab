@@ -1,27 +1,322 @@
-.shortcut-settings { margin: 12px 0; font-size: 13px; line-height: 1.6; min-width: 0; }
-.shortcut-settings > summary { cursor: pointer; padding: 10px 0; font-weight: 600; }
-.shortcut-editor { min-width: 0; }
-.shortcut-settings__note { opacity: .7; margin: 9px 0; font-size: 12px; }
-.shortcut-settings__master,.shortcut-settings__row label,.shortcut-settings__modifiers label { display: flex; align-items: center; gap: 8px; }
-.shortcut-settings input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; accent-color: #698a73; }
-.shortcut-settings__master { font-weight: 600; padding: 8px 0 14px; }
-.shortcut-settings__binding { padding: 10px 0; border-top: 1px solid color-mix(in srgb,currentColor 18%,transparent); }
-.shortcut-settings__row { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
-.shortcut-settings__row > label { flex: 1 1 135px; }
-.shortcut-settings .shortcut-settings__key { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: auto; min-width: 180px; padding: 7px 10px; color: inherit; background: color-mix(in srgb,currentColor 6%,transparent); border: 1px solid color-mix(in srgb,currentColor 26%,transparent); border-radius: 4px; font: 12px/1.5 Consolas,monospace; text-align: left; cursor: pointer; }
-.shortcut-settings__key span { font: 11px/1.5 system-ui,sans-serif; opacity: .65; }
-.shortcut-settings__edit { margin: 12px 0 2px; padding: 10px; border: 1px solid color-mix(in srgb,currentColor 22%,transparent); border-radius: 4px; min-width: 0; }
-.shortcut-settings__edit legend { padding: 0 5px; font-size: 12px; }
-.shortcut-settings__modifiers { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-.shortcut-settings__main-key { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.shortcut-settings select { flex: 1; max-width: 260px; min-width: 0; padding: 7px 10px; font: inherit; color: inherit; background: color-mix(in srgb,currentColor 6%,transparent); border: 1px solid color-mix(in srgb,currentColor 26%,transparent); border-radius: 4px; }
-.shortcut-settings option { color: #233129; background: #f4f5ef; }
-.shortcut-settings__actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 8px; }
-.shortcut-settings .shortcut-settings__actions button,.shortcut-settings__error button { width: auto; padding: 7px 12px; color: inherit; border: 1px solid color-mix(in srgb,currentColor 25%,transparent); border-radius: 4px; background: color-mix(in srgb,currentColor 7%,transparent); font: inherit; cursor: pointer; }
-.shortcut-settings button:disabled,.shortcut-settings fieldset:disabled { opacity: .45; cursor: default; }
-.shortcut-settings :is(button,select,input,summary):focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-.shortcut-settings__error { color: #bc7259; overflow-wrap: anywhere; }
-.shortcut-settings--rhine { margin: 0; }
-.shortcut-settings--rhine input[type=checkbox] { accent-color: var(--rh-accent, #b96e2d); }
-.shortcut-settings--rhine :is(button, select, .shortcut-settings__key, .shortcut-settings__edit) { border-radius: 2px; }
-.shortcut-settings--rhine option { color: #1f1f1d; background: #f4f3ef; }
+.shortcut-settings {
+  --shortcut-pill-bg: color-mix(in srgb, currentColor 7%, transparent);
+  --shortcut-pill-bg-hover: color-mix(in srgb, currentColor 13%, transparent);
+  --shortcut-pill-border: color-mix(in srgb, currentColor 24%, transparent);
+  --shortcut-pill-border-hover: color-mix(in srgb, currentColor 42%, transparent);
+  --shortcut-record-accent: var(--lichen, #9ec0ff);
+  --shortcut-record-bg: color-mix(in srgb, var(--shortcut-record-accent) 16%, transparent);
+  --shortcut-notice-color: #e69d83;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.app-shell[data-cover-tone="light"] .shortcut-settings:not(.shortcut-settings--rhine) {
+  --shortcut-pill-bg: color-mix(in srgb, currentColor 6%, transparent);
+  --shortcut-pill-bg-hover: color-mix(in srgb, currentColor 11%, transparent);
+  --shortcut-pill-border: color-mix(in srgb, currentColor 22%, transparent);
+  --shortcut-pill-border-hover: color-mix(in srgb, currentColor 38%, transparent);
+  --shortcut-record-accent: var(--cover-accent-light, #2d5a8a);
+  --shortcut-record-bg: color-mix(in srgb, var(--shortcut-record-accent) 12%, transparent);
+  --shortcut-notice-color: #a9492a;
+}
+
+.shortcut-settings--rhine {
+  --shortcut-pill-bg: color-mix(in srgb, currentColor 5%, transparent);
+  --shortcut-pill-bg-hover: color-mix(in srgb, currentColor 10%, transparent);
+  --shortcut-pill-border: color-mix(in srgb, currentColor 22%, transparent);
+  --shortcut-pill-border-hover: color-mix(in srgb, currentColor 38%, transparent);
+  --shortcut-record-accent: var(--rh-accent, #b96e2d);
+  --shortcut-record-bg: color-mix(in srgb, var(--shortcut-record-accent) 12%, transparent);
+  --shortcut-notice-color: #b14a26;
+  margin: 0;
+}
+
+.shortcut-settings > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 600;
+}
+
+.shortcut-editor {
+  min-width: 0;
+}
+
+.shortcut-settings__note {
+  opacity: 0.7;
+  margin: 9px 0;
+  font-size: 12px;
+}
+
+.shortcut-settings__master,
+.shortcut-settings__row label,
+.shortcut-settings__modifiers label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-settings input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: #698a73;
+}
+
+.shortcut-settings--rhine input[type="checkbox"] {
+  accent-color: var(--rh-accent, #b96e2d);
+}
+
+.shortcut-settings__master {
+  font-weight: 600;
+  padding: 8px 0 14px;
+}
+
+.shortcut-settings__binding {
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.shortcut-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.shortcut-settings__label {
+  flex: 1 1 125px;
+  min-width: 0;
+}
+
+.shortcut-settings__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 164px;
+  min-height: 30px;
+  padding: 5px 12px;
+  color: inherit;
+  background: var(--shortcut-pill-bg);
+  border: 1px solid var(--shortcut-pill-border);
+  border-radius: 999px;
+  font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+  text-align: center;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button:hover:not(:disabled) {
+  background: var(--shortcut-pill-bg-hover);
+  border-color: var(--shortcut-pill-border-hover);
+  color: inherit;
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button.is-recording,
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button.is-recording:hover:not(:disabled) {
+  border-color: var(--shortcut-record-accent);
+  background: var(--shortcut-record-bg);
+  color: inherit;
+  font-family: system-ui, sans-serif;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--shortcut-record-accent) 26%, transparent);
+  animation: shortcut-recording-pulse 1.6s ease-in-out infinite;
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--shortcut-pill-border);
+  border-radius: 999px;
+  opacity: 0.78;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__reset:hover:not(:disabled) {
+  opacity: 1;
+  color: inherit;
+  background: var(--shortcut-pill-bg-hover);
+  border-color: var(--shortcut-pill-border-hover);
+}
+
+.shortcut-settings .shortcut-settings__binding .shortcut-settings__reset:disabled {
+  opacity: 0.35;
+}
+
+.shortcut-settings__row-notice {
+  margin: 6px 0 0 24px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--shortcut-notice-color);
+  overflow-wrap: anywhere;
+}
+
+.shortcut-settings__manual {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.shortcut-settings__manual > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.82;
+  user-select: none;
+}
+
+.shortcut-settings__manual > summary:hover {
+  opacity: 1;
+}
+
+.shortcut-settings__manual-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.shortcut-settings__edit {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.shortcut-settings__edit legend {
+  padding: 0 5px;
+  font-size: 12px;
+}
+
+.shortcut-settings__modifiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.shortcut-settings__main-key {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.shortcut-settings select {
+  flex: 1;
+  max-width: 260px;
+  min-width: 0;
+  padding: 7px 10px;
+  font: inherit;
+  color: inherit;
+  background: var(--shortcut-pill-bg);
+  border: 1px solid var(--shortcut-pill-border);
+  border-radius: 6px;
+}
+
+.shortcut-settings option {
+  color: #233129;
+  background: #f4f5ef;
+}
+
+.shortcut-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+
+.shortcut-settings .shortcut-settings__actions button,
+.shortcut-settings .shortcut-settings__error button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  color: inherit;
+  border: 1px solid var(--shortcut-pill-border);
+  border-radius: 6px;
+  background: var(--shortcut-pill-bg);
+  font: inherit;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.shortcut-settings .shortcut-settings__actions button:hover:not(:disabled),
+.shortcut-settings .shortcut-settings__error button:hover:not(:disabled) {
+  color: inherit;
+  background: var(--shortcut-pill-bg-hover);
+  border-color: var(--shortcut-pill-border-hover);
+}
+
+.shortcut-settings button:disabled,
+.shortcut-settings fieldset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shortcut-settings :is(button, select, input, summary):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.shortcut-settings__error {
+  color: var(--shortcut-notice-color);
+  overflow-wrap: anywhere;
+}
+
+.shortcut-settings--rhine :is(
+  button,
+  select,
+  .shortcut-settings__key-button,
+  .shortcut-settings__reset,
+  .shortcut-settings__edit
+) {
+  border-radius: 2px;
+}
+
+.shortcut-settings--rhine option {
+  color: #1f1f1d;
+  background: #f4f3ef;
+}
+
+@keyframes shortcut-recording-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--shortcut-record-accent) 20%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--shortcut-record-accent) 38%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button,
+  .shortcut-settings .shortcut-settings__binding .shortcut-settings__reset,
+  .shortcut-settings .shortcut-settings__actions button,
+  .shortcut-settings .shortcut-settings__error button {
+    transition: none;
+  }
+  .shortcut-settings .shortcut-settings__binding .shortcut-settings__key-button.is-recording {
+    animation: none;
+  }
+}

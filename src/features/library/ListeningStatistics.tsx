@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getStatistics, type Statistics, type ShuffleRow } from "../../backend/personalAdapter";
 import { playbackSessionIdentity, subscribePlaybackConnection } from "../../backend/playbackTransport";
+import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { TrackRowActions } from "../../components/TrackRowActions";
 
 import { actOnStatisticsTrack, type StatisticsAction } from "../player/statisticsPlayback";
 import { ListeningAnalytics } from "./ListeningAnalytics";
@@ -19,7 +22,7 @@ function reason(row: ShuffleRow) {
 }
 type Row = { id: string; title: string; artist: string };
 function TrackActions({row,busy,onAction}:{row:Row;busy:boolean;onAction:(row:Row,action:StatisticsAction)=>void}) {
-  return <div className="personal-actions statistics-track-actions"><button type="button" disabled={busy} aria-label={`播放 ${row.title}`} onClick={()=>onAction(row,"play")}>播放</button><button type="button" disabled={busy} aria-label={`下一首播放 ${row.title}`} onClick={()=>onAction(row,"next")}>下一首</button><button type="button" disabled={busy} aria-label={`加入队列 ${row.title}`} onClick={()=>onAction(row,"enqueue")}>加入队列</button></div>;
+  return <TrackRowActions className="statistics-track-actions" title={row.title} disabled={busy} onPlay={() => onAction(row, "play")} onNext={() => onAction(row, "next")} onEnqueue={() => onAction(row, "enqueue")} />;
 }
 export function statisticsSince(days: number, now = new Date()) {
   const start=new Date(now);start.setHours(0,0,0,0);start.setDate(start.getDate()-(days-1));return start.getTime();
@@ -107,7 +110,7 @@ export function ListeningRecords({viewNavigation}:{viewNavigation?:ReactNode}) {
         <span className="section-label">LISTENING RECORD</span>
         <h1>听歌统计</h1>
       </div>
-      <div className="statistics-header-actions">{viewNavigation}<button type="button" onClick={() => setRevision(r => r + 1)}>刷新统计</button></div>
+      <div className="statistics-header-actions">{viewNavigation}<Tooltip content="刷新统计"><button type="button" className="icon-button icon-button--quiet" aria-label="刷新统计" onClick={() => setRevision(r => r + 1)}><Icon name="refresh" size={16} /></button></Tooltip></div>
     </header>
     <p>从此版本开始累计实际播放进度；暂停、拖动和休眠跳变不计入。累计听满 30 秒，或短曲的一半（至少 1 秒），记为一次有效收听。</p>
     <nav className="personal-actions" aria-label="统计日期范围">{([1,7,30] as const).map(value=><button type="button" key={value} aria-pressed={days===value} onClick={()=>{if(value!==days){setData(null);setDays(value);}else setRevision(r=>r+1);}}>{value===1?"今天":`近 ${value} 天`}</button>)}</nav>

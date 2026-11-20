@@ -33,8 +33,12 @@ export function LoggingSettings() {
     <div className="fixture-menu__divider" role="separator" />
     <span className="section-label">问题排查</span>
     <button type="button" role="menuitemcheckbox" aria-checked={status?.enabled ?? false}
+      className="stage-menu__switch-item"
       disabled={busy || !status} onClick={() => void toggle()}>
-      <span>{busy ? "正在保存…" : "诊断日志"}</span><i aria-hidden="true" />
+      <span>{busy ? "正在保存…" : "诊断日志"}</span>
+      <span className="settings-switch__track" aria-hidden="true">
+        <span className="settings-switch__thumb" />
+      </span>
     </button>
     <span className="section-label">日志保存在 exe 同目录的 logs 文件夹，最多约 2 MB。开关会记住；关闭后保留已有日志。</span>
     {error || status?.error ? <span className="fixture-menu__error" role="alert">{error || status?.error}</span> : null}

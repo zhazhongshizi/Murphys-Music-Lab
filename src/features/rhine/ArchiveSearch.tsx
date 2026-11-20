@@ -8,6 +8,7 @@ import { CatalogDetails, albumFromSong } from "../catalog/CatalogDetails";
 import { CatalogEntityResults, SearchTypeTabs } from "../catalog/CatalogEntityResults";
 import type { CatalogEntity, CatalogSearchType } from "../../contracts/catalogBrowse";
 import { Icon } from "../../components/Icon";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import { SearchHistory, rememberSearch } from "../library/searchHistory";
 import { CatalogSearchInput } from "../catalog/CatalogSearchInput";
 import { ArchiveSearchHeading, ArchiveSearchBody } from "./ArchiveSearchLayout";
@@ -61,7 +62,7 @@ export function ArchiveSearch({ active, onClose, accessMessage }: { active: bool
     } catch { if (epoch === generation.current) setNotice("操作失败，请重试"); }
     finally { pending.current = false; setBusy(false); }
   }
-  if (accessMessage) return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}><header className="rhine-search-heading"><button onClick={onClose}>← 返回档案</button></header><p className="rhine-search-empty" role="status">{accessMessage}</p></section>;
+  if (accessMessage) return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}><header className="rhine-search-heading"><button type="button" onClick={onClose}><Icon name="back" size={16} />返回档案</button></header><p className="rhine-search-empty" role="status">{accessMessage}</p></section>;
   if (entity) return <section className="rhine-search rhine-search--detail" aria-label="音乐档案详情" hidden={!active}><CatalogDetails entity={entity} key={`${entity.kind}:${entity.id}`} onBack={() => setEntity(null)} /></section>;
   return <section className="rhine-search" aria-label="音乐档案搜索" hidden={!active} onKeyDown={e => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); onClose(); } }}>
     <ArchiveSearchHeading onClose={onClose} />
@@ -78,10 +79,7 @@ export function ArchiveSearch({ active, onClose, accessMessage }: { active: bool
         {loading ? <p role="status">正在检索…</p> : error ? <p role="alert">搜索失败 <button onClick={() => setRequest(r => ({ ...r, retry: r.retry + 1 }))}>重试</button></p> : !request.query ? <p className="rhine-search-empty">输入歌名、歌手或专辑名，寻找想听的音乐。</p> : !results?.items.length ? <p className="rhine-search-empty">没有找到歌曲，换个关键词试试。</p> : <>
           <ol className="rhine-songs" start={(request.page - 1) * 20 + 1}>{results.items.map(song => <li key={song.id} data-playing={song.id === currentId}>
             <div className="rhine-song-info"><SongCover cacheKey={song.coverCacheKey} title={song.title} /><span className="rhine-song-text"><strong>{song.title}</strong><small>{song.artists.map((artist, i) => <span key={`${artist.id}:${i}`}>{i > 0 && " / "}{artist.id === "0" ? artist.name : <button type="button" onClick={() => setEntity({ kind: "artist", ...artist })}>{artist.name}</button>}</span>)} · {song.albumId ? <button type="button" onClick={() => { const album = albumFromSong(song); if (album) setEntity(album); }}>{song.album}</button> : song.album}</small></span></div>
-            <span className="rhine-song-actions">
-              <button className="play-next-button" disabled={busy} aria-label={`下一首播放 ${song.title}`} title="下一首播放" onClick={() => void act(song, false, true)}><Icon name="play-next" size={20} /></button>
-              <button disabled={busy} aria-label={`播放 ${song.title}`} onClick={() => void act(song, true)}>播放</button><button disabled={busy} aria-label={`加入队列 ${song.title}`} onClick={() => void act(song, false)}>＋</button>
-            </span>
+            <TrackRowActions variant="rhine" className="rhine-song-actions" title={song.title} disabled={busy} onPlay={() => void act(song, true)} onNext={() => void act(song, false, true)} onEnqueue={() => void act(song, false)} />
           </li>)}</ol>
           <nav className="rhine-pages" aria-label="搜索分页"><button disabled={request.page === 1} onClick={() => { generation.current++; setRequest(r => ({ ...r, page: r.page - 1 })); }}>上一页</button><span>第 {request.page} 页</span><button disabled={!results.hasMore || request.page >= 100} onClick={() => { generation.current++; setRequest(r => ({ ...r, page: r.page + 1 })); }}>下一页</button></nav>
         </>}

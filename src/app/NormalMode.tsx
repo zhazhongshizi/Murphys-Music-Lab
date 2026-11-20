@@ -3,6 +3,7 @@ import {
   type Dispatch, type SetStateAction, type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Icon } from "../components/Icon";
+import { Tooltip } from "../components/Tooltip";
 import { APP_NAME, APP_SHORT_NAME } from "./branding";
 import { useDesktopProviders } from "../features/providers/DesktopProviders";
 import { WindowControls } from "../components/WindowControls";
@@ -20,13 +21,11 @@ import { CachedGlow } from "../features/stage/CachedGlow";
 import { BackendStatus } from "../features/status/BackendStatus";
 import { PLAYBACK_QUALITY_OPTIONS, type PlaybackQuality } from "../contracts/settings";
 import type { AuthSnapshot } from "../contracts/auth";
-import { localMusicFormatFromId } from "../contracts/localMusic";
-import { getCurrentTrack, playerActions, usePlayerSelector, type PlayerSnapshot } from "../features/player/playerStore";
+import { usePlayerSelector, type PlayerSnapshot } from "../features/player/playerStore";
 import type { GlowIntensityLevel } from "../features/stage/coverPalette";
 import { PublicState, type FixtureStatus } from "../features/status/PublicState";
 import type { AppView, LibrarySection } from "./uiModes";
 const LibraryWorkspace = lazy(() => import("../features/library/LibraryWorkspace"));
-const selectLikedIds = (snapshot: PlayerSnapshot) => snapshot.likedIds;
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
 
 const STATUS_OPTIONS: readonly { id: FixtureStatus; label: string }[] = [
@@ -39,10 +38,10 @@ const STATUS_OPTIONS: readonly { id: FixtureStatus; label: string }[] = [
 ];
 
 const GLOW_OPTIONS: readonly { id: GlowIntensityLevel; label: string }[] = [
-  { id: "off", label: "光晕：关闭" },
-  { id: "subtle", label: "光晕：柔和" },
-  { id: "standard", label: "光晕：标准" },
-  { id: "enhanced", label: "光晕：增强" },
+  { id: "off", label: "关闭" },
+  { id: "subtle", label: "柔和" },
+  { id: "standard", label: "标准" },
+  { id: "enhanced", label: "增强" },
 ];
 
 interface TopBarProps {
@@ -68,15 +67,6 @@ function TopBar({
 }: TopBarProps) {
   const { source, snapshots } = useDesktopProviders();
   const browseAccount = source === "netease" || source === "bilibili" ? snapshots[source] : null;
-  const currentTrack = usePlayerSelector(getCurrentTrack);
-  const likedIds = usePlayerSelector(selectLikedIds);
-  const nativeMode = usePlayerSelector(selectNativeMode);
-  const likesReady = usePlayerSelector(snapshot => snapshot.likesReady);
-  const neteaseLikesReady = usePlayerSelector(snapshot => snapshot.neteaseLikesReady);
-  const likePendingIds = usePlayerSelector(snapshot => snapshot.likePendingIds);
-  const likeNotice = usePlayerSelector(snapshot => snapshot.likeNotice);
-  const liked = currentTrack ? likedIds.includes(currentTrack.id) : false;
-  const currentLikesReady = currentTrack?.id.startsWith("netease:") ? neteaseLikesReady : likesReady;
 
   return (
     <header className="top-bar" data-tauri-drag-region>
@@ -100,39 +90,31 @@ function TopBar({
 
       <div className="top-bar__actions">
         <BackendStatus />
-        {view === "stage" && likeNotice ? <span role="status">{likeNotice}</span> : null}
-        {view === "stage" && currentTrack && !localMusicFormatFromId(currentTrack.id) && !currentTrack.id.startsWith("bilibili:") ? (
+        <button aria-label="账号" className="account-button" onClick={onAccount} type="button"><Icon name="user" size={17} /><span>{browseAccount?.state === "ready" ? browseAccount.account.displayName : source === "qqmusic" || source === "local" ? accountLabel : "登录此来源"}</span></button>
+        <Tooltip content="进入迷你终端模式" side="bottom">
           <button
-            aria-label={liked ? `取消喜欢《${currentTrack.title}》` : `喜欢《${currentTrack.title}》`}
-            aria-pressed={liked}
-            disabled={nativeMode && (!currentLikesReady || likePendingIds?.includes(currentTrack.id))}
-            title={nativeMode && !currentLikesReady ? "喜欢状态尚未读取，可打开喜欢页重新读取" : undefined}
-            className={liked ? "icon-button top-bar__liked" : "icon-button icon-button--quiet"}
-            onClick={() => playerActions.toggleLike(currentTrack.id)}
+            aria-label="进入终端模式"
+            className="icon-button icon-button--quiet"
+            data-tauri-drag-region="false"
+            onClick={onEnterTerminal}
             type="button"
           >
-            <Icon name="heart" size={18} />
+            <Icon name="mini-window" size={18} />
           </button>
-        ) : null}
-        <button aria-label="账号" className="account-button" onClick={onAccount} type="button"><Icon name="user" size={17} /><span>{browseAccount?.state === "ready" ? browseAccount.account.displayName : source === "qqmusic" || source === "local" ? accountLabel : "登录此来源"}</span></button>
-        <button
-          aria-label="进入终端模式"
-          className="account-button"
-          data-tauri-drag-region="false"
-          onClick={onEnterTerminal}
-          type="button"
-        >
-          MINI
-        </button>
-        <button
-          aria-expanded={settingsOpen}
-          aria-controls="stage-settings"
-          aria-label="更多"
-          id="settings-trigger"
-          className="icon-button icon-button--quiet"
-          onClick={onSettingsToggle}
-          type="button"
-        ><Icon name="more" /></button>
+        </Tooltip>
+        <Tooltip content="设置" side="bottom">
+          <button
+            aria-expanded={settingsOpen}
+            aria-controls="stage-settings"
+            aria-label="设置"
+            id="settings-trigger"
+            className="icon-button icon-button--quiet"
+            onClick={onSettingsToggle}
+            type="button"
+          >
+            <Icon name="settings" size={18} />
+          </button>
+        </Tooltip>
         <span aria-orientation="vertical" className="top-bar__divider" role="separator" />
         <WindowControls />
       </div>
@@ -142,6 +124,7 @@ function TopBar({
 
 interface StageSettingsProps {
   onEnterRhine: () => void;
+  onOpenTerminal: () => void;
   fixtureStatus: FixtureStatus;
   onFixtureStatusChange: (status: FixtureStatus) => void;
   glowIntensity: GlowIntensityLevel;
@@ -158,6 +141,7 @@ interface StageSettingsProps {
 
 function StageSettings({
   onEnterRhine,
+  onOpenTerminal,
   fixtureStatus,
   onFixtureStatusChange,
   glowIntensity,
@@ -273,29 +257,43 @@ function StageSettings({
         <UpdateSettings />
         <div className="fixture-menu__divider" role="separator" />
         <span className="section-label" role="presentation">封面氛围</span>
-        <button type="button" role="menuitemcheckbox" aria-checked={cachedGlow}
-          onClick={onCachedGlowToggle}>
-          <span>轻量动态微光</span><i aria-hidden="true" />
+        <button
+          aria-checked={cachedGlow}
+          className="stage-menu__switch-item"
+          onClick={onCachedGlowToggle}
+          role="menuitemcheckbox"
+          type="button"
+        >
+          <span>轻量动态微光</span>
+          <span className="settings-switch__track" aria-hidden="true">
+            <span className="settings-switch__thumb" />
+          </span>
         </button>
-        {GLOW_OPTIONS.map((option) => (
-          <button
-            aria-checked={glowIntensity === option.id}
-            key={option.id}
-            onClick={() => onGlowIntensityChange(option.id)}
-            role="menuitemradio"
-            type="button"
-          >
-            <span>{option.label}</span>
-            <i aria-hidden="true" />
-          </button>
-        ))}
+        <div role="group" aria-label="封面氛围" className="settings-segment settings-segment--4">
+          {GLOW_OPTIONS.map((option) => (
+            <button
+              aria-checked={glowIntensity === option.id}
+              key={option.id}
+              onClick={() => onGlowIntensityChange(option.id)}
+              role="menuitemradio"
+              type="button"
+            >
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
         <div className="fixture-menu__divider" role="separator" />
         <span className="section-label" role="presentation">界面模式</span>
-        <button type="button" role="menuitemradio" aria-checked={false} onClick={onEnterRhine}><span>莱茵界面</span><i aria-hidden="true" /></button>
+        <div role="group" aria-label="界面模式" className="settings-segment settings-segment--3">
+          <button type="button" role="menuitemradio" aria-checked={true}><span>标准</span></button>
+          <button type="button" role="menuitemradio" aria-checked={false} onClick={onEnterRhine}><span>莱茵</span></button>
+          <button type="button" role="menuitemradio" aria-checked={false} onClick={onOpenTerminal}><span>迷你</span></button>
+        </div>
         <div className="fixture-menu__divider" role="separator" />
         <span className="section-label" role="presentation">实验性功能</span>
         <button
           aria-checked={liveSpectrumEnabled}
+          className="stage-menu__switch-item"
           disabled={liveSpectrumSaving}
           onClick={() => {
             setLiveSpectrumSaving(true);
@@ -306,19 +304,24 @@ function StageSettings({
           type="button"
         >
           <span>实时频谱·实验</span>
-          <i aria-hidden="true" />
+          <span className="settings-switch__track" aria-hidden="true">
+            <span className="settings-switch__thumb" />
+          </span>
         </button>
         {liveSpectrumSaveError ? (
           <span className="fixture-menu__error" role="status">{liveSpectrumSaveError}</span>
         ) : null}
         <button
           aria-checked={dynamicLyricsEnabled}
+          className="stage-menu__switch-item"
           onClick={onDynamicLyricsToggle}
           role="menuitemcheckbox"
           type="button"
         >
           <span>Windows 动态歌词</span>
-          <i aria-hidden="true" />
+          <span className="settings-switch__track" aria-hidden="true">
+            <span className="settings-switch__thumb" />
+          </span>
         </button>
       </div>
     </section>
@@ -431,6 +434,7 @@ export function NormalMode({
           <ListeningStage
             settings={settingsOpen ? <StageSettings
               onEnterRhine={onEnterRhine}
+              onOpenTerminal={handleEnterTerminal}
               fixtureStatus={fixtureStatus}
               glowIntensity={glowIntensity}
               cachedGlow={cachedGlow}
@@ -475,6 +479,7 @@ export function NormalMode({
         accountKey={`${authSnapshot.state}:${authSnapshot.state === "authenticated" ? authSnapshot.account?.musicId ?? "guest" : "guest"}:${authRecovering}`}
         authenticated={authSnapshot.state === "authenticated" && !authRecovering}
         onOpenQueue={() => setQueueOpen(true)}
+        onOpenStage={view !== "stage" || artistNavigation.artist ? () => { artistNavigation.closeArtist(false); setView("stage"); } : undefined}
         queueOpen={queueOpen}
       />
       <QueueDrawer onClose={() => setQueueOpen(false)} open={queueOpen} />
