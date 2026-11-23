@@ -30,6 +30,15 @@ it("carries radar's tenth song onto the next page across upstream batches", asyn
   expect(read).toHaveBeenCalledTimes(2);
 });
 
+it("fills a page across several short batches without reading past the upstream page limit", async () => {
+  const read = vi.fn(async (generation: number, page: number) => batch(generation, page, page, 1, true));
+  const get = recommendationPages(read, 9, true);
+  expect(await get(1, 1)).toMatchObject({ items: songs(1, 9), hasMore: true });
+  expect(read).toHaveBeenCalledTimes(9);
+  expect(await get(12, 1)).toMatchObject({ items: songs(100, 1), hasMore: false });
+  expect(read).toHaveBeenCalledTimes(100);
+});
+
 it("does not consume overflow when the next upstream request fails", async () => {
   const read = vi.fn(async (generation: number, page: number) => batch(generation, page, (page - 1) * 10 + 1, 10, page === 1));
   const get = recommendationPages(read, 9);
@@ -38,9 +47,9 @@ it("does not consume overflow when the next upstream request fails", async () =>
   expect((await get(2, 3)).items.map(item => item.id)).toEqual(songs(10, 9).map(item => item.id));
 });
 
-it("leaves short or empty batches reviewable without eagerly fetching further pages", async () => {
+it.each([false, true])("leaves an empty batch reviewable even when fillPage is %s", async fillPage => {
   const read = vi.fn(async (generation: number, page: number) => ({ ...batch(generation, page, 1, page === 1 ? 0 : 4), hasMore: page === 1, warningCount: page === 1 ? 1 : 0 }));
-  const get = recommendationPages(read, 9);
+  const get = recommendationPages(read, 9, fillPage);
   expect(await get(1, 1)).toMatchObject({ items: [], warningCount: 1, hasMore: true });
   expect(read).toHaveBeenCalledTimes(1);
   expect((await get(2, 2)).items).toHaveLength(4);

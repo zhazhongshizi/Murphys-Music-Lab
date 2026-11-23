@@ -15,6 +15,7 @@ from typing import Any, Protocol, cast
 
 from .logging import SafeLogger
 from .session import QQMusicSession
+from .upstream_errors import UpstreamErrorCode, classify_upstream_error
 
 QR_TTL_SECONDS = 180
 QR_MIN_DISPLAY_SECONDS = 60
@@ -188,7 +189,7 @@ class QQMusicAuthSource:
         try:
             self._session.client().credential = Credential.model_validate(payload)
         except Exception as error:
-            raise _map_upstream_error(error, invalid_credential=True) from None
+            raise _map_upstream_error(error, credential_payload=True) from None
 
     async def check_credential(self) -> bool:
         from qqmusic_api.modules.login import LoginApi
@@ -197,9 +198,7 @@ class QQMusicAuthSource:
         if not _has_credential(client.credential):
             raise AuthFailure(AuthFailureCode.CREDENTIAL_INVALID)
         try:
-            # The Desktop profile can return an expired response for a credential
-            # accepted by the Android profile. Keep QR and refresh on Desktop.
-            login = LoginApi(self._session.android_executor())
+            login = LoginApi(self._session.executor_for("auth.credential.check"))
             return not bool(await login.check_expired())
         except Exception as error:
             # Android device/session initialization can fail before login is checked.
@@ -213,7 +212,7 @@ class QQMusicAuthSource:
         try:
             credential = await client.login.refresh_credential()
         except Exception as error:
-            raise _map_upstream_error(error, invalid_credential=True) from None
+            raise _map_upstream_error(error) from None
         client.credential = credential
         return _credential_payload(credential)
 
@@ -226,7 +225,7 @@ class QQMusicAuthSource:
                 try:
                     await client.login.logout()
                 except Exception as error:
-                    raise _map_upstream_error(error, invalid_credential=True) from None
+                    raise _map_upstream_error(error) from None
         finally:
             # A local sign-out must not leave the previous account attached to
             # the long-lived client, even when QQ's revoke call fails.
@@ -533,48 +532,35 @@ def _log_qr_upstream_failure(error: Exception) -> None:
     )
 
 
-def _map_upstream_error(error: Exception, *, invalid_credential: bool = False) -> AuthFailure:
+def _map_upstream_error(error: Exception, *, credential_payload: bool = False) -> AuthFailure:
     from pydantic import ValidationError
     from qqmusic_api import (
-        ApiDataError,
-        BaseApiException,
-        CredentialExpiredError,
-        CredentialInvalidError,
         CredentialRefreshError,
-        HTTPError,
         LoginAccountRestrictedError,
         LoginAuthExpiredError,
         LoginDeviceLimitError,
         LoginRateLimitError,
-        NetworkError,
-        RatelimitedError,
     )
 
-    if isinstance(error, NetworkError | HTTPError):
-        return AuthFailure(AuthFailureCode.NETWORK_UNAVAILABLE, retryable=True)
-    if isinstance(error, LoginRateLimitError | RatelimitedError):
+    if isinstance(error, LoginRateLimitError):
         return AuthFailure(AuthFailureCode.RATE_LIMITED, retryable=True)
     if isinstance(error, LoginAccountRestrictedError):
         return AuthFailure(AuthFailureCode.ACCOUNT_RESTRICTED)
     if isinstance(error, LoginDeviceLimitError):
         return AuthFailure(AuthFailureCode.DEVICE_LIMIT)
-    if isinstance(
-        error,
-        CredentialExpiredError
-        | CredentialInvalidError
-        | CredentialRefreshError
-        | LoginAuthExpiredError,
+    if isinstance(error, CredentialRefreshError | LoginAuthExpiredError):
+        return AuthFailure(AuthFailureCode.CREDENTIAL_INVALID)
+    # Only local credential deserialization can interpret a schema failure as a bad secret.
+    if credential_payload and isinstance(
+        error, ValidationError | KeyError | TypeError | ValueError,
     ):
         return AuthFailure(AuthFailureCode.CREDENTIAL_INVALID)
-    if isinstance(error, ValidationError | KeyError | TypeError | ValueError):
-        code = (
-            AuthFailureCode.CREDENTIAL_INVALID
-            if invalid_credential
-            else AuthFailureCode.UPSTREAM_SCHEMA_CHANGED
-        )
-        return AuthFailure(code)
-    if isinstance(error, ApiDataError):
-        return AuthFailure(AuthFailureCode.UPSTREAM_SCHEMA_CHANGED)
-    if isinstance(error, BaseApiException):
-        return AuthFailure(AuthFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
-    return AuthFailure(AuthFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
+    failure = classify_upstream_error(error)
+    codes = {
+        UpstreamErrorCode.NETWORK_UNAVAILABLE: AuthFailureCode.NETWORK_UNAVAILABLE,
+        UpstreamErrorCode.RATE_LIMITED: AuthFailureCode.RATE_LIMITED,
+        UpstreamErrorCode.AUTHENTICATION_REQUIRED: AuthFailureCode.CREDENTIAL_INVALID,
+        UpstreamErrorCode.UPSTREAM_SCHEMA_CHANGED: AuthFailureCode.UPSTREAM_SCHEMA_CHANGED,
+        UpstreamErrorCode.UPSTREAM_UNAVAILABLE: AuthFailureCode.UPSTREAM_UNAVAILABLE,
+    }
+    return AuthFailure(codes[failure.code], retryable=failure.retryable)

@@ -55,7 +55,10 @@ describe("playlist search and bulk queue selection", () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("跨页批量移出固定选择，提交期间不重复写入，失败保留选择", async () => {
+  it.each([
+    ["QMG-LIBRARY-UNKNOWN", "移出结果未确认，请刷新歌单核对；应用没有自动重复提交"],
+    ["QMG-LIBRARY-DENIED", "移出未成功：请求被服务端拒绝"],
+  ])("跨页批量移出固定选择，提交期间不重复写入，%s 保留选择", async (code, notice) => {
     let reject!: (error: Error) => void;
     remove.mockImplementationOnce(() => new Promise((_resolve, failed) => { reject = failed; }));
     const user = userEvent.setup();
@@ -68,9 +71,10 @@ describe("playlist search and bulk queue selection", () => {
     await user.dblClick(screen.getByRole("button", { name: "确认移出" }));
     expect(remove).toHaveBeenCalledExactlyOnceWith("123", "12", ["song-0", "song-22"]);
     expect(screen.getByRole("button", { name: "正在移出…" })).toBeDisabled();
-    reject(new Error("outcome unknown"));
-    await screen.findByText(/移出结果未确认/);
+    reject(Object.assign(new Error("write failed"), { code }));
+    await screen.findByText(notice);
     expect(screen.getByText("已选 2 首")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 歌曲 23" })).toBeChecked();
     expect(enqueue).not.toHaveBeenCalled();
     expect(remove).toHaveBeenCalledTimes(1);
   });

@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -29,7 +30,7 @@ pub struct SmartShuffle {
     enabled: bool,
     likes: HashSet<String>,
     likes_loaded: bool,
-    netease_likes_loaded: bool,
+    netease_likes: Option<Arc<HashSet<String>>>,
     last_played: HashMap<String, u64>,
     recent: VecDeque<String>,
     listening: Option<Listening>,
@@ -55,7 +56,7 @@ impl SmartShuffle {
             enabled: false,
             likes: HashSet::new(),
             likes_loaded: false,
-            netease_likes_loaded: false,
+            netease_likes: None,
             last_played: HashMap::new(),
             recent: VecDeque::new(),
             listening: None,
@@ -82,7 +83,7 @@ impl SmartShuffle {
     pub fn status(&self) -> SmartShuffleStatus {
         SmartShuffleStatus {
             enabled: self.enabled,
-            likes_loaded: self.likes_loaded || self.netease_likes_loaded,
+            likes_loaded: self.likes_loaded || self.netease_likes.is_some(),
         }
     }
 
@@ -166,17 +167,30 @@ impl SmartShuffle {
 
     pub fn replace_likes(&mut self, likes: Option<HashSet<String>>) {
         self.likes_loaded = likes.is_some();
-        self.likes.retain(|id|id.starts_with("netease:track:"));
+        self.likes.clear();
         self.likes.extend(likes.unwrap_or_default().into_iter().filter(|id|crate::multi_provider::identity::track_provider(id)==Ok(crate::multi_provider::ProviderId::Qqmusic)));
     }
-    pub fn replace_netease_likes(&mut self, likes: Option<HashSet<String>>) {
-        self.netease_likes_loaded=likes.is_some();
-        self.likes.retain(|id|!id.starts_with("netease:track:"));
-        self.likes.extend(likes.unwrap_or_default().into_iter().filter(|id|id.starts_with("netease:track:")));
+
+    pub fn replace_netease_likes(&mut self, likes: Option<Arc<HashSet<String>>>) {
+        self.netease_likes = likes;
+    }
+
+    fn is_liked(&self, id: &str) -> bool {
+        if id.starts_with("netease:track:") {
+            self.netease_likes.as_ref().is_some_and(|likes| likes.contains(id))
+        } else {
+            self.likes.contains(id)
+        }
     }
 
     pub(crate) fn analytics_likes(&self) -> Option<HashSet<String>> {
-        (self.likes_loaded || self.netease_likes_loaded).then(|| self.likes.clone())
+        self.status().likes_loaded.then(|| {
+            let mut likes = self.likes.clone();
+            if let Some(netease) = &self.netease_likes {
+                likes.extend(netease.iter().filter(|id| id.starts_with("netease:track:")).cloned());
+            }
+            likes
+        })
     }
 
     pub fn update_likes(&mut self, ids: &[String], liked: bool) {
@@ -213,7 +227,7 @@ impl SmartShuffle {
                 weight(
                     self.last_played.get(&track.id).copied(),
                     now,
-                    self.likes.contains(&track.id),
+                    self.is_liked(&track.id),
                     self.recent.contains(&track.id),
                 )
             })
@@ -243,7 +257,7 @@ impl SmartShuffle {
                     weight(
                         self.last_played.get(&track.id).copied(),
                         now,
-                        self.likes.contains(&track.id),
+                        self.is_liked(&track.id),
                         self.recent.contains(&track.id),
                     )
                 }
@@ -252,10 +266,10 @@ impl SmartShuffle {
         let total = weights.iter().sum::<f64>();
         let rows: Vec<_>=items.iter().zip(weights).map(|(track,weight)| serde_json::json!({
             "id":track.id,"title":track.title,"artist":track.artist,"lastPlayedMs":self.last_played.get(&track.id),
-            "liked":self.likes.contains(&track.id),"recent":self.recent.contains(&track.id),"weight":weight,
+            "liked":self.is_liked(&track.id),"recent":self.recent.contains(&track.id),"weight":weight,
             "probability":if total>0.0 {weight/total} else {0.0}
         })).collect();
-        serde_json::json!({"enabled":self.enabled,"active":self.enabled && shuffle_mode,"likesLoaded":self.likes_loaded || self.netease_likes_loaded,"items":rows})
+        serde_json::json!({"enabled":self.enabled,"active":self.enabled && shuffle_mode,"likesLoaded":self.status().likes_loaded,"items":rows})
     }
 
     /// Fresh position samples are needed even when the renderer is hidden. Stop sampling after qualification.
@@ -475,7 +489,7 @@ mod tests {
     fn qq_and_netease_weights_are_independent_and_video_never_gets_like_weight() {
         let (root,mut smart)=fixture();
         smart.replace_likes(Some(HashSet::from(["qqA".into()])));
-        smart.replace_netease_likes(Some(HashSet::from(["netease:track:1".into(),"bilibili:video:BV17x411w7KC:123".into()])));
+        smart.replace_netease_likes(Some(Arc::new(HashSet::from(["netease:track:1".into(),"bilibili:video:BV17x411w7KC:123".into()]))));
         assert_eq!(smart.analytics_likes().unwrap(),HashSet::from(["qqA".into(),"netease:track:1".into()]));
         smart.replace_likes(None);assert!(smart.status().likes_loaded);assert_eq!(smart.analytics_likes().unwrap(),HashSet::from(["netease:track:1".into()]));
         smart.replace_likes(Some(HashSet::from(["qqB".into()])));smart.replace_netease_likes(None);

@@ -3,7 +3,11 @@ use super::OnlineProviderId;
 use crate::provider::{parse_json_value, MAX_LINE_BYTES};
 use regex::Regex;
 use serde_json::{json, Value};
-use std::{collections::HashMap, io::BufRead, sync::OnceLock};
+use std::{
+    collections::{HashMap, HashSet},
+    io::BufRead,
+    sync::OnceLock,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -159,7 +163,7 @@ fn matches(s: &Value, v: &Value) -> bool {
         if o.contains_key("items") && xs.iter().any(|x| !matches(&s["items"], x)) {
             return false;
         }
-        if s["uniqueItems"] == true && xs.iter().enumerate().any(|(i, x)| xs[..i].contains(x)) {
+        if s["uniqueItems"] == true && !unique_items(xs) {
             return false;
         }
     }
@@ -213,6 +217,15 @@ fn matches(s: &Value, v: &Value) -> bool {
     }
     true
 }
+
+fn unique_items(items: &[Value]) -> bool {
+    if items.iter().all(Value::is_string) {
+        let mut seen = HashSet::with_capacity(items.len());
+        return items.iter().all(|item| seen.insert(item.as_str().unwrap()));
+    }
+    !items.iter().enumerate().any(|(i, item)| items[..i].contains(item))
+}
+
 pub fn validate(def: &str, value: &Value) -> Result<(), Error> {
     if matches(&schema()["$defs"][def], value) {
         Ok(())
@@ -459,6 +472,30 @@ fn context(provider: OnlineProviderId, v: &Value) -> Result<(), Error> {
 mod tests {
     use super::*;
     use std::io::{BufReader, Cursor};
+
+    #[test]
+    fn like_ids_validate_every_item_and_reject_a_late_duplicate() {
+        let ids = Value::Array((1..=100_000).map(|id| Value::String(id.to_string())).collect());
+        assert_eq!(validate("likeIds", &ids), Ok(()));
+        let mut ids = ids;
+        for invalid in [json!("1"), json!("001"), json!(100_000)] {
+            ids[99_999] = invalid;
+            assert_eq!(validate("likeIds", &ids), Err(Error::Schema));
+        }
+        ids[99_999] = json!("100000");
+        ids.as_array_mut().unwrap().push(json!("100001"));
+        assert_eq!(validate("likeIds", &ids), Err(Error::Schema));
+    }
+
+    #[test]
+    fn unique_items_preserves_json_equality_for_mixed_and_nested_arrays() {
+        let schema = json!({"type":"array","uniqueItems":true});
+        assert!(matches(&schema, &json!(["1", 1, null, {"a": 1}, [1, 2], [2, 1]])));
+        assert!(!matches(&schema, &json!([{"a": 1, "b": 2}, "a", {"b": 2, "a": 1}])));
+        assert!(!matches(&schema, &json!([[1, 2], false, [1, 2]])));
+        assert!(!matches(&schema, &json!(["1", 1, "1"])));
+    }
+
     #[test]
     fn frozen_exchanges_use_method_specific_response_validation() {
         let xs: Value = serde_json::from_str(include_str!(

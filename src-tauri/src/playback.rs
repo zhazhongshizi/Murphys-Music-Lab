@@ -100,6 +100,10 @@ pub struct PlaybackLoadResult {
     pub player: PlayerSnapshot,
 }
 
+use crate::multi_provider::{
+    media_bridge::{CacheUrlIdentity, MediaBridge, SmoothRuntime, SmoothSource}, registry::ProviderRegistry, OnlineProviderId,
+};
+
 pub struct PlaybackController {
     provider: Arc<dyn ProviderRequestPort>,
     player: Mutex<Box<dyn PlayerEngine>>,
@@ -110,6 +114,7 @@ pub struct PlaybackController {
     netease: Option<Arc<crate::multi_provider::netease::NeteaseService>>,
     bilibili: Option<Arc<crate::multi_provider::bilibili::BilibiliService>>,
     bridged: Mutex<Option<BridgedPlayback>>,
+    smooth: Option<(Arc<SmoothRuntime>, Arc<ProviderRegistry>)>,
     #[cfg(test)]
     bridge_fixture: bool,
     #[cfg(test)]
@@ -117,7 +122,7 @@ pub struct PlaybackController {
 }
 struct BridgedPlayback {
     provider_id: crate::multi_provider::OnlineProviderId,
-    _bridge: crate::multi_provider::media_bridge::MediaBridge,
+    bridge: Arc<MediaBridge>,
     generation: u64,
     expires: Option<std::time::Instant>,
 }
@@ -134,7 +139,14 @@ pub(crate) struct ResolvedPlayback {
 }
 
 impl ResolvedPlayback {
+    pub(crate) fn bridge(&self) -> Option<Arc<MediaBridge>> {
+        self.bridged.as_ref().map(|source| source.bridge.clone())
+    }
+
     pub(crate) fn with_smtc_metadata(mut self, album: String, duration_ms: u64) -> Self {
+        if let Some(source) = &self.bridged {
+            source.bridge.set_duration(self.media_duration_ms.unwrap_or(duration_ms));
+        }
         self.smtc_metadata =
             SmtcMetadata::from_queue_track(album, self.media_duration_ms.unwrap_or(duration_ms));
         self
@@ -161,6 +173,7 @@ impl PlaybackController {
             netease: None,
             bilibili: None,
             bridged: Mutex::new(None),
+            smooth: None,
             #[cfg(test)]
             bridge_fixture: false,
             #[cfg(test)]
@@ -170,18 +183,107 @@ impl PlaybackController {
     pub fn with_netease(mut self, service: Arc<crate::multi_provider::netease::NeteaseService>)->Self {
         self.netease=Some(service);self
     }
-    pub fn cached_netease_likes(&self)->Option<std::collections::HashSet<String>> {
+    pub fn cached_netease_likes(&self) -> Option<Arc<std::collections::HashSet<String>>> {
         self.netease.as_ref()?.registry.cached_netease_likes()
     }
     pub fn with_bilibili(mut self, service: Arc<crate::multi_provider::bilibili::BilibiliService>) -> Self {
         self.bilibili = Some(service); self
     }
+    pub(crate) fn with_smooth(mut self, runtime: Arc<SmoothRuntime>, registry: Arc<ProviderRegistry>) -> Self {
+        self.smooth = Some((runtime, registry));
+        self
+    }
+    #[cfg(feature = "manual-spikes")]
+    pub fn with_public_probe_smoothing(self, root: std::path::PathBuf, registry: Arc<ProviderRegistry>) -> Self {
+        let budget = Arc::new(crate::media_budget::MediaBudget::default());
+        let cache = Arc::new(crate::media_cache::MediaCache::open(root, budget));
+        self.with_smooth(Arc::new(SmoothRuntime::new(cache)), registry)
+    }
+    #[cfg(feature = "manual-spikes")]
+    pub fn media_probe_summary(&self) -> Option<Value> {
+        let runtime = &self.smooth.as_ref()?.0;
+        let totals = &runtime.budget.totals;
+        let source = self.bridged.lock().ok()?;
+        let (range, validator, cacheable) = source.as_ref()?.bridge.probe_properties()?;
+        Some(serde_json::json!({
+            "range": range, "strongEtag": validator, "cacheable": cacheable,
+            "mediaBytes": totals.audio.load(std::sync::atomic::Ordering::Relaxed),
+            "probeBytes": totals.probe.load(std::sync::atomic::Ordering::Relaxed),
+            "cacheBytes": totals.cache.load(std::sync::atomic::Ordering::Relaxed),
+        }))
+    }
+    pub(crate) fn smooth_enabled(&self) -> bool {
+        self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.budget.enabled())
+    }
+    pub(crate) fn preload_enabled(&self) -> bool {
+        self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.cache.preload_enabled())
+    }
+    pub(crate) fn set_buffer_ready(&self, ready: bool) {
+        if let Some((runtime, _)) = &self.smooth {
+            runtime.budget.set_buffer_ready(ready);
+        }
+    }
+    pub(crate) fn log_media_traffic(&self) {
+        if let Some((runtime, _)) = &self.smooth {
+            runtime.budget.log_interval();
+        }
+    }
+    pub(crate) fn preload_context(&self, track: &str) -> Option<(u64, bool)> {
+        let (_, registry) = self.smooth.as_ref()?;
+        let provider = match crate::multi_provider::identity::track_provider(track).ok()? {
+            crate::multi_provider::ProviderId::Qqmusic => OnlineProviderId::Qqmusic,
+            crate::multi_provider::ProviderId::Netease => OnlineProviderId::Netease,
+            crate::multi_provider::ProviderId::Bilibili => OnlineProviderId::Bilibili,
+            _ => return None,
+        };
+        Some((registry.playback_account(provider)?.0, self.mv_fallback_enabled.load(std::sync::atomic::Ordering::Acquire)))
+    }
+    fn smooth_source(
+        &self, id: OnlineProviderId, generation: u64, track: &str, quality: &str,
+        bitrate: Option<u64>, duration: u64,
+    ) -> Option<Arc<SmoothSource>> {
+        let (runtime, registry) = self.smooth.as_ref()?;
+        let (current, account) = registry.playback_account(id)?;
+        if current != generation { return None; }
+        let platform = match id {
+            OnlineProviderId::Qqmusic => "qqmusic",
+            OnlineProviderId::Netease => "netease",
+            OnlineProviderId::Bilibili => "bilibili",
+        };
+        let scope = runtime.cache.scope(platform, &account, track, quality);
+        let cache_url_identity = if id == OnlineProviderId::Qqmusic
+            && matches!(quality, "128k" | "320k" | "flac")
+        {
+            CacheUrlIdentity::QqOriginal
+        } else {
+            CacheUrlIdentity::FullUrl
+        };
+        Some(runtime.source(scope, generation, bitrate, duration, cache_url_identity))
+    }
+
+    pub(crate) fn stable_buffer(&self, position_ms: u64, duration_ms: Option<u64>, seconds: u64) -> bool {
+        let bridged = self.bridged.lock().unwrap();
+        let Some(source) = bridged.as_ref() else { return position_ms >= 5000; };
+        let Some(rate) = source.bridge.byte_rate() else { return false; };
+        if duration_ms.is_some_and(|duration| position_ms >= duration) { return false; }
+        let position = position_ms.saturating_mul(rate) / 1000;
+        let required = duration_ms.map_or(seconds * 1000, |duration| (duration - position_ms).min(seconds * 1000));
+        source.bridge.buffered_until(position).is_some_and(|end| end.saturating_sub(position) >= required * rate / 1000)
+    }
+
+    pub(crate) fn release_adopted_preload(&self) {
+        if let Some(source) = self.bridged.lock().unwrap().as_ref() {
+            source.bridge.release_prior();
+        }
+    }
+
+
     fn account_valid(&self, b: &BridgedPlayback) -> bool {
         use crate::multi_provider::OnlineProviderId;
         match b.provider_id {
             OnlineProviderId::Netease => self.netease.as_ref().is_some_and(|n| n.ready_generation() == Ok(b.generation)),
             OnlineProviderId::Bilibili => self.bilibili.as_ref().is_some_and(|bili| bili.ready_generation() == Ok(b.generation)),
-            _ => false,
+            OnlineProviderId::Qqmusic => self.smooth.as_ref().is_some_and(|(_, registry)| registry.playback_account(b.provider_id).is_some_and(|account| account.0 == b.generation)),
         }
     }
     pub(crate) fn actual_bitrate(&self, generation: u64) -> Option<u64> {
@@ -229,15 +331,36 @@ impl PlaybackController {
 
     pub(crate) fn resolve(
         &self,
+        track: TrackSummary,
+        quality: PlaybackQuality,
+    ) -> Result<ResolvedPlayback, PlaybackError> {
+        self.resolve_traced(track, quality, crate::file_logging::PlaybackTrace::new(false))
+    }
+
+    pub(crate) fn resolve_traced(&self, track: TrackSummary, quality: PlaybackQuality, trace: crate::file_logging::PlaybackTrace) -> Result<ResolvedPlayback, PlaybackError> {
+        let span = trace.begin("resolve");
+        let result = self.resolve_online(track, quality, trace);
+        if let Ok(resolved) = &result {
+            if let Some(bridge) = &resolved.bridged {
+                bridge.bridge.set_playback_trace(trace);
+            }
+        }
+        span.finish(if result.is_ok() { "ok" } else { "failed" });
+        result
+    }
+
+    fn resolve_online(
+        &self,
         mut track: TrackSummary,
         quality: PlaybackQuality,
+        trace: crate::file_logging::PlaybackTrace,
     ) -> Result<ResolvedPlayback, PlaybackError> {
         validate_track(&track)?;
         if crate::multi_provider::identity::track_provider(&track.id)==Ok(crate::multi_provider::ProviderId::Netease) {
-            return self.resolve_provider(track,quality);
+            return self.resolve_provider(track, quality, trace);
         }
         if crate::multi_provider::identity::track_provider(&track.id)==Ok(crate::multi_provider::ProviderId::Bilibili) {
-            return self.resolve_provider(track,quality);
+            return self.resolve_provider(track, quality, trace);
         }
         if crate::multi_provider::identity::track_provider(&track.id)!=Ok(crate::multi_provider::ProviderId::Qqmusic) {
             return Err(PlaybackError::Unavailable);
@@ -255,10 +378,16 @@ impl PlaybackController {
         {
             params.insert("allowMvFallback".to_owned(), Value::Bool(false));
         }
-        let result = match self
-            .provider
-            .request(ProviderRequest::read_only("playback.resolve", params))
-            .map_err(map_provider_error)?
+        let generation = if let Some((_, registry)) = &self.smooth {
+            Some(registry.playback_account(OnlineProviderId::Qqmusic)
+                .ok_or(PlaybackError::AuthenticationRequired)?.0)
+        } else { None };
+        let request = ProviderRequest::read_only("playback.resolve", params);
+        let request = if trace.speculative { request.speculative() } else { request };
+        let span = trace.begin("provider_request");
+        let reply = self.provider.request(request);
+        span.finish(if matches!(&reply, Ok(ProviderReply::Success { warnings, .. }) if warnings.is_empty()) { "ok" } else { "failed" });
+        let result = match reply.map_err(map_provider_error)?
         {
             ProviderReply::Success { result, warnings } if warnings.is_empty() => result,
             ProviderReply::Success { .. } => return Err(PlaybackError::UpstreamSchemaChanged),
@@ -289,9 +418,30 @@ impl PlaybackController {
         )
         .map_err(|_| PlaybackError::UnsafeMediaUrl);
         resolved.url.zeroize();
-        let remote =
-            RemoteMediaUrl::parse(trusted?.expose_to_trusted_backend().as_str().to_owned())
-                .map_err(map_player_error)?;
+        let trusted = trusted?;
+        let bridged = if let Some(generation) = generation.filter(|_| self.smooth_enabled()) {
+            let (_, registry) = self.smooth.as_ref().unwrap();
+            let bitrate = match resolved.quality.as_str() { "128k" => Some(128_000), "320k" => Some(320_000), _ => None };
+            let smooth = self.smooth_source(OnlineProviderId::Qqmusic, generation, &track.id,
+                &resolved.quality, bitrate, resolved.duration_ms.unwrap_or(0))
+                .ok_or(PlaybackError::AuthenticationRequired)?;
+            let bridge = MediaBridge::qq(&trusted, self.resolver.as_ref(), is_mv, Some(smooth))
+                .map_err(|_| PlaybackError::UnsafeMediaUrl)?;
+            let registry = registry.clone();
+            bridge.bind_account(Arc::new(move || registry.playback_account(OnlineProviderId::Qqmusic)
+                .is_some_and(|(current, _)| current == generation)));
+            Some(BridgedPlayback {
+                provider_id: OnlineProviderId::Qqmusic,
+                bridge: Arc::new(bridge),
+                generation,
+                expires: (resolved.expires_in_seconds > 0).then(|| self.bridge_now() + std::time::Duration::from_secs(resolved.expires_in_seconds)),
+            })
+        } else { None };
+        let remote = if let Some(source) = &bridged {
+            source.bridge.native_url()
+        } else {
+            RemoteMediaUrl::parse(trusted.expose_to_trusted_backend().as_str().to_owned()).map_err(map_player_error)?
+        };
         Ok(ResolvedPlayback {
             bitrate: None,
             remote,
@@ -300,11 +450,11 @@ impl PlaybackController {
             quality: resolved.quality,
             expires_in_seconds: resolved.expires_in_seconds,
             media_duration_ms: resolved.duration_ms,
-            bridged: None,
+            bridged,
         })
     }
-    fn resolve_provider(&self, track: TrackSummary, requested: PlaybackQuality) -> Result<ResolvedPlayback, PlaybackError> {
-        use crate::multi_provider::{identity::track_provider, ProviderId, OnlineProviderId, protocol::Error};
+    fn resolve_provider(&self, track: TrackSummary, requested: PlaybackQuality, trace: crate::file_logging::PlaybackTrace) -> Result<ResolvedPlayback, PlaybackError> {
+        use crate::multi_provider::{identity::track_provider, ProviderId, protocol::Error};
         let (id, registry, reference) = match track_provider(&track.id) {
             Ok(ProviderId::Netease) => {
                 let n = self.netease.as_ref().ok_or(PlaybackError::ProviderUnavailable)?;
@@ -319,8 +469,12 @@ impl PlaybackController {
             _ => return Err(PlaybackError::InvalidRequest),
         };
         let generation = registry.ready_generation(id).map_err(|_| PlaybackError::AuthenticationRequired)?;
-        let v = registry.request(id, generation, "playback.resolve", serde_json::json!({"track":reference,"preferredQuality":if id == OnlineProviderId::Bilibili {"aac"} else {requested.wire()}}))
-            .map_err(|err| match err { Error::Stale => PlaybackError::AuthenticationRequired, _ => PlaybackError::ProviderUnavailable })?;
+        let params = serde_json::json!({"track":reference,"preferredQuality":if id == OnlineProviderId::Bilibili {"aac"} else {requested.wire()}});
+        let span = trace.begin("provider_request");
+        let reply = if trace.speculative { registry.request_speculative(id, generation, "playback.resolve", params) }
+            else { registry.request(id, generation, "playback.resolve", params) };
+        span.finish(if matches!(&reply, Ok(value) if value["ok"] == true) { "ok" } else { "failed" });
+        let v = reply.map_err(|err| match err { Error::Stale => PlaybackError::AuthenticationRequired, _ => PlaybackError::ProviderUnavailable })?;
         if v["ok"] != true { return Err(map_provider_failure(v["error"]["code"].as_str().unwrap_or("provider_unavailable"))); }
         let r = &v["result"];
         let url = r["url"].as_str().ok_or(PlaybackError::UpstreamSchemaChanged)?;
@@ -333,6 +487,10 @@ impl PlaybackController {
             if !matches!(quality.as_str(), "flac"|"320k"|"128k") || r.get("backupUrls").is_some() || r["headers"].as_object().is_none_or(|h| !h.is_empty()) { return Err(PlaybackError::UpstreamSchemaChanged); }
             None
         };
+        let codec = r["codec"].as_str().ok_or(PlaybackError::UpstreamSchemaChanged)?;
+        let source_bitrate = r["bitrate"].as_u64().filter(|b| (1..=100000000).contains(b));
+        let representation = format!("{quality}:{codec}");
+        let smooth = self.smooth_source(id, generation, &track.id, &representation, source_bitrate, r["durationMs"].as_u64().unwrap_or(0));
         let bridge = if id == OnlineProviderId::Bilibili {
             let headers = r["headers"].as_object().ok_or(PlaybackError::UnsafeMediaUrl)?;
             if headers.keys().any(|h| !matches!(h.as_str(), "Referer"|"User-Agent"))
@@ -345,16 +503,16 @@ impl PlaybackController {
             for u in &urls { crate::multi_provider::media_bridge::validate_bilibili_url(u).map_err(|_| PlaybackError::UnsafeMediaUrl)?; }
             #[cfg(test)]
             if self.bridge_fixture { crate::multi_provider::media_bridge::MediaBridge::fixture() }
-            else { crate::multi_provider::media_bridge::MediaBridge::bilibili_candidates(&urls).map_err(|_| PlaybackError::UnsafeMediaUrl)? }
+            else { crate::multi_provider::media_bridge::MediaBridge::bilibili_with(&urls, smooth).map_err(|_| PlaybackError::UnsafeMediaUrl)? }
             #[cfg(not(test))]
-            crate::multi_provider::media_bridge::MediaBridge::bilibili_candidates(&urls).map_err(|_| PlaybackError::UnsafeMediaUrl)?
+            crate::multi_provider::media_bridge::MediaBridge::bilibili_with(&urls, smooth).map_err(|_| PlaybackError::UnsafeMediaUrl)?
         } else {
             crate::multi_provider::media_bridge::validate_netease_url(url).map_err(|_| PlaybackError::UnsafeMediaUrl)?;
             #[cfg(test)]
             if self.bridge_fixture { crate::multi_provider::media_bridge::MediaBridge::fixture() }
-            else { crate::multi_provider::media_bridge::MediaBridge::netease(url).map_err(|_| PlaybackError::UnsafeMediaUrl)? }
+            else { crate::multi_provider::media_bridge::MediaBridge::netease_with(url, smooth).map_err(|_| PlaybackError::UnsafeMediaUrl)? }
             #[cfg(not(test))]
-            crate::multi_provider::media_bridge::MediaBridge::netease(url).map_err(|_| PlaybackError::UnsafeMediaUrl)?
+            crate::multi_provider::media_bridge::MediaBridge::netease_with(url, smooth).map_err(|_| PlaybackError::UnsafeMediaUrl)?
         };
         let guard = registry.clone(); bridge.bind_account(Arc::new(move || guard.ready_generation(id) == Ok(generation)));
         if let Some(dash)=r.get("dash") {
@@ -364,7 +522,7 @@ impl PlaybackController {
         }
         if registry.ready_generation(id) != Ok(generation) { return Err(PlaybackError::AuthenticationRequired); }
         Ok(ResolvedPlayback { bitrate, remote: bridge.native_url(), track, smtc_metadata: SmtcMetadata::default(), quality, expires_in_seconds: seconds, media_duration_ms: r["durationMs"].as_u64(),
-            bridged: Some(BridgedPlayback { provider_id: id, _bridge: bridge, generation, expires: (seconds > 0).then(|| self.bridge_now() + std::time::Duration::from_secs(seconds)) }) })
+            bridged: Some(BridgedPlayback { provider_id: id, bridge: Arc::new(bridge), generation, expires: (seconds > 0).then(|| self.bridge_now() + std::time::Duration::from_secs(seconds)) }) })
     }
 
     pub(crate) fn load_and_play(

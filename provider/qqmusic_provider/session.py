@@ -9,6 +9,8 @@ from typing import Any
 
 import anyio
 
+from .request_policy import DEFAULT_IDENTITY, identity_for
+
 
 class SessionCompatibilityFailure(RuntimeError):
     """The pinned upstream client no longer exposes a required transport control."""
@@ -43,14 +45,12 @@ class QQMusicSession:
     @staticmethod
     def _default_client_factory(device_path: str) -> Any:
         from qqmusic_api import Client
-        from qqmusic_api.core.versioning import Platform
 
         from .transport import QQMusicTransport
 
-        # F09: Use desktop/Windows request identity rather than upstream Android default.
         return Client(
             device_path=device_path,
-            platform=Platform.DESKTOP,
+            platform=DEFAULT_IDENTITY.platform,
             transport=QQMusicTransport(connect_retries=2),
         )
 
@@ -71,14 +71,14 @@ class QQMusicSession:
             raise RuntimeError("session_not_initialized")
         return self._client
 
-    def android_executor(self) -> Any:
-        """Bind an SDK operation to Android without mutating the shared client."""
+    def executor_for(self, operation: str) -> Any:
+        """Scope SDK coroutine APIs using the same policy as request descriptors."""
         from qqmusic_api.core.engine import RequestScope, ScopedRequestExecutor
-        from qqmusic_api.core.versioning import Platform
 
         client = self.client()
         return ScopedRequestExecutor(
-            client._engine, RequestScope(credential=client.credential, platform=Platform.ANDROID)
+            client._engine,
+            RequestScope(credential=client.credential, platform=identity_for(operation).platform),
         )
 
     async def rebuild_if_current(self, failed_generation: int) -> int:

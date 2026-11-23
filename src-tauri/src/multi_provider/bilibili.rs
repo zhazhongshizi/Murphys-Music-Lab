@@ -23,13 +23,18 @@ impl BilibiliService {
     pub fn new(registry: Arc<ProviderRegistry>) -> Self { Self { registry, covers: Mutex::new(BTreeMap::new()) } }
     pub fn ready_generation(&self) -> Result<u64, Error> { self.registry.ready_generation(OnlineProviderId::Bilibili) }
     /// Private metadata lookup for a cover cache miss. Never expose its URL over IPC.
-    pub fn cover_url(&self, bvid: &str) -> Result<String, Error> {
+    pub(crate) fn cover_url(&self, bvid: &str, speculative: bool) -> Result<String, Error> {
         identity::TrackRef::bilibili(bvid, "1").map_err(|_| Error::Context)?;
         let generation = self.ready_generation()?;
         if let Some((epoch, url)) = self.covers.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(bvid).cloned() {
             if epoch == generation { return Ok(url); }
         }
-        let response = self.registry.request(OnlineProviderId::Bilibili, generation, "video.resolve", json!({"input":bvid}))?;
+        let params = json!({"input": bvid});
+        let response = if speculative {
+            self.registry.request_speculative(OnlineProviderId::Bilibili, generation, "video.resolve", params)?
+        } else {
+            self.registry.request(OnlineProviderId::Bilibili, generation, "video.resolve", params)?
+        };
         if response["ok"] != true || response["result"]["bvid"] != bvid { return Err(Error::Schema); }
         self.remember_covers(generation, &response["result"]);
         response["result"]["coverUrl"].as_str().map(str::to_owned).ok_or(Error::Schema)
@@ -120,10 +125,13 @@ pub(crate) mod tests {
         service_with_expiry(0)
     }
     pub(crate) fn service_with_expiry(seconds: u64) -> Arc<BilibiliService> {
+        service_with_cover_fault(seconds, "")
+    }
+    pub(crate) fn service_with_cover_fault(seconds: u64, cover_fault: &str) -> Arc<BilibiliService> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let node = root.join("output/node-24.22.2/bundled/node-v24.22.2-win-x64/node.exe");
         let mut r = registration(root, &node).unwrap();
-        r.launch = ProviderLaunch::new(&node).unwrap().args([root.join("providers/node/bilibili/tests/fixture-entry.mjs").into_os_string(), seconds.to_string().into()]).current_dir(root).unwrap();
+        r.launch = ProviderLaunch::new(&node).unwrap().args([root.join("providers/node/bilibili/tests/fixture-entry.mjs").into_os_string(), seconds.to_string().into(), cover_fault.into()]).current_dir(root).unwrap();
         let memory = Arc::new(Memory::default());
         *memory.0.lock().unwrap() = Some(serde_json::to_vec(&json!({"version":1,"providerId":"bilibili","payload":"SYNTHETIC_TEST_ONLY"})).unwrap());
         let mut registry = ProviderRegistry::default(); registry.register(r, memory).unwrap();
@@ -148,7 +156,7 @@ pub(crate) mod tests {
         assert_eq!(search["items"][0]["coverCacheKey"], "bili_BV17x411w7KC");
         assert_eq!(ts[0].cover_cache_key.as_deref(), Some("bili_BV17x411w7KC"));
         assert_eq!(ts[0].cover_cache_key, ts[1].cover_cache_key);
-        assert_eq!(b.cover_url("BV17x411w7KC").unwrap(), "https://i0.hdslb.com/bfs/archive/synthetic-cover.jpg");
+        assert_eq!(b.cover_url("BV17x411w7KC", false).unwrap(), "https://i0.hdslb.com/bfs/archive/synthetic-cover.jpg");
         assert_eq!(ts[1].video.as_ref().unwrap().part_number, 2);
         for kind in ["created", "favorite"] {
             let folders = b.read("library.containers", json!({"kind":kind,"page":1,"pageSize":20})).unwrap();

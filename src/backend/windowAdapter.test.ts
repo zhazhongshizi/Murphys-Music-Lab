@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  listenWindowFocused,
   listenWindowMinimized,
   listenWindowRenderable,
   listenWindowResize,
@@ -61,6 +62,29 @@ describe("窗口控制适配器 (windowAdapter)", () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
       document.dispatchEvent(new Event("visibilitychange"));
       expect(callback).toHaveBeenCalledTimes(2);
+    });
+
+    it("在浏览器环境默认聚焦为 true，并跟踪 window focus/blur 事件去重与注销", async () => {
+      const callback = vi.fn();
+      const unlisten = await listenWindowFocused(callback);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenLastCalledWith(true);
+
+      window.dispatchEvent(new Event("focus"));
+      expect(callback).toHaveBeenCalledTimes(1);
+
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("blur"));
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenLastCalledWith(false);
+
+      window.dispatchEvent(new Event("focus"));
+      expect(callback).toHaveBeenCalledTimes(3);
+      expect(callback).toHaveBeenLastCalledWith(true);
+
+      unlisten();
+      window.dispatchEvent(new Event("blur"));
+      expect(callback).toHaveBeenCalledTimes(3);
     });
 
     it("Mini 进入和普通恢复在浏览器环境安全回退", async () => {
@@ -167,9 +191,109 @@ describe("窗口控制适配器 (windowAdapter)", () => {
       triggerFocus!({ payload: true });
       expect(onMinimized).toHaveBeenLastCalledWith(false);
 
+      mockIsMinimized.mockResolvedValueOnce(true);
+      triggerFocus!({ payload: false });
+      await vi.waitFor(() => expect(mockIsMinimized).toHaveBeenCalledTimes(3));
+      expect(onMinimized).toHaveBeenLastCalledWith(true);
+
       unlisten();
       expect(mockUnlisten).toHaveBeenCalledTimes(1);
       expect(mockFocusUnlisten).toHaveBeenCalledTimes(1);
+    });
+
+    it("监听 Tauri 窗口聚焦状态、去重并在缺失 isFocused 或异常时安全回退", async () => {
+      (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ = {};
+
+      let triggerFocus: ((event: { payload: boolean }) => void) | undefined;
+      const mockUnlisten = vi.fn();
+      const mockIsFocused = vi.fn().mockResolvedValue(false);
+
+      vi.doMock("@tauri-apps/api/window", () => ({
+        getCurrentWindow: () => ({
+          isFocused: mockIsFocused,
+          onFocusChanged: (handler: (event: { payload: boolean }) => void) => {
+            triggerFocus = handler;
+            return Promise.resolve(mockUnlisten);
+          },
+        }),
+      }));
+
+      const onFocused = vi.fn();
+      const unlisten = await listenWindowFocused(onFocused);
+      expect(mockIsFocused).toHaveBeenCalledTimes(1);
+      expect(onFocused).toHaveBeenCalledTimes(1);
+      expect(onFocused).toHaveBeenLastCalledWith(false);
+
+      triggerFocus!({ payload: true });
+      triggerFocus!({ payload: true });
+      expect(onFocused).toHaveBeenCalledTimes(2);
+      expect(onFocused).toHaveBeenLastCalledWith(true);
+
+      triggerFocus!({ payload: false });
+      expect(onFocused).toHaveBeenCalledTimes(3);
+      expect(onFocused).toHaveBeenLastCalledWith(false);
+
+      window.dispatchEvent(new Event("focus"));
+      expect(onFocused).toHaveBeenCalledTimes(4);
+      expect(onFocused).toHaveBeenLastCalledWith(true);
+
+      unlisten();
+      expect(mockUnlisten).toHaveBeenCalledTimes(1);
+      window.dispatchEvent(new Event("blur"));
+      expect(onFocused).toHaveBeenCalledTimes(4);
+
+      vi.doUnmock("@tauri-apps/api/window");
+      vi.resetModules();
+
+      let triggerMinimalFocus: ((event: { payload: boolean }) => void) | undefined;
+      const minimalUnlisten = vi.fn();
+      vi.doMock("@tauri-apps/api/window", () => ({
+        getCurrentWindow: () => ({
+          onFocusChanged: (handler: (event: { payload: boolean }) => void) => {
+            triggerMinimalFocus = handler;
+            return Promise.resolve(minimalUnlisten);
+          },
+        }),
+      }));
+
+      const minimalMod = await import("./windowAdapter");
+      const minimalCallback = vi.fn();
+      const unlistenMinimal = await minimalMod.listenWindowFocused(minimalCallback);
+      expect(minimalCallback).toHaveBeenCalledTimes(1);
+      expect(minimalCallback).toHaveBeenLastCalledWith(true);
+      triggerMinimalFocus!({ payload: false });
+      expect(minimalCallback).toHaveBeenLastCalledWith(false);
+      unlistenMinimal();
+      expect(minimalUnlisten).toHaveBeenCalledTimes(1);
+
+      vi.doUnmock("@tauri-apps/api/window");
+      vi.resetModules();
+
+      let triggerErrorFocus: ((event: { payload: boolean }) => void) | undefined;
+      const errorUnlisten = vi.fn();
+      vi.doMock("@tauri-apps/api/window", () => ({
+        getCurrentWindow: () => ({
+          isFocused: vi.fn().mockRejectedValue(new Error("focus query failed")),
+          onFocusChanged: (handler: (event: { payload: boolean }) => void) => {
+            triggerErrorFocus = handler;
+            return Promise.resolve(errorUnlisten);
+          },
+        }),
+      }));
+
+      const errorMod = await import("./windowAdapter");
+      const errorCallback = vi.fn();
+      const unlistenError = await errorMod.listenWindowFocused(errorCallback);
+      expect(errorCallback).toHaveBeenCalledTimes(1);
+      expect(errorCallback).toHaveBeenLastCalledWith(true);
+      expect(errorUnlisten).not.toHaveBeenCalled();
+
+      triggerErrorFocus!({ payload: false });
+      expect(errorCallback).toHaveBeenCalledTimes(2);
+      expect(errorCallback).toHaveBeenLastCalledWith(false);
+
+      unlistenError();
+      expect(errorUnlisten).toHaveBeenCalledTimes(1);
     });
 
     it("合并原生显隐、最小化与 document 可见性且清理全部监听", async () => {
@@ -197,7 +321,7 @@ describe("窗口控制适配器 (windowAdapter)", () => {
 
       const callback = vi.fn();
       const unlisten = await listenWindowRenderable(callback);
-      expect(callback.mock.calls.map(([value]) => value)).toEqual([false, true]);
+      expect(callback.mock.calls.map(([value]) => value)).toEqual([null, true]);
 
       publishVisible?.({ payload: "false" });
       expect(callback).toHaveBeenCalledTimes(2);
@@ -221,7 +345,7 @@ describe("窗口控制适配器 (windowAdapter)", () => {
       expect(unlistenFocus).toHaveBeenCalledTimes(1);
     });
 
-    it("窗口状态监听初始化失败时保守保持不可绘制", async () => {
+    it("显隐监听初始化失败时发布未知，document 隐藏时仍明确不可绘制", async () => {
       (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ = {};
       vi.doMock("@tauri-apps/api/event", () => ({
         listen: vi.fn().mockRejectedValue(new Error("listen failed")),
@@ -236,7 +360,35 @@ describe("窗口控制适配器 (windowAdapter)", () => {
       const callback = vi.fn();
       const unlisten = await listenWindowRenderable(callback);
       expect(callback).toHaveBeenCalledOnce();
+      expect(callback).toHaveBeenLastCalledWith(null);
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
       expect(callback).toHaveBeenLastCalledWith(false);
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(callback).toHaveBeenLastCalledWith(null);
+      unlisten();
+    });
+
+    it("最小化监听部分注册失败时释放已注册的监听并发布未知", async () => {
+      (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ = {};
+      const unlistenVisible = vi.fn();
+      const unlistenResize = vi.fn();
+      vi.doMock("@tauri-apps/api/event", () => ({
+        listen: vi.fn().mockResolvedValue(unlistenVisible),
+      }));
+      vi.doMock("@tauri-apps/api/window", () => ({
+        getCurrentWindow: () => ({
+          onResized: vi.fn().mockResolvedValue(unlistenResize),
+          onFocusChanged: vi.fn().mockRejectedValue(new Error("listen failed")),
+        }),
+      }));
+
+      const callback = vi.fn();
+      const unlisten = await listenWindowRenderable(callback);
+      expect(callback.mock.calls).toEqual([[null]]);
+      expect(unlistenVisible).toHaveBeenCalledOnce();
+      expect(unlistenResize).toHaveBeenCalledOnce();
       unlisten();
     });
 

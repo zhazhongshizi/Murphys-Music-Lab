@@ -435,10 +435,12 @@ mod tests {
             Duration::from_secs(3),
         );
         f.registry.sync_netease_likes().unwrap();
+        let first = f.registry.cached_netease_likes().unwrap();
         assert_eq!(
-            f.registry.cached_netease_likes().unwrap(),
-            HashSet::from(["netease:track:1".into()])
+            first.as_ref(),
+            &HashSet::from(["netease:track:1".into()])
         );
+        assert!(Arc::ptr_eq(&first, &f.registry.cached_netease_likes().unwrap()));
         let r = f.registry.clone();
         let read = std::thread::spawn(move || r.sync_netease_likes());
         std::thread::sleep(Duration::from_millis(30));
@@ -452,10 +454,18 @@ mod tests {
             .cached_netease_likes()
             .unwrap()
             .contains("netease:track:2"));
+        assert!(!first.contains("netease:track:2"));
+        let generation = f.registry.ready_generation(OnlineProviderId::Netease).unwrap();
+        let liked = f.registry.cached_netease_likes().unwrap();
+        f.registry.verified_like(generation, "netease:track:2", true);
+        assert!(Arc::ptr_eq(&liked, &f.registry.cached_netease_likes().unwrap()));
+        f.registry.verified_like(generation, "netease:track:2", false);
+        assert!(liked.contains("netease:track:2"));
+        assert!(!f.registry.cached_netease_likes().unwrap().contains("netease:track:2"));
         f.registry.sign_out(OnlineProviderId::Netease).unwrap();
         assert!(f.registry.cached_netease_likes().is_none());
         assert!(f.registry.restore(OnlineProviderId::Netease).unwrap());
         f.registry.sync_netease_likes().unwrap();
-        assert_eq!(f.registry.cached_netease_likes().unwrap(),HashSet::from(["netease:track:1".into()]));
+        assert_eq!(f.registry.cached_netease_likes().unwrap().as_ref(),&HashSet::from(["netease:track:1".into()]));
     }
 }

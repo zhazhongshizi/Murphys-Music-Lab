@@ -9,7 +9,7 @@ const settings = vi.hoisted(() => ({
 }));
 const windowLifecycle = vi.hoisted(() => ({
   listen: vi.fn(),
-  publish: undefined as ((renderable: boolean) => void) | undefined,
+  publish: undefined as ((renderable: boolean | null) => void) | undefined,
   unlisten: vi.fn(),
 }));
 const spectrumBridge = vi.hoisted(() => ({ render: vi.fn() }));
@@ -130,5 +130,8 @@ describe("Live Spectrum experimental setting", () => {
 
     act(() => windowLifecycle.publish?.(true));
     await waitFor(() => expect(spectrumBridge.render).toHaveBeenLastCalledWith(true));
+
+    act(() => windowLifecycle.publish?.(null));
+    await waitFor(() => expect(spectrumBridge.render).toHaveBeenLastCalledWith(false));
   });
 });

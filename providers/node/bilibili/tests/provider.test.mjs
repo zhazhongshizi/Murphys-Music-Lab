@@ -25,6 +25,23 @@ test('video summaries and all parts share the main video cover, normalized to HT
   assert.equal(videoCover('//i1.hdslb.com/bfs/archive/cover.png'), 'https://i1.hdslb.com/bfs/archive/cover.png');
   for (const value of [null, '', 'https://evil.test/a.jpg', 'https://i0.hdslb.com.evil.test/a.jpg', 'https://user@i0.hdslb.com/a.jpg']) assert.equal(videoCover(value), null);
 });
+test('large collection metadata in video details does not block parts or playback', async () => {
+  const detail = { ...view, ugc_season: { sections: [{ episodes: [{ arc: { desc: 'x'.repeat(1600000) } }] }] } };
+  const f = await restored({ hook: u => u.pathname === '/x/web-interface/view' ? response(detail) : undefined });
+  const parts = await f.provider.handle('video.parts', { bvid: BVID });
+  assert.deepEqual(parts.items.map(part => part.ref.cid), ['123', '124']);
+  assert.equal(Object.hasOwn(parts.items[0], 'ugc_season'), false);
+  const playback = await f.provider.handle('playback.resolve', { track: parts.items[0].ref });
+  assert.equal(playback.codec, 'aac');
+  assert.deepEqual(playback.track, parts.items[0].ref);
+});
+test('video details have a bounded response limit and other API limits stay smaller', async () => {
+  const f = fixture({
+    hook: u => response({ padding: 'x'.repeat(u.pathname === '/x/web-interface/view' ? 4 * 1024 * 1024 : 1024 * 1024) }),
+  });
+  await assert.rejects(f.transport.api('/x/web-interface/view', { bvid: BVID }), fault('upstream_schema_changed'));
+  await assert.rejects(f.transport.api('/x/player/pagelist', { bvid: BVID }), fault('upstream_schema_changed'));
+});
 test('production write profile is explicit; cold process sends no requests', async () => {
   const f = fixture(); assert.equal(f.calls.length, 0);
   const h = await f.provider.handle('system.handshake');

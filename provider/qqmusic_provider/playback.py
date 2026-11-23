@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlencode, urljoin, urlsplit
 
+from .request_policy import apply_request_identity
 from .session import QQMusicSession
+from .upstream_errors import classify_upstream_error
 
 IMPLEMENTED_PLAYBACK_METHODS = ("playback.resolve",)
 _MAX_MID_LENGTH = 128
@@ -63,7 +65,6 @@ class QQMusicPlaybackSource:
         self._session = session if session is not None else QQMusicSession(cast("str", device_path))
 
     async def resolve(self, song_mid: str, qualities: tuple[str, ...]) -> Mapping[str, object]:
-        from qqmusic_api.core.versioning import Platform
         from qqmusic_api.modules.song import (
             SongFileInfo,
             SongFileType,
@@ -79,10 +80,8 @@ class QQMusicPlaybackSource:
             SongFileInfo(mid=song_mid, file_type=file_types[quality]) for quality in qualities
         ]
         try:
-            # Some recordings only return a playable URL for the Android
-            # GetVkey profile. Keep this override local to original audio.
             request = client.song.get_song_urls(requests)
-            response = await replace(request, platform=Platform.ANDROID)
+            response = await apply_request_identity("playback.original", request)
         except Exception as error:
             raise _map_upstream_error(error) from None
         data = getattr(response, "data", None)
@@ -365,25 +364,5 @@ def _mv_playback_urls(item: Any) -> list[str]:
 
 
 def _map_upstream_error(error: Exception) -> PlaybackFailure:
-    from pydantic import ValidationError
-    from qqmusic_api import (
-        ApiDataError,
-        BaseApiException,
-        CredentialExpiredError,
-        CredentialInvalidError,
-        HTTPError,
-        NetworkError,
-        RatelimitedError,
-    )
-
-    if isinstance(error, NetworkError | HTTPError):
-        return PlaybackFailure(PlaybackFailureCode.NETWORK_UNAVAILABLE, retryable=True)
-    if isinstance(error, RatelimitedError):
-        return PlaybackFailure(PlaybackFailureCode.RATE_LIMITED, retryable=True)
-    if isinstance(error, CredentialExpiredError | CredentialInvalidError):
-        return PlaybackFailure(PlaybackFailureCode.AUTHENTICATION_REQUIRED)
-    if isinstance(error, ApiDataError | ValidationError | KeyError | TypeError | ValueError):
-        return PlaybackFailure(PlaybackFailureCode.UPSTREAM_SCHEMA_CHANGED)
-    if isinstance(error, BaseApiException):
-        return PlaybackFailure(PlaybackFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
-    return PlaybackFailure(PlaybackFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
+    failure = classify_upstream_error(error)
+    return PlaybackFailure(PlaybackFailureCode(failure.code.value), retryable=failure.retryable)

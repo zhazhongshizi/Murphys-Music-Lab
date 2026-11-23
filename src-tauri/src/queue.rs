@@ -126,6 +126,31 @@ pub struct QueueSnapshot {
     pub items: Vec<QueueTrack>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct QueueView<'a> {
+    pub generation: u64,
+    pub selected_index: Option<usize>,
+    pub items: &'a [QueueTrack],
+}
+
+impl QueueView<'_> {
+    pub fn index_of(self, id: &str) -> Option<usize> {
+        self.selected_index
+            .filter(|&index| self.items.get(index).is_some_and(|track| track.id == id))
+            .or_else(|| self.items.iter().position(|track| track.id == id))
+    }
+}
+
+impl<'a> From<&'a QueueSnapshot> for QueueView<'a> {
+    fn from(snapshot: &'a QueueSnapshot) -> Self {
+        Self {
+            generation: snapshot.generation,
+            selected_index: snapshot.selected_index,
+            items: &snapshot.items,
+        }
+    }
+}
+
 struct QueueState {
     generation: u64,
     selected_index: Option<usize>,
@@ -136,6 +161,8 @@ pub struct QueueService {
     pub(crate) shuffle_path: std::path::PathBuf,
     pub(crate) persistence: PersistenceService,
     state: RwLock<QueueState>,
+    #[cfg(test)]
+    pub(crate) full_snapshot_reads: std::sync::atomic::AtomicUsize,
 }
 
 impl QueueService {
@@ -164,6 +191,8 @@ impl QueueService {
                 selected_index,
                 items,
             }),
+            #[cfg(test)]
+            full_snapshot_reads: Default::default(),
         })
     }
 
@@ -206,6 +235,8 @@ impl QueueService {
             .map_err(map_persistence_error)
     }
     pub fn snapshot(&self) -> QueueSnapshot {
+        #[cfg(test)]
+        self.full_snapshot_reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let state = self
             .state
             .read()
@@ -217,13 +248,29 @@ impl QueueService {
         }
     }
 
+    pub(crate) fn with_view<T>(&self, read: impl FnOnce(QueueView<'_>) -> T) -> T {
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        read(QueueView {
+            generation: state.generation,
+            selected_index: state.selected_index,
+            items: &state.items,
+        })
+    }
+
     /// Check and clone under the same lock so a matching generation costs no item copies.
     pub fn snapshot_if_changed(&self, known_generation: Option<u64>) -> Option<QueueSnapshot> {
         let state = self
             .state
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        (known_generation != Some(state.generation)).then(|| snapshot_from(&state))
+        (known_generation != Some(state.generation)).then(|| {
+            #[cfg(test)]
+            self.full_snapshot_reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            snapshot_from(&state)
+        })
     }
 
     pub fn replace(&self, items: Vec<QueueTrack>) -> Result<QueueSnapshot, QueueError> {

@@ -4,13 +4,15 @@
 
 截图使用实际前端与虚构数据，阻断外部请求，不加载 Credential Manager、真实 SQLite 或 WebView 用户存储。
 
-QQ 运行时凭据保存在 Windows Credential Manager（`QQMusicGUI/Auth/v1`）；网易云与 Bilibili 登录材料由 Rust 以用户范围 DPAPI 保护并按来源独立保存。队列、历史和资料保存在用户应用数据目录的 SQLite，部分 UI 数据在 WebView 存储。设备身份同样保存在用户数据目录，缓存图片及可选日志位于应用旁。没有自动遥测上传；认证和播放会访问你选择的 QQ 音乐、网易云或 Bilibili 服务。
+QQ 运行时凭据保存在 Windows Credential Manager（`QQMusicGUI/Auth/v1`）；网易云与 Bilibili 登录材料由 Rust 以用户范围 DPAPI 保护并按来源独立保存。队列、历史和资料保存在用户应用数据目录的 SQLite，部分 UI 数据在 WebView 存储。设备身份同样保存在用户数据目录，缓存图片、获准播放的媒体区间及可选日志位于应用旁。没有自动遥测上传；认证和播放会访问你选择的 QQ 音乐、网易云或 Bilibili 服务。
+
+`media-cache` 中的媒体按音源、安装实例派生的账号标识、曲目或分 P、实际表示及已验证的资源版本隔离。文件只保存校验后的媒体区间和缓存管理数据。每次重播都需联网重新确认当前账号的曲目播放权限和媒体版本。清理入口在桌面「平滑播放与缓存」，个人版就地更新保留缓存目录。
 
 提交或反馈前：
 
 - 不上传凭据导出、Cookie、二维码、设备 JSON、连接码或限时媒体 URL。
 - 不上传 `state.sqlite3`、`smart-shuffle.sqlite3` 及 WAL／SHM、实际统计、数据库备份或数据导出。
-- 不上传 `cover-cache`、`logs`、`output`、用户数据或 WebView 配置目录。
+- 不上传 `cover-cache`、`media-cache`、`logs`、`output`、用户数据或 WebView 配置目录。
 - 截图优先用虚构数据；真实环境先遮盖账号、个人歌单、路径与统计。
 
 `.gitignore` 是辅助，提交前仍需检查文件与 diff。安全问题使用私密渠道。

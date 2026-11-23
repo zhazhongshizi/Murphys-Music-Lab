@@ -24,7 +24,9 @@ fn wait(p:&PlaybackController,seconds:u64,predicate:impl Fn(&serde_json::Value)-
     Err("native_timeout")
 }
 fn run()->Result<(), &'static str>{
-    let args:Vec<_>=std::env::args().skip(1).collect();
+    let mut args:Vec<_>=std::env::args().skip(1).collect();
+    let smooth = args.last().is_some_and(|arg| arg == "--smooth");
+    if smooth { args.pop(); }
     if args.len()<2 || args.len()>3 || args[0]!="--public-probe" {return Err("explicit_public_probe_required");}
     let bvid=&args[1]; let part=args.get(2).map(|p|p.parse::<usize>()).transpose().map_err(|_|"invalid_part")?.unwrap_or(1);
     if part==0 || part>10000 {return Err("invalid_part");}
@@ -40,12 +42,19 @@ fn run()->Result<(), &'static str>{
     let selected=parts["items"].as_array().and_then(|xs|xs.get((part-1)%100)).ok_or("part_unavailable")?;
     let track=bilibili::queue_track_from_provider_track(selected).map_err(|_|"invalid_track")?;
     let native=WindowsMediaPlayerEngine::new().map_err(|_|"native_unavailable")?;
-    let player=PlaybackController::new(Arc::new(NoQq),Box::new(native)).with_bilibili(service.clone());
+    let mut player=PlaybackController::new(Arc::new(NoQq),Box::new(native)).with_bilibili(service.clone());
+    if smooth {
+        let cache = std::env::temp_dir().join(format!("qmg-public-media-{}", uuid::Uuid::new_v4()));
+        player = player.with_public_probe_smoothing(cache, service.registry.clone());
+    }
     player.set_muted(true).map_err(|_|"mute_failed")?;
+    let started = Instant::now();
     let result=player.resolve_load_and_play(TrackSummary{source:None,id:track.id,title:track.title,artist:track.artist},PlaybackQuality::Auto).map_err(|_|"production_resolve_failed")?;
     wait(&player,30,|s|s["durationMs"].as_u64().is_some_and(|d|d>5000)).map_err(|_|"open_timeout")?;
     let duration=serde_json::to_value(player.snapshot()).unwrap()["durationMs"].as_u64().ok_or("missing_duration")?;
     wait(&player,15,|s|s["positionMs"].as_u64().unwrap_or(0)>300).map_err(|_|"initial_play_timeout")?;
+    let first_play_ms = started.elapsed().as_millis();
+    if smooth { println!("public_probe_start: {}", json!({ "firstPlayMs": first_play_ms, "media": player.media_probe_summary() })); }
     player.pause().map_err(|_|"pause_failed")?; wait(&player,5,|s|s["state"]=="paused")?;
     thread::sleep(Duration::from_millis(150));let paused=serde_json::to_value(player.snapshot()).unwrap()["positionMs"].as_u64().unwrap_or(0);
     thread::sleep(Duration::from_millis(350));if serde_json::to_value(player.snapshot()).unwrap()["positionMs"].as_u64().unwrap_or(0).abs_diff(paused)>100{return Err("pause_not_stable");}
@@ -62,9 +71,10 @@ fn run()->Result<(), &'static str>{
         match player.try_native_event(){Some(NativePlayerEvent::Ended{..})=>{ended=true;break;},Some(NativePlayerEvent::Failed{..})=>return Err("native_failed"),_=>thread::sleep(Duration::from_millis(40))}
     }
     if !ended{return Err("ended_missing");}
+    let media = player.media_probe_summary();
     player.stop().map_err(|_|"stop_failed")?;
     service.registry.sign_out(OnlineProviderId::Bilibili).map_err(|_|"probe_logout_failed")?;
-    println!("{}",json!({"probe":"production-bilibili-public","syntheticAuth":true,"part":part,"durationMs":duration,"quality":result.quality,"bitrate":result.bitrate,"seekPoints":3,"pauseResume":true,"ended":true,"muted":true}));
+    println!("{}",json!({"probe":"production-bilibili-public","syntheticAuth":true,"part":part,"durationMs":duration,"quality":result.quality,"bitrate":result.bitrate,"seekPoints":3,"pauseResume":true,"ended":true,"muted":true,"firstPlayMs":first_play_ms,"media":media}));
     Ok(())
 }
 fn main(){if let Err(code)=run(){eprintln!("bilibili_production_probe_failed:{code}");std::process::exit(2);}}

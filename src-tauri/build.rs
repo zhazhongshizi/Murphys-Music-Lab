@@ -81,6 +81,7 @@ fn main() {
             "queue_move",
             "queue_play",
             "settings_snapshot",
+            "media_cache_control",
             "updates_control",
             "settings_set_preferred_quality",
             "settings_set_live_spectrum_enabled",

@@ -56,6 +56,7 @@ device*.json
 *.sqlite3-wal
 *.sqlite3-shm
 /cover-cache/
+/media-cache/
 /logs/
 /data/
 /userdata/

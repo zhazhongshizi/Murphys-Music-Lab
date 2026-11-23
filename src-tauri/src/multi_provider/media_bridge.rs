@@ -24,6 +24,9 @@ use std::{
 };
 use tokio::sync::watch;
 
+mod smooth;
+pub(crate) use smooth::{CacheUrlIdentity, SmoothRuntime, SmoothSource};
+
 pub(crate) const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36";
 
@@ -45,6 +48,8 @@ struct Source {
     length: Mutex<Option<u64>>,
     guard: Mutex<Option<Arc<dyn Fn() -> bool + Send + Sync>>>,
     manifest: Mutex<Option<String>>,
+    smooth: Option<Arc<smooth::SmoothSource>>,
+    dash_index: Mutex<Option<(u64, u64)>>,
 }
 pub struct MediaBridge {
     address: SocketAddr,
@@ -78,7 +83,15 @@ impl MediaBridge {
     pub(crate) fn fixture() -> Self {
         Self::start(url::Url::parse("http://127.0.0.1:9/unused-test-media").unwrap(),reqwest::Client::new()).unwrap()
     }
+    #[cfg(test)]
+    pub(crate) fn fixture_at(url: url::Url, smooth: Option<Arc<SmoothSource>>) -> Self {
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        Self::start_with_options(url, client, "https://www.bilibili.com/", Vec::new(), smooth).unwrap()
+    }
     pub fn netease(value: &str) -> Result<Self, &'static str> {
+        Self::netease_with(value, None)
+    }
+    pub(crate) fn netease_with(value: &str, smooth: Option<Arc<smooth::SmoothSource>>) -> Result<Self, &'static str> {
         let url = validate_netease_url(value)?;
         let host = url.host_str().ok_or("invalid_media_url")?;
         let ips = SystemDnsResolver.resolve(host, 443).map_err(|_| "media_dns_failed")?;
@@ -90,12 +103,15 @@ impl MediaBridge {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10)).read_timeout(Duration::from_secs(20))
             .resolve_to_addrs(host,&addrs).build().map_err(|_| "media_client_failed")?;
-        Self::start_with_referer(url,client,"https://music.163.com/")
+        Self::start_with_options(url, client, "https://music.163.com/", Vec::new(), smooth)
     }
     pub fn bilibili(value: &str) -> Result<Self, &'static str> {
         Self::bilibili_candidates(&[value])
     }
     pub fn bilibili_candidates(values: &[&str]) -> Result<Self, &'static str> {
+        Self::bilibili_with(values, None)
+    }
+    pub(crate) fn bilibili_with(values: &[&str], smooth: Option<Arc<smooth::SmoothSource>>) -> Result<Self, &'static str> {
         if values.is_empty() || values.len() > 9 { return Err("invalid_media_url"); }
         // Validate every candidate before attempting DNS; even an unused backup
         // cannot smuggle a private host, Cookie or redirect into the bridge.
@@ -114,16 +130,37 @@ impl MediaBridge {
         }
         if candidates.is_empty() { return Err("media_dns_failed"); }
         let (url, client) = candidates.remove(0);
-        Self::start_candidates(url, client, "https://www.bilibili.com/", candidates)
+        Self::start_with_options(url, client, "https://www.bilibili.com/", candidates, smooth)
     }
     #[cfg(test)]
     fn start(url: url::Url, client: reqwest::Client) -> Result<Self, &'static str> {
         Self::start_with_referer(url, client, "https://www.bilibili.com/")
     }
+    #[cfg(test)]
     fn start_with_referer(url: url::Url, client: reqwest::Client, referer: &'static str) -> Result<Self, &'static str> {
         Self::start_candidates(url, client, referer, Vec::new())
     }
+    pub(crate) fn qq(trusted: &crate::network_policy::TrustedRemoteUrl, resolver: &dyn DnsResolver, mv: bool, smooth: Option<Arc<smooth::SmoothSource>>) -> Result<Self, &'static str> {
+        let url = trusted.expose_to_trusted_backend().clone();
+        let host = url.host_str().ok_or("invalid_media_url")?;
+        let port = url.port_or_known_default().ok_or("invalid_media_url")?;
+        let purpose = if mv { RemoteUrlPurpose::MvMedia } else { RemoteUrlPurpose::Media };
+        let ips = resolver.resolve(host, port).map_err(|_| "media_dns_failed")?;
+        if ips.is_empty() || ips.iter().any(|ip| !is_allowed_resolved_address(*ip, purpose)) {
+            return Err("media_dns_denied");
+        }
+        let addresses: Vec<_> = ips.into_iter().map(|ip| SocketAddr::new(ip, port)).collect();
+        let client = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(10)).read_timeout(Duration::from_secs(20))
+            .resolve_to_addrs(host, &addresses).build().map_err(|_| "media_client_failed")?;
+        Self::start_with_options(url, client, "https://y.qq.com/", Vec::new(), smooth)
+    }
+    #[cfg(test)]
     fn start_candidates(url: url::Url, client: reqwest::Client, referer: &'static str, backups: Vec<(url::Url, reqwest::Client)>) -> Result<Self, &'static str> {
+        Self::start_with_options(url, client, referer, backups, None)
+    }
+    fn start_with_options(url: url::Url, client: reqwest::Client, referer: &'static str,
+        backups: Vec<(url::Url, reqwest::Client)>, smooth: Option<Arc<smooth::SmoothSource>>) -> Result<Self, &'static str> {
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| "bridge_bind_failed")?;
         listener
@@ -143,6 +180,8 @@ impl MediaBridge {
             length: Mutex::new(None),
             guard: Mutex::new(None),
             manifest: Mutex::new(None),
+            smooth,
+            dash_index: Mutex::new(None),
         });
         let router = Router::new()
             .route(&format!("/media/{}", token.simple()), any(serve))
@@ -181,13 +220,42 @@ impl MediaBridge {
             (start<=end && end-start<1048576 && end<2097152).then_some((start,end))
         }
         let (start,end)=range(initialization).ok_or("invalid_dash_index")?;
-        let (index_start,_)=range(index_range).ok_or("invalid_dash_index")?;
+        let (index_start,index_end)=range(index_range).ok_or("invalid_dash_index")?;
         if start!=0 || end>=index_start || bitrate==0 || bitrate>100000000 || duration_ms==0 || duration_ms>86400000 {return Err("invalid_dash_index");}
         // Numeric data and a local opaque handle only. No titles, external URLs,
         // XML supplied by upstream, account headers or renderer input enter MPD.
         let duration=format!("PT{}.{:03}S",duration_ms/1000,duration_ms%1000);
         let manifest=format!(r#"<?xml version="1.0" encoding="UTF-8"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" minBufferTime="PT1.5S" mediaPresentationDuration="{duration}"><Period start="PT0S" duration="{duration}"><AdaptationSet contentType="audio" mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1"><Representation id="aac" codecs="mp4a.40.2" bandwidth="{bitrate}"><BaseURL>/media/{}</BaseURL><SegmentBase indexRange="{index_range}" indexRangeExact="true"><Initialization range="{initialization}"/></SegmentBase></Representation></AdaptationSet></Period></MPD>"#,self.token.simple());
+        *self.source.dash_index.lock().unwrap() = Some((index_start, index_end));
         *self.source.manifest.lock().unwrap()=Some(manifest); Ok(())
+    }
+    pub(crate) async fn preload(&self) -> bool {
+        match &self.source.smooth {
+            Some(smooth) if smooth.runtime.budget.enabled() => smooth.preload(&self.source).await,
+            _ => false,
+        }
+    }
+    pub(crate) fn set_playback_trace(&self, trace: crate::file_logging::PlaybackTrace) {
+        if let Some(smooth) = &self.source.smooth { smooth.set_trace(trace); }
+    }
+    pub(crate) fn buffered_until(&self, byte: u64) -> Option<u64> {
+        self.source.smooth.as_ref()?.buffered_until(byte)
+    }
+    pub(crate) fn byte_rate(&self) -> Option<u64> {
+        self.source.smooth.as_ref()?.bytes_per_second()
+    }
+    pub(crate) fn set_duration(&self, duration_ms: u64) {
+        if let Some(smooth) = &self.source.smooth { smooth.set_duration(duration_ms); }
+    }
+    pub(crate) fn hold_prior(&self, prior: Arc<dyn Send + Sync>) {
+        if let Some(smooth) = &self.source.smooth { smooth.hold_prior(prior); }
+    }
+    pub(crate) fn release_prior(&self) {
+        if let Some(smooth) = &self.source.smooth { smooth.release_prior(); }
+    }
+    #[cfg(feature = "manual-spikes")]
+    pub(crate) fn probe_properties(&self) -> Option<(bool, bool, bool)> {
+        self.source.smooth.as_ref()?.probe_properties()
     }
     /// Loopback-only verification endpoint. Do not publish it to renderer/Remote.
     pub fn local_url_for_checks(&self) -> String {
@@ -322,36 +390,16 @@ async fn serve(State(source): State<Arc<Source>>, request: Request<Body>) -> Res
     } else {
         source.metrics.get.fetch_add(1, Ordering::Relaxed);
     }
-    let mut cancelled = source.revoked.subscribe();
-    if *cancelled.borrow() {
-        return response(StatusCode::NOT_FOUND);
-    }
-    // Serialize candidate selection through response headers. Once a GET has
-    // succeeded, every Range request stays on that exact object. Stream failure
-    // after this point goes to the existing once-per-intent re-resolution path.
-    let mut selected = tokio::select! { s=source.selected.lock()=>s, _=cancelled.changed()=>return response(StatusCode::NOT_FOUND) };
-    let indexes: Vec<_> = selected.map_or_else(|| (0..=source.backups.len()).collect(), |i| vec![i]);
-    let mut response_and_index = None;
-    for index in indexes {
-        let (url, client) = if index == 0 { (&source.url, &source.client) } else { let (u,c) = &source.backups[index-1]; (u,c) };
-        let mut req = client.request(method.clone(), url.clone()).header(header::USER_AGENT, UA)
-            .header(header::REFERER, source.referer).header(header::ACCEPT_ENCODING, "identity");
-        if let Some(range) = request.headers().get(header::RANGE) { req = req.header(header::RANGE, range); }
-        let result = tokio::select! {r=req.send()=>r, _=cancelled.changed()=>return response(StatusCode::NOT_FOUND)};
-        match result {
-            // Try each validated same-stream candidate at most once for 5xx,
-            // only before a successful GET pins the object. Redirects, policy
-            // errors and 416 retain their existing fail-closed/range semantics.
-            Ok(r) if selected.is_none() && r.status().is_server_error() => continue,
-            Ok(r) => { response_and_index = Some((r,index)); break; }
-            Err(_) if selected.is_none() => continue,
-            Err(_) => return response(StatusCode::BAD_GATEWAY),
+    if let Some(smooth) = &source.smooth {
+        if smooth.runtime.budget.enabled() {
+            return smooth.serve(&source, method, request.headers().get(header::RANGE)).await;
         }
     }
-    let Some((upstream, index)) = response_and_index else { return response(StatusCode::BAD_GATEWAY); };
-    if !source_allowed(&source) {
-        return response(StatusCode::NOT_FOUND);
-    }
+    let mut cancelled = source.revoked.subscribe();
+    let upstream = match fetch(&source, method.clone(), request.headers().get(header::RANGE).cloned(), None).await {
+        Ok((upstream, _)) => upstream,
+        Err(status) => return response(status),
+    };
     let status = upstream.status();
     #[cfg(feature = "manual-spikes")]
     eprintln!("[provider-bridge] method={} range={} status={} content_range={} length={} accept_ranges={}", method,
@@ -390,21 +438,6 @@ async fn serve(State(source): State<Arc<Source>>, request: Request<Body>) -> Res
     if let Some(length) = length {
         *source.length.lock().unwrap() = Some(length);
     }
-    if status != StatusCode::RANGE_NOT_SATISFIABLE {
-        let kind = upstream
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .split(';')
-            .next()
-            .unwrap_or("");
-        if !["audio/mp4", "video/mp4", "audio/mpeg", "audio/flac", "audio/x-flac", "application/octet-stream"].contains(&kind) {
-            return response(StatusCode::BAD_GATEWAY);
-        }
-    }
-    if method == Method::GET && status != StatusCode::RANGE_NOT_SATISFIABLE { *selected = Some(index); }
-    drop(selected);
     let mut out = Response::builder()
         .status(status)
         .header(header::CACHE_CONTROL, "no-store");
@@ -460,6 +493,71 @@ async fn serve(State(source): State<Arc<Source>>, request: Request<Body>) -> Res
     };
     out.body(body).unwrap()
 }
+async fn fetch(
+    source: &Source,
+    method: Method,
+    range: Option<axum::http::HeaderValue>,
+    if_range: Option<axum::http::HeaderValue>,
+) -> Result<(reqwest::Response, usize), StatusCode> {
+    let mut cancelled = source.revoked.subscribe();
+    if !source_allowed(source) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    // Hold candidate selection through the first usable GET. Fixed candidates
+    // can then make concurrent requests without falling back or splicing.
+    let mut selection = tokio::select! {
+        guard = source.selected.lock() => Some(guard),
+        _ = cancelled.changed() => return Err(StatusCode::NOT_FOUND),
+    };
+    let pinned = **selection.as_ref().unwrap();
+    if pinned.is_some() { selection = None; }
+    let indexes: Vec<_> = pinned.map_or_else(|| (0..=source.backups.len()).collect(), |i| vec![i]);
+    for index in indexes {
+        let (url, client) = if index == 0 { (&source.url, &source.client) } else {
+            let (url, client) = &source.backups[index - 1];
+            (url, client)
+        };
+        let mut request = client.request(method.clone(), url.clone()).header(header::USER_AGENT, UA)
+            .header(header::REFERER, source.referer).header(header::ACCEPT_ENCODING, "identity");
+        if let Some(range) = &range { request = request.header(header::RANGE, range); }
+        if let Some(tag) = &if_range { request = request.header(header::IF_RANGE, tag); }
+        let result = tokio::select! {
+            result = request.send() => result,
+            _ = cancelled.changed() => return Err(StatusCode::NOT_FOUND),
+        };
+        let upstream = match result {
+            Ok(response) if pinned.is_none() && response.status().is_server_error() => continue,
+            Ok(response) => response,
+            Err(_) if pinned.is_none() => continue,
+            Err(_) => return Err(StatusCode::BAD_GATEWAY),
+        };
+        if !source_allowed(source) { return Err(StatusCode::NOT_FOUND); }
+        let status = upstream.status();
+        if !matches!(status, StatusCode::OK | StatusCode::PARTIAL_CONTENT | StatusCode::RANGE_NOT_SATISFIABLE)
+            || status != StatusCode::OK && !valid_content_range(upstream.headers(), status)
+            || status != StatusCode::RANGE_NOT_SATISFIABLE && media_type(source, upstream.headers()).is_none()
+        {
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+        if method == Method::GET && status != StatusCode::RANGE_NOT_SATISFIABLE {
+            if let Some(selection) = &mut selection { **selection = Some(index); }
+        }
+        return Ok((upstream, index));
+    }
+    Err(StatusCode::BAD_GATEWAY)
+}
+
+fn media_type<'a>(source: &Source, headers: &'a HeaderMap) -> Option<&'a str> {
+    let kind = headers.get(header::CONTENT_TYPE)?.to_str().ok()?.split(';').next()?;
+    match kind {
+        "application/octet-stream" if source.referer == "https://www.bilibili.com/" => Some("audio/mp4"),
+        "audio/mp4" | "video/mp4" | "audio/mpeg" | "audio/flac" | "audio/x-flac"
+        | "audio/aac" | "audio/mp3" | "audio/x-m4a" | "application/mp4"
+        | "application/octet-stream" => Some(kind),
+        _ => None,
+    }
+}
+
 fn source_allowed(s:&Source)->bool {
     !*s.revoked.borrow() && s.guard.lock().unwrap().as_ref().is_none_or(|f|f())
 }

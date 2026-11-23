@@ -11,6 +11,7 @@ import type { ArchiveRenderer, RhineFrameLimit, RhineSettings } from "./rhineSet
 import { MvFallbackSetting } from "../player/MvPlaybackSettings";
 import { SmartShuffleToggle } from "../player/SmartShuffleToggle";
 import UpdateSettings from "../player/UpdateSettings";
+import MediaCacheSettings from "../player/MediaCacheSettings";
 import { ShortcutSettings } from "../player/ShortcutSettings";
 
 import { isPlaybackQuality, PLAYBACK_QUALITY_OPTIONS } from "../../contracts/settings";
@@ -243,6 +244,7 @@ export function RhineSettingsPanel({
             <button type="button" onClick={onExit}><span>返回主界面</span><small>切换至轻量主模式 ↗</small></button>
           </div>
           <UpdateSettings presentation="rhine" />
+          <MediaCacheSettings presentation="rhine" />
         </section>}
       </div>
     </div>

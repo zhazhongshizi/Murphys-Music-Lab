@@ -26,7 +26,7 @@ while ($pending.Count) {
     foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force) {
         if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Portable contains a reparse point.' }
         $relative = $entry.FullName.Substring($root.Length + 1).Replace('\', '/')
-        if ($relative -match '(^|/)(tests?|__tests__|fixtures?|__fixtures__|manual-spikes|provider-state|logs?|coverage|\.github|\.git|examples?|docs|\.bin)(/|$)' -or
+        if ($relative -match '(^|/)(tests?|__tests__|fixtures?|__fixtures__|manual-spikes|provider-state|cover-cache|media-cache|logs?|coverage|\.github|\.git|examples?|docs|\.bin)(/|$)' -or
             $relative -match '\.js\.txt$|\.(pdb|log|sqlite3?|db|py[co])$' -or
             $entry.Name -match '^(public-media-probe|handshake|write-fixture-entry|fake-provider|provider-media-probe|bilibili-production-probe)' -or
             $entry.Name -match '^(credentials?|cookies?|qq-device|device|auth)[^/]*\.json$') { throw "Forbidden portable resource: $relative" }

@@ -1,6 +1,7 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { subscribeProviderSessions } from "../../backend/providerSessions";
 import { hasPlaybackTransport, playbackConnectionRevision, subscribePlaybackConnection } from "../../backend/playbackTransport";
+import type { WindowRenderability } from "../../backend/windowAdapter";
 
 import { getTimedLyrics } from "../../backend/lyricsAdapter";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
@@ -13,6 +14,8 @@ import {
 } from "./playerStore";
 
 const POLL_INTERVAL_MS = 500;
+const UNFOCUSED_POLL_INTERVAL_MS = 2000;
+const PROVIDER_LIKES_INTERVAL_MS = 15_000;
 let refreshRequest: Promise<void> | null = null;
 const lyricRequests = new Map<string, Promise<LyricTimeline>>();
 
@@ -45,13 +48,35 @@ function readLyrics(trackId: string, generation: number, offset: number) {
   return request;
 }
 
-export function NativePlayerBridge() {
+export function NativePlayerBridge({
+  renderable = true,
+  focused = true,
+}: {
+  readonly renderable?: WindowRenderability;
+  readonly focused?: boolean;
+} = {}) {
+  const lifecycleRef = useRef({ renderable, focused });
+  lifecycleRef.current = { renderable, focused };
+  const syncPollingRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
-    const unsubscribe = subscribeProviderSessions(id => { if (id === "netease") playerActions.invalidateProviderLikes(); });
-    void playerActions.refreshProviderLikes();
-    const interval = setInterval(() => { void playerActions.refreshProviderLikes(); }, 15000);
-    return () => { unsubscribe(); clearInterval(interval); };
+    return subscribeProviderSessions((id) => {
+      if (id === "netease") playerActions.invalidateProviderLikes();
+    });
   }, []);
+
+  useEffect(() => {
+    if (!renderable) return;
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void playerActions.refreshProviderLikes();
+    };
+    refreshIfVisible();
+    const interval = window.setInterval(refreshIfVisible, PROVIDER_LIKES_INTERVAL_MS);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [renderable]);
   const connectionRevision = useSyncExternalStore(subscribePlaybackConnection, playbackConnectionRevision, playbackConnectionRevision);
   const nativeMode = usePlayerSelector(selectNativeMode);
   const nativeLoaded = usePlayerSelector(selectNativeLoaded);
@@ -63,31 +88,48 @@ export function NativePlayerBridge() {
     if (!isTauriRuntime()) return;
 
     let timer: number | null = null;
+    let activeIntervalMs: number | null = null;
     const stopPolling = () => {
-      if (timer === null) return;
-      window.clearInterval(timer);
-      timer = null;
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+      activeIntervalMs = null;
     };
-    const startPolling = () => {
+    const syncPolling = () => {
+      const { renderable: nextRenderable, focused: nextFocused } = lifecycleRef.current;
+      if (nextRenderable === false || document.visibilityState !== "visible") {
+        stopPolling();
+        return;
+      }
+      const nextIntervalMs = nextRenderable === true && nextFocused
+        ? POLL_INTERVAL_MS
+        : UNFOCUSED_POLL_INTERVAL_MS;
+      if (timer !== null && activeIntervalMs === nextIntervalMs) return;
+      const wasStopped = timer === null;
       stopPolling();
-      if (document.visibilityState !== "visible") return;
-      void refreshNativeSnapshot().catch(() => undefined);
+      if (wasStopped) {
+        void refreshNativeSnapshot().catch(() => undefined);
+      }
+      activeIntervalMs = nextIntervalMs;
       timer = window.setInterval(() => {
         void refreshNativeSnapshot().catch(() => undefined);
-      }, POLL_INTERVAL_MS);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") startPolling();
-      else stopPolling();
+      }, nextIntervalMs);
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    startPolling();
+    syncPollingRef.current = syncPolling;
+    document.addEventListener("visibilitychange", syncPolling);
+    syncPolling();
     return () => {
+      syncPollingRef.current = null;
       stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", syncPolling);
     };
   }, []);
+
+  useEffect(() => {
+    syncPollingRef.current?.();
+  }, [renderable, focused]);
 
   useEffect(() => {
     if (!nativeMode || !nativeLoaded || !trackId) return;

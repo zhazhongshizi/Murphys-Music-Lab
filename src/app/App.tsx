@@ -16,9 +16,11 @@ import {
 import type { PlaybackQuality } from "../contracts/settings";
 import { setSmtcDynamicLyricsEnabled } from "../backend/smtcDynamicLyricsAdapter";
 import {
+  listenWindowFocused,
   listenWindowRenderable,
   windowEnterMiniMode,
   windowRestoreNormal,
+  type WindowRenderability,
   type WindowSnapshot,
 } from "../backend/windowAdapter";
 import type { AuthSnapshot } from "../contracts/auth";
@@ -100,13 +102,23 @@ function persistDynamicLyricsPreference(enabled: boolean): void {
   }
 }
 
+export const GLOW_MOTION_STORAGE_KEY = "qqmusic_glow_motion_enabled";
+
+function readGlowMotionEnabled(): boolean {
+  try {
+    return typeof localStorage === "undefined" || localStorage.getItem(GLOW_MOTION_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = () => {
     setSettingsOpen(false);
     document.getElementById("settings-trigger")?.focus();
   };
-  const [cachedGlow, setCachedGlow] = useState(true);
+  const [glowMotionEnabled, setGlowMotionEnabled] = useState<boolean>(readGlowMotionEnabled);
   const [view, setView] = useState<AppView>("stage");
   const [librarySection, setLibrarySection] = useState<LibrarySection>("discover");
   const [queueOpen, setQueueOpen] = useState(false);
@@ -118,11 +130,13 @@ export function App() {
   const [fixtureStatus, setFixtureStatus] = useState<FixtureStatus>("normal");
   const [dynamicLyricsEnabled, setDynamicLyricsEnabled] = useState(false);
   const [liveSpectrumEnabled, setLiveSpectrumEnabled] = useState(false);
-  const [windowRenderable, setWindowRenderable] = useState(() => (
+  const [windowRenderability, setWindowRenderability] = useState<WindowRenderability>(() => (
     typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)
       ? typeof document === "undefined" || document.visibilityState === "visible"
-      : false
+      : null
   ));
+  const windowRenderable = windowRenderability === true;
+  const [windowFocused, setWindowFocused] = useState(true);
   const miniWindowSnapshotRef = useRef<WindowSnapshot | null>(null);
   const initialUiModeRef = useRef(uiMode);
   const uiModeStartupAppliedRef = useRef(false);
@@ -227,6 +241,20 @@ export function App() {
       // Storage error ignored
     }
   }
+
+  const handleGlowMotionToggle = useCallback(() => {
+    setGlowMotionEnabled((prev) => {
+      const next = !prev;
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem(GLOW_MOTION_STORAGE_KEY, next ? "on" : "off");
+        }
+      } catch {
+        // Storage error ignored
+      }
+      return next;
+    });
+  }, []);
 
   const requestDynamicLyricsState = useCallback((enabled: boolean) => {
     dynamicLyricsIntentRef.current = enabled;
@@ -356,7 +384,22 @@ export function App() {
     let disposed = false;
     let unlisten: () => void = () => undefined;
     void listenWindowRenderable((renderable) => {
-      if (!disposed) setWindowRenderable(renderable);
+      if (!disposed) setWindowRenderability(renderable);
+    }).then((nextUnlisten) => {
+      if (disposed) nextUnlisten();
+      else unlisten = nextUnlisten;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: () => void = () => undefined;
+    void listenWindowFocused((focused) => {
+      if (!disposed) setWindowFocused(focused);
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();
       else unlisten = nextUnlisten;
@@ -417,8 +460,26 @@ export function App() {
     : authSnapshot.state === "unavailable"
       ? "账号不可用"
       : "未登录";
+  const glowMotionActive =
+    uiMode === "normal" &&
+    isPlaying &&
+    glowMotionEnabled &&
+    windowRenderable &&
+    windowFocused &&
+    (glowIntensity === "standard" || glowIntensity === "enhanced");
+  const glowColors = useMemo(
+    () => ({
+      primary: palette.primary,
+      vibrant: palette.vibrant,
+      ambient: palette.ambient,
+      top: palette.top,
+    }),
+    [palette.primary, palette.vibrant, palette.ambient, palette.top],
+  );
+
   const spectrumStageActive = liveSpectrumEnabled &&
     windowRenderable &&
+    windowFocused &&
     uiMode === "normal" &&
     view === "stage" &&
     currentTrack !== null &&
@@ -428,16 +489,19 @@ export function App() {
 
   return (
     <DesktopProviders>
-    <NativePlayerBridge />
+    <NativePlayerBridge renderable={windowRenderability} focused={windowFocused} />
     <SpectrumBridge active={spectrumStageActive} />
     <UpdateNotice />
     <div
       aria-hidden={accountOpen ? "true" : undefined}
       className={uiMode === "terminal" ? "app-shell app-shell--terminal" : uiMode === "rhine" ? "app-shell app-shell--rhine" : "app-shell app-shell--normal"}
       data-cover-tone={coverTone}
+      data-view={view}
       data-glow-intensity={glowIntensity}
-      data-glow-renderer={cachedGlow ? "cached" : "original"}
-      data-glow-motion={uiMode === "normal" && isPlaying && windowRenderable ? "playing" : "still"}
+      data-glow-renderer="cached"
+      data-glow-motion={glowMotionActive ? "playing" : "still"}
+      data-window-renderable={windowRenderable ? "true" : "false"}
+      data-window-focused={windowFocused ? "true" : "false"}
       inert={accountOpen ? true : undefined}
       style={coverPaletteStyle}
     >
@@ -445,7 +509,7 @@ export function App() {
         <TerminalMiniMode onExit={handleExitTerminal} />
       ) : uiMode === "rhine" ? (
         <ModeLoadBoundary onExit={handleExitRhine}><Suspense fallback={<div role="status">正在载入莱茵界面…<button onClick={handleExitRhine}>返回主界面</button></div>}>
-          <RhineMode auth={authSnapshot} authRecovering={authRecovering} active={windowRenderable && !accountOpen} onExit={handleExitRhine} onAccount={() => setAccountOpen(true)} />
+          <RhineMode auth={authSnapshot} authRecovering={authRecovering} active={windowRenderable && windowFocused && !accountOpen} onExit={handleExitRhine} onAccount={() => setAccountOpen(true)} />
         </Suspense></ModeLoadBoundary>
       ) : (
         <NormalMode
@@ -462,8 +526,10 @@ export function App() {
           fixtureStatus={fixtureStatus}
           setFixtureStatus={setFixtureStatus}
           glowIntensity={glowIntensity}
-          cachedGlow={cachedGlow}
-          setCachedGlow={setCachedGlow}
+          glowMotionEnabled={glowMotionEnabled}
+          handleGlowMotionToggle={handleGlowMotionToggle}
+          glowMotionActive={glowMotionActive}
+          glowColors={glowColors}
           handleGlowIntensityChange={handleGlowIntensityChange}
           dynamicLyricsEnabled={dynamicLyricsEnabled}
           handleDynamicLyricsToggle={handleDynamicLyricsToggle}

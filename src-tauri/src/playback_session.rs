@@ -11,13 +11,16 @@ use std::{
 use serde::Serialize;
 
 use crate::{
+    cover::CoverService,
+    file_logging::PlaybackTrace,
     local_music::{LocalMusicError, LocalMusicService, LocalTrackId},
+    multi_provider::media_bridge::MediaBridge,
     playback::{PlaybackController, PlaybackError, PlaybackLoadResult, PlaybackQuality},
     player::{
         LocalMediaFile, NativePlayerEvent, PlayerFailureCode, PlayerSnapshot, PlayerState,
         SeekPositionMs, TrackSummary,
     },
-    queue::{QueueError, QueueService, QueueSnapshot, QueueTrack},
+    queue::{QueueError, QueueService, QueueSnapshot, QueueTrack, QueueView},
     smtc_artwork::SmtcArtworkPort,
     smtc_dynamic_lyrics::SmtcDynamicLyricsPort,
 };
@@ -129,6 +132,8 @@ pub struct PlaybackSession {
     radar: Mutex<Option<radar::RadarPlayback>>,
     radar_epoch: AtomicU64,
     lyrics: Option<Arc<crate::lyrics::LyricService>>,
+    preload_cover: Option<Arc<CoverService>>,
+    preload: Mutex<Option<PreloadCandidate>>,
     mv_lyric_offset: Mutex<i64>,
     next_override: Mutex<Option<String>>,
     smart_shuffle: Mutex<crate::smart_shuffle::SmartShuffle>,
@@ -156,6 +161,97 @@ pub struct PlaybackSession {
     play_intent: AtomicU64,
     auto_worker_stop: Arc<AtomicBool>,
     auto_worker: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+struct PreloadKey {
+    track: String,
+    quality: PlaybackQuality,
+    account: (u64, bool),
+}
+
+struct PreloadCandidate {
+    key: PreloadKey,
+    job: Arc<PreloadJob>,
+}
+
+#[derive(Clone, Copy)]
+struct PlaybackOrder<'a> {
+    player: &'a PlayerSnapshot,
+    queue: QueueView<'a>,
+    mode: PlaybackMode,
+}
+
+impl<'a> From<&'a PlaybackSessionSnapshot> for PlaybackOrder<'a> {
+    fn from(snapshot: &'a PlaybackSessionSnapshot) -> Self {
+        Self {
+            player: &snapshot.player,
+            queue: (&snapshot.queue).into(),
+            mode: snapshot.mode,
+        }
+    }
+}
+
+struct PreloadJob {
+    task: tauri::async_runtime::JoinHandle<()>,
+    cancelled: Arc<AtomicBool>,
+    // Retains validated blocks once the preload finishes. A new playback has
+    // its own authorization and bridge; it may only share validated objects.
+    _retained: Arc<Mutex<Option<Arc<MediaBridge>>>>,
+}
+
+impl PreloadJob {
+    fn spawn(
+        resolve: impl FnOnce(PlaybackTrace) -> Result<Option<Arc<MediaBridge>>, PlaybackError>
+            + Send + 'static,
+        cover: Option<(Arc<CoverService>, String)>,
+    ) -> Self {
+        let retained = Arc::new(Mutex::new(None));
+        let keep = retained.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cover_cancel = cancelled.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            let trace = PlaybackTrace::new(true);
+            let span = trace.begin("preload_job");
+            let audio = async {
+                match tokio::task::spawn_blocking(move || resolve(trace)).await {
+                    Ok(Ok(Some(bridge))) => {
+                        *keep.lock().unwrap() = Some(bridge.clone());
+                        if bridge.preload().await {
+                            "ok"
+                        } else {
+                            "not_ready"
+                        }
+                    }
+                    Ok(Ok(None)) => "skipped",
+                    _ => "failed",
+                }
+            };
+            let artwork = async {
+                if let Some((cover, key)) = cover {
+                    let cover_span = trace.begin("preload_cover");
+                    let result = tokio::task::spawn_blocking(move || {
+                        cover.preload_while(&key, &|| !cover_cancel.load(Ordering::Acquire))
+                    })
+                    .await;
+                    cover_span.finish(if matches!(result, Ok(Ok(_))) {
+                        "ok"
+                    } else {
+                        "failed"
+                    });
+                }
+            };
+            let (status, ()) = tokio::join!(audio, artwork);
+            span.finish(status);
+        });
+        Self { task, cancelled, _retained: retained }
+    }
+}
+
+impl Drop for PreloadJob {
+    fn drop(&mut self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.task.abort();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,6 +323,8 @@ impl PlaybackSession {
             radar: Mutex::new(None),
             radar_epoch: AtomicU64::new(0),
             lyrics: None,
+            preload_cover: None,
+            preload: Mutex::new(None),
             listening_stats: Mutex::new(crate::listening_stats::ListeningStats::new()),
             mv_lyric_offset: Mutex::new(0),
             next_override: Mutex::new(None),
@@ -363,24 +461,115 @@ impl PlaybackSession {
         Ok(self.snapshot_unlocked())
     }
 
+    pub(crate) fn with_preload_cover(mut self, cover: Option<Arc<CoverService>>) -> Self {
+        self.preload_cover = cover;
+        self
+    }
+
+    fn take_preload(&self, track: &str, quality: PlaybackQuality) -> Option<Arc<PreloadJob>> {
+        let candidate = self.preload.lock().unwrap().take()?;
+        (self.playback.preload_enabled() && candidate.key.track == track && candidate.key.quality == quality
+            && self.playback.preload_context(track) == Some(candidate.key.account)).then_some(candidate.job)
+    }
+
+    fn cancel_preload(&self) {
+        self.playback.set_buffer_ready(false);
+        self.preload.lock().unwrap().take();
+        self.playback.release_adopted_preload();
+    }
+
+    fn poll_preload(&self) {
+        if !self.playback.smooth_enabled() { self.cancel_preload(); return; }
+        let Ok(_operation) = self.operation.try_lock() else { return; };
+        let player = self.playback.cached_snapshot();
+        if player.state != PlayerState::Playing || player.position_ms < 2000 {
+            return;
+        }
+        if !self.active_source.lock().unwrap().is_some_and(|source| {
+            source.intent == self.play_intent.load(Ordering::SeqCst) && source.generation == player.generation
+        }) {
+            return;
+        }
+        self.playback.release_adopted_preload();
+        let refill = self.playback.stable_buffer(player.position_ms, player.duration_ms, 12);
+        let underrun = !refill && !self.playback.stable_buffer(player.position_ms, player.duration_ms, 5);
+        if refill { self.playback.set_buffer_ready(true); }
+        if underrun { self.playback.set_buffer_ready(false); }
+        if underrun || !self.playback.preload_enabled() {
+            self.preload.lock().unwrap().take();
+            return;
+        }
+        self.update_preload_candidate(&player, refill);
+    }
+
+    fn update_preload_candidate(&self, player: &PlayerSnapshot, refill: bool) {
+        let mut candidate = self.preload.lock().unwrap();
+        if candidate.is_none() && !refill {
+            return;
+        }
+        let quality = self.default_quality();
+        let retained = candidate.as_ref().filter(|candidate| {
+            let key = &candidate.key;
+            key.quality == quality && self.playback.preload_context(&key.track) == Some(key.account)
+        });
+        let mut keep_existing = false;
+        let target = self
+            .with_next_track(player, |track| {
+                keep_existing = retained.is_some_and(|candidate| candidate.key.track == track.id);
+                if !refill || keep_existing
+                    || player.current_track.as_ref().is_some_and(|current| current.id == track.id)
+                {
+                    return None;
+                }
+                self.playback.preload_context(&track.id).map(|account| (track.clone(), account))
+            })
+            .flatten();
+        if keep_existing {
+            return;
+        }
+        candidate.take();
+        let Some((track, account)) = target else {
+            return;
+        };
+        let key = PreloadKey { track: track.id.clone(), quality, account };
+        let summary = TrackSummary { id: track.id.clone(), title: track.title.clone(), artist: track.artist.clone(), source: None };
+        let duration = track.duration_ms;
+        let cover = self.preload_cover.clone().zip(track.cover_cache_key.clone());
+        let playback = self.playback.clone();
+        let job = PreloadJob::spawn(
+            move |trace| {
+                let resolved = playback.resolve_traced(summary, quality, trace)?;
+                Ok(resolved.with_smtc_metadata(String::new(), duration).bridge())
+            },
+            cover,
+        );
+        *candidate = Some(PreloadCandidate { key, job: Arc::new(job) });
+    }
+
     /// Read-only preview using the same rule as natural end-of-track advancement.
     pub fn preview_next_track(&self) -> Option<String> {
-        let snapshot = self.snapshot();
-        self.next_index(&snapshot, None)
-            .and_then(|index| snapshot.queue.items.get(index))
-            .map(|track| track.id.clone())
+        let _operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.with_next_track(&self.playback.cached_snapshot(), |track| track.id.clone())
+    }
+
+    fn with_next_track<T>(&self, player: &PlayerSnapshot, read: impl FnOnce(&QueueTrack) -> T) -> Option<T> {
+        let mode = *self.mode.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.queue.with_view(|queue| {
+            self.next_index(PlaybackOrder { player, queue, mode }, None)
+                .and_then(|index| queue.items.get(index))
+                .map(read)
+        })
     }
 
     pub fn smart_shuffle_status(&self) -> crate::smart_shuffle::SmartShuffleStatus {
-        self.refresh_provider_shuffle_likes();
-        self.smart_shuffle
+        let mut smart = self.smart_shuffle
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .status()
-    }
-    fn refresh_provider_shuffle_likes(&self) {
-        let likes=self.playback.cached_netease_likes();
-        self.smart_shuffle.lock().unwrap_or_else(std::sync::PoisonError::into_inner).replace_netease_likes(likes);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        smart.replace_netease_likes(self.playback.cached_netease_likes());
+        smart.status()
     }
 
     pub fn shuffle_likes_epoch(&self) -> u64 {
@@ -393,7 +582,6 @@ impl PlaybackSession {
         likes: Option<std::collections::HashSet<String>>,
         epoch: u64,
     ) -> Result<crate::smart_shuffle::SmartShuffleStatus, PlaybackSessionError> {
-        self.refresh_provider_shuffle_likes();
         let history = if enabled {
             self.queue
                 .last_history_plays()
@@ -405,6 +593,7 @@ impl PlaybackSession {
             .smart_shuffle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        smart.replace_netease_likes(self.playback.cached_netease_likes());
         let likes = if epoch == self.shuffle_likes_epoch() {
             likes
         } else {
@@ -450,7 +639,7 @@ impl PlaybackSession {
 
     fn next_index(
         &self,
-        snapshot: &PlaybackSessionSnapshot,
+        order: PlaybackOrder<'_>,
         direction: Option<i8>,
     ) -> Option<usize> {
         if direction != Some(-1) {
@@ -460,34 +649,29 @@ impl PlaybackSession {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .as_ref()
             {
-                if let Some(index) = snapshot
-                    .queue
-                    .items
-                    .iter()
-                    .position(|track| &track.id == id)
-                {
+                if let Some(index) = order.queue.index_of(id) {
                     return Some(index);
                 }
             }
         }
-        if snapshot.mode == PlaybackMode::Shuffle {
+        if order.mode == PlaybackMode::Shuffle {
             let mut smart = self
                 .smart_shuffle
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            smart.replace_netease_likes(self.playback.cached_netease_likes());
             if smart.status().enabled {
+                smart.replace_netease_likes(self.playback.cached_netease_likes());
                 return smart.index(
-                    &snapshot.queue.items,
-                    current_index(snapshot).unwrap_or(0),
-                    snapshot.player.generation,
-                    snapshot.queue.generation,
+                    order.queue.items,
+                    current_index(order).unwrap_or(0),
+                    order.player.generation,
+                    order.queue.generation,
                 );
             }
         }
         direction.map_or_else(
-            || automatic_index(snapshot),
-            |direction| manual_skip_index(snapshot, direction),
+            || automatic_index(order),
+            |direction| manual_skip_index(order, direction),
         )
     }
 
@@ -587,12 +771,13 @@ impl PlaybackSession {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .storage_available;
-                self.refresh_provider_shuffle_likes();
-                let likes = self
+                let mut smart = self
                     .smart_shuffle
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .analytics_likes();
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                smart.replace_netease_likes(self.playback.cached_netease_likes());
+                let likes = smart.analytics_likes();
+                drop(smart);
                 return db
                     .listening_analytics(&start_date, &end_date, likes.as_ref(), storage_available)
                     .map_err(error);
@@ -626,14 +811,14 @@ impl PlaybackSession {
                     }
                 }
                 report["forgotten"]=serde_json::json!(snapshot.queue.items.iter().filter_map(|track| last_plays.get(&track.id).map(|time| serde_json::json!({"id":track.id,"title":track.title,"artist":track.artist,"lastPlayedMs":time}))).collect::<Vec<_>>());
-                self.refresh_provider_shuffle_likes();
-                let smart = self
+                let mut smart = self
                     .smart_shuffle
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
+                smart.replace_netease_likes(self.playback.cached_netease_likes());
                 report["shuffle"] = smart.explanation(
                     &snapshot.queue.items,
-                    current_index(&snapshot),
+                    current_index((&snapshot).into()),
                     snapshot.mode == PlaybackMode::Shuffle,
                 );
                 report["nextOverride"] = serde_json::json!(*self
@@ -849,7 +1034,7 @@ impl PlaybackSession {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let snapshot = self.snapshot_unlocked();
-            let Some(index) = self.next_index(&snapshot, Some(1)) else {
+            let Some(index) = self.next_index((&snapshot).into(), Some(1)) else {
                 return Ok(None);
             };
             let track = self
@@ -904,7 +1089,7 @@ impl PlaybackSession {
                     .map_err(PlaybackSessionError::Playback)?;
                 return Ok(None);
             }
-            let Some(index) = self.next_index(&snapshot, Some(-1)) else {
+            let Some(index) = self.next_index((&snapshot).into(), Some(-1)) else {
                 return Ok(None);
             };
             let track = self
@@ -1023,7 +1208,7 @@ impl PlaybackSession {
                 }
                 _ => 1,
             };
-            let Some(index) = self.next_index(&snapshot, None) else {
+            let Some(index) = self.next_index((&snapshot).into(), None) else {
                 drop(handled);
                 drop(retry_guard);
                 let mut handled = self
@@ -1042,6 +1227,7 @@ impl PlaybackSession {
             (self.new_play_intent(), track, generation, attempt)
         };
 
+        crate::file_logging::natural_advance(ended_generation, self.playback.smooth_enabled(), self.playback.preload_enabled());
         match self.play_selected(intent, track, PlaybackQuality::Auto) {
             Ok(result) => {
                 let mut handled = self
@@ -1228,6 +1414,7 @@ impl PlaybackSession {
     }
 
     fn pause_unlocked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        self.cancel_preload();
         self.pause_radar_locked();
         let cancel_skip = {
             let failed = self
@@ -1314,6 +1501,7 @@ impl PlaybackSession {
 
     // Automatic failure recovery stops the source without ending its radar queue.
     fn stop_player_locked(&self) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        self.cancel_preload();
         *self
             .active_source
             .lock()
@@ -1450,6 +1638,7 @@ impl PlaybackSession {
         position_ms: u64,
         generation: Option<u64>,
     ) -> Result<PlayerSnapshot, PlaybackSessionError> {
+        self.cancel_preload();
         SeekPositionMs::new(position_ms)
             .map_err(|_| PlaybackSessionError::Playback(PlaybackError::InvalidRequest))?;
         let (intent, track, position_ms) = {
@@ -1698,13 +1887,16 @@ impl PlaybackSession {
         } else {
             None
         };
+        let preload = self.take_preload(&track.id, requested_quality);
         let resolved = if local_file.is_none() {
-            Some(
-                self.playback
-                    .resolve(summary.clone(), requested_quality)
-                    .map_err(PlaybackSessionError::Playback)?
-                    .with_smtc_metadata(track.album.clone(), track.duration_ms),
-            )
+            let resolved = self.playback
+                .resolve(summary.clone(), requested_quality)
+                .map_err(PlaybackSessionError::Playback)?
+                .with_smtc_metadata(track.album.clone(), track.duration_ms);
+            if let Some((bridge, prior)) = resolved.bridge().zip(preload) {
+                bridge.hold_prior(prior);
+            }
+            Some(resolved)
         } else {
             None
         };
@@ -1987,6 +2179,7 @@ impl PlaybackSession {
     }
 
     fn new_play_intent(&self) -> u64 {
+        self.playback.set_buffer_ready(false);
         let intent = self
             .play_intent
             .fetch_add(1, Ordering::SeqCst)
@@ -2035,6 +2228,7 @@ fn map_local_music_error(error: LocalMusicError) -> PlaybackSessionError {
 }
 
 fn auto_advance_loop(session: Weak<PlaybackSession>, stop: Arc<AtomicBool>) {
+    let mut check_preload = Instant::now();
     while !stop.load(Ordering::Acquire) {
         thread::sleep(AUTO_ADVANCE_POLL_INTERVAL);
         if stop.load(Ordering::Acquire) {
@@ -2048,6 +2242,11 @@ fn auto_advance_loop(session: Weak<PlaybackSession>, stop: Arc<AtomicBool>) {
         session.observe_shuffle_listening();
         let _ = session.advance_if_ended();
         session.poll_radar();
+        if check_preload.elapsed() >= Duration::from_millis(750) {
+            session.poll_preload();
+            session.playback.log_media_traffic();
+            check_preload = Instant::now();
+        }
     }
 }
 
@@ -2260,19 +2459,13 @@ impl PlaybackSession {
     }
 }
 
-fn current_index(snapshot: &PlaybackSessionSnapshot) -> Option<usize> {
-    snapshot
+fn current_index(order: PlaybackOrder<'_>) -> Option<usize> {
+    order
         .player
         .current_track
         .as_ref()
-        .and_then(|track| {
-            snapshot
-                .queue
-                .items
-                .iter()
-                .position(|item| item.id == track.id)
-        })
-        .or(snapshot.queue.selected_index)
+        .and_then(|track| order.queue.index_of(&track.id))
+        .or(order.queue.selected_index)
 }
 
 fn failed_track_next_index(
@@ -2334,14 +2527,14 @@ fn quality_wire(quality: PlaybackQuality) -> &'static str {
     }
 }
 
-fn manual_skip_index(snapshot: &PlaybackSessionSnapshot, direction: i8) -> Option<usize> {
-    let length = snapshot.queue.items.len();
+fn manual_skip_index(order: PlaybackOrder<'_>, direction: i8) -> Option<usize> {
+    let length = order.queue.items.len();
     if length == 0 {
         return None;
     }
-    let current = current_index(snapshot).unwrap_or(0);
-    if snapshot.mode == PlaybackMode::Shuffle {
-        return Some(shuffled_index(current, length, snapshot.player.generation));
+    let current = current_index(order).unwrap_or(0);
+    if order.mode == PlaybackMode::Shuffle {
+        return Some(shuffled_index(current, length, order.player.generation));
     }
     if direction < 0 {
         Some((current + length - 1) % length)
@@ -2350,15 +2543,15 @@ fn manual_skip_index(snapshot: &PlaybackSessionSnapshot, direction: i8) -> Optio
     }
 }
 
-fn automatic_index(snapshot: &PlaybackSessionSnapshot) -> Option<usize> {
-    let length = snapshot.queue.items.len();
-    let current = current_index(snapshot)?;
-    match snapshot.mode {
+fn automatic_index(order: PlaybackOrder<'_>) -> Option<usize> {
+    let length = order.queue.items.len();
+    let current = current_index(order)?;
+    match order.mode {
         PlaybackMode::Sequence if current + 1 >= length => None,
         PlaybackMode::Sequence => Some(current + 1),
         PlaybackMode::RepeatAll => Some((current + 1) % length),
         PlaybackMode::RepeatOne => Some(current),
-        PlaybackMode::Shuffle => Some(shuffled_index(current, length, snapshot.player.generation)),
+        PlaybackMode::Shuffle => Some(shuffled_index(current, length, order.player.generation)),
     }
 }
 
@@ -2965,6 +3158,248 @@ mod tests {
         requests: Arc<AtomicUsize>,
     }
 
+    pub(super) fn counted_playing(
+        length: usize,
+        position_ms: u64,
+    ) -> (TestSession, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+        use crate::{media_budget::MediaBudget, media_cache::MediaCache, multi_provider::{
+            media_bridge::SmoothRuntime, registry::ProviderRegistry,
+        }};
+        let root = std::env::temp_dir().join(format!("qqmusic-poll-{}", Uuid::new_v4()));
+        let queue = Arc::new(QueueService::open(&root.join("state.sqlite3")).unwrap());
+        let items = (0..length).map(|i| queue_track(&format!("song-{i}"))).collect();
+        queue.replace(items).unwrap();
+        let snapshots = Arc::new(AtomicUsize::new(0));
+        let cached = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::new(AtomicUsize::new(0));
+        let playback = PlaybackController::with_resolver(
+            Arc::new(CountingProvider { requests: requests.clone() }),
+            Box::new(CountingPlayer {
+                snapshot: PlayerSnapshot {
+                    state: PlayerState::Playing,
+                    generation: 9,
+                    position_ms,
+                    duration_ms: Some(180_000),
+                    current_track: Some(TrackSummary {
+                        id: "song-0".into(), title: "Track".into(), artist: "Artist".into(), source: None,
+                    }),
+                    ..PlayerSnapshot::idle()
+                },
+                snapshots: snapshots.clone(),
+                cached_snapshots: cached.clone(),
+            }),
+            Arc::new(FakeResolver),
+        ).with_smooth(
+            Arc::new(SmoothRuntime::new(Arc::new(MediaCache::open(
+                root.join("media-cache"), Arc::new(MediaBudget::default()),
+            )))),
+            Arc::new(ProviderRegistry::default()),
+        );
+        let session = PlaybackSession::new(queue, Arc::new(playback));
+        *session.active_source.lock().unwrap() = Some(ActiveSource {
+            intent: session.play_intent.load(Ordering::SeqCst),
+            generation: 9,
+        });
+        (TestSession { root, session, requests }, snapshots, cached)
+    }
+
+    #[test]
+    fn steady_preload_polls_reuse_cached_player_without_full_queue_reads() {
+        for length in [10, 1_000] {
+            let (test, native, cached) = counted_playing(length, 6_000);
+            let session = &test.session;
+            assert!(session.playback.smooth_enabled() && session.playback.preload_enabled());
+            let initial_native = native.load(Ordering::SeqCst);
+            let initial_queue = session.queue.full_snapshot_reads.load(Ordering::SeqCst);
+            for _ in 0..20 {
+                assert_eq!(session.snapshot_unlocked().queue.items.len(), length);
+            }
+            let before_native = native.load(Ordering::SeqCst);
+            let before_queue = session.queue.full_snapshot_reads.load(Ordering::SeqCst);
+            assert_eq!(before_native - initial_native, 20);
+            assert_eq!(before_queue - initial_queue, 20);
+            let before_cached = cached.load(Ordering::SeqCst);
+            for _ in 0..20 {
+                session.poll_preload();
+            }
+            assert_eq!(cached.load(Ordering::SeqCst) - before_cached, 20);
+            assert_eq!(native.load(Ordering::SeqCst), before_native);
+            assert_eq!(session.queue.full_snapshot_reads.load(Ordering::SeqCst), before_queue);
+            assert_eq!(session.preview_next_track().as_deref(), Some("song-1"));
+            assert_eq!(test.requests.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[test]
+    fn cover_preloads_when_audio_cannot_be_preloaded() {
+        use crate::{
+            cover::{CoverError, CoverResponse, CoverService, CoverTransport},
+            media_cache::MediaCache,
+            multi_provider::media_bridge::{CacheUrlIdentity, MediaBridge, SmoothRuntime},
+        };
+        use axum::{http::{header, StatusCode}, routing::get, Router};
+
+        struct CoverFixture(AtomicUsize);
+        impl CoverTransport for CoverFixture {
+            fn fetch(&self, _url: &url::Url) -> Result<CoverResponse, CoverError> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(CoverResponse {
+                    status: 200, content_type: Some("image/jpeg".into()), location: None,
+                    body: vec![0xff, 0xd8, 0xff],
+                })
+            }
+        }
+
+        tauri::async_runtime::block_on(async {
+            for ignores_range in [true, false] {
+                let root = std::env::temp_dir().join(format!("qmg-preload-cover-{}", Uuid::new_v4()));
+                let cache = Arc::new(MediaCache::open(root.join("media"), Arc::new(Default::default())));
+                let runtime = Arc::new(SmoothRuntime::new(cache.clone()));
+                let source = runtime.source(
+                    cache.scope("fixture", "account", "track", "audio"),
+                    1, Some(128_000), 10_000, CacheUrlIdentity::FullUrl,
+                );
+                let app = Router::new().route("/audio", get(move || async move {
+                    let mime = (header::CONTENT_TYPE, "audio/mpeg");
+                    if ignores_range {
+                        (StatusCode::OK, [mime, (header::CONTENT_LENGTH, "3")], "abc")
+                    } else {
+                        (StatusCode::PARTIAL_CONTENT, [mime, (header::CONTENT_RANGE, "bytes 0-0/3")], "a")
+                    }
+                }));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let url = format!("http://{}/audio", listener.local_addr().unwrap()).parse().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let bridge = Arc::new(MediaBridge::fixture_at(url, Some(source)));
+                let cover_transport = Arc::new(CoverFixture(AtomicUsize::new(0)));
+                let cover = Arc::new(CoverService::with_parts(
+                    root.join("covers"), Arc::new(FakeResolver), cover_transport.clone(),
+                ).unwrap());
+                let mut job = PreloadJob::spawn(move |_| Ok(Some(bridge)), Some((cover.clone(), "album01".into())));
+                tokio::time::timeout(Duration::from_secs(5), &mut job.task).await.unwrap().unwrap();
+                assert_eq!(runtime.budget.totals.preload_probe.load(Ordering::Relaxed), u64::from(!ignores_range));
+                assert_eq!(runtime.budget.totals.preload.load(Ordering::Relaxed), 0);
+                assert_eq!(cover_transport.0.load(Ordering::Relaxed), 1);
+                assert_eq!(cover.get("album01").unwrap().mime_type, "image/jpeg");
+                assert_eq!(cover_transport.0.load(Ordering::Relaxed), 1);
+                assert_eq!(cache.status().used_bytes, 0);
+                drop(job);
+                server.abort();
+                let _ = fs::remove_dir_all(root);
+            }
+        });
+    }
+
+    #[test]
+    fn bilibili_cover_preload_refusal_leaves_current_media_readable() {
+        use crate::{
+            cover::{CoverError, CoverResponse, CoverTransport},
+            multi_provider::{bilibili, OnlineProviderId},
+        };
+        use axum::{http::{header, HeaderMap, StatusCode}, routing::get, Router};
+
+        struct NoCoverDownload;
+        impl CoverTransport for NoCoverDownload {
+            fn fetch(&self, _: &url::Url) -> Result<CoverResponse, CoverError> {
+                panic!("refused metadata must not start an image download");
+            }
+        }
+
+        tauri::async_runtime::block_on(async {
+            let app = Router::new().route("/audio", get(|headers: HeaderMap| async move {
+                let mime = (header::CONTENT_TYPE, "audio/mp4");
+                match headers[header::RANGE].to_str().unwrap() {
+                    "bytes=0-2" => (StatusCode::PARTIAL_CONTENT, [mime, (header::CONTENT_RANGE, "bytes 0-2/6")], "abc"),
+                    "bytes=3-5" => (StatusCode::PARTIAL_CONTENT, [mime, (header::CONTENT_RANGE, "bytes 3-5/6")], "def"),
+                    _ => panic!("unexpected decoder range"),
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url: url::Url = format!("http://{}/audio", listener.local_addr().unwrap()).parse().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let next = "BV17x411w7KD";
+            let cover_key = format!("bili_{next}");
+            for fault in ["rate_limited", "verification_required"] {
+                let root = std::env::temp_dir().join(format!("qmg-bili-cover-{}", Uuid::new_v4()));
+                let service = bilibili::tests::service_with_cover_fault(0, fault);
+                let generation = service.ready_generation().unwrap();
+                let bridge = MediaBridge::fixture_at(url.clone(), None);
+                let registry = service.registry.clone();
+                bridge.bind_account(Arc::new(move || registry.ready_generation(OnlineProviderId::Bilibili) == Ok(generation)));
+                let read = |range| client.get(bridge.local_url_for_checks()).header(header::RANGE, range).send();
+                let first = read("bytes=0-2").await.unwrap();
+                assert_eq!(first.status(), StatusCode::PARTIAL_CONTENT);
+                assert_eq!(first.bytes().await.unwrap().as_ref(), b"abc");
+
+                let cover = Arc::new(CoverService::with_parts(root.clone(), Arc::new(FakeResolver), Arc::new(NoCoverDownload)).unwrap());
+                let invoked = Arc::new(AtomicUsize::new(0));
+                let calls = invoked.clone();
+                let provider = service.clone();
+                cover.set_bilibili_lookup(move |bvid, speculative| {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    provider.cover_url(bvid, speculative).map_err(|_| CoverError::CoverUnavailable)
+                });
+                let mut job = PreloadJob::spawn(|_| Ok(None), Some((cover.clone(), cover_key.clone())));
+                tokio::time::timeout(Duration::from_secs(5), &mut job.task).await.unwrap().unwrap();
+                assert_eq!(invoked.load(Ordering::Relaxed), 1);
+                assert_eq!(service.ready_generation(), Ok(generation));
+                let second = read("bytes=3-5").await.unwrap();
+                assert_eq!(second.status(), StatusCode::PARTIAL_CONTENT);
+                assert_eq!(second.bytes().await.unwrap().as_ref(), b"def");
+
+                let reply = service.registry.request_speculative(
+                    OnlineProviderId::Bilibili, generation, "video.resolve", serde_json::json!({"input": next}),
+                ).unwrap();
+                assert_eq!(reply["error"]["code"], fault);
+                assert_eq!(cover.get(&cover_key), Err(CoverError::CoverUnavailable));
+                assert!(service.ready_generation().is_err());
+                assert_eq!(read("bytes=3-5").await.unwrap().status(), StatusCode::NOT_FOUND);
+                let _ = fs::remove_dir_all(root);
+            }
+            server.abort();
+        });
+    }
+
+    #[test]
+    fn low_buffer_cancels_preload_without_a_full_snapshot() {
+        let (test, native, _) = counted_playing(10, 2_500);
+        let session = &test.session;
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *session.preload.lock().unwrap() = Some(PreloadCandidate {
+            key: PreloadKey { track: "song-1".into(), quality: session.default_quality(), account: (1, false) },
+            job: Arc::new(PreloadJob {
+                task: tauri::async_runtime::spawn(std::future::pending()),
+                cancelled: cancelled.clone(),
+                _retained: Arc::new(Mutex::new(None)),
+            }),
+        });
+        let reads = native.load(Ordering::SeqCst);
+        session.poll_preload();
+        assert!(cancelled.load(Ordering::Acquire));
+        assert!(session.preload.lock().unwrap().is_none());
+        assert_eq!(native.load(Ordering::SeqCst), reads);
+    }
+
+    #[test]
+    fn ordinary_shuffle_selection_leaves_provider_likes_untouched() {
+        let (test, _, _) = counted_playing(10, 6_000);
+        let session = &test.session;
+        session.set_mode(PlaybackMode::Shuffle).unwrap();
+        let likes = Arc::new(HashSet::from(["netease:track:1".into()]));
+        session.smart_shuffle.lock().unwrap().replace_netease_likes(Some(likes.clone()));
+        let predicted = session.preview_next_track();
+        assert!(predicted.is_some());
+        assert_eq!(session.preview_next_track(), predicted);
+        assert_eq!(Arc::strong_count(&likes), 2);
+
+        session.set_smart_shuffle(true, None, session.shuffle_likes_epoch()).unwrap();
+        assert_eq!(Arc::strong_count(&likes), 1);
+        let predicted = session.preview_next_track();
+        assert_eq!(session.preview_next_track(), predicted);
+        assert!(predicted.is_some());
+    }
+
     #[test]
     fn saved_queue_switch_and_restore_keep_selection_without_resolving_media() {
         use crate::personal::PersonalRequest;
@@ -3127,7 +3562,7 @@ mod tests {
             assert_eq!(test.session.snapshot().player, before);
             assert_eq!(test.requests.load(Ordering::SeqCst), 0);
             assert_eq!(
-                test.session.next_index(&test.session.snapshot(), Some(1)),
+                test.session.next_index((&test.session.snapshot()).into(), Some(1)),
                 Some(1)
             );
         }
@@ -3218,8 +3653,8 @@ mod tests {
             test.session.set_smart_shuffle(false, None, 0).unwrap();
             let snapshot = test.session.snapshot();
             assert_eq!(
-                test.session.next_index(&snapshot, Some(1)),
-                manual_skip_index(&snapshot, 1)
+                test.session.next_index((&snapshot).into(), Some(1)),
+                manual_skip_index((&snapshot).into(), 1)
             );
         }
     }
@@ -3288,12 +3723,12 @@ mod tests {
             test.session.set_mode(mode).unwrap();
             let snapshot = test.session.snapshot();
             assert_eq!(
-                test.session.next_index(&snapshot, None),
-                automatic_index(&snapshot)
+                test.session.next_index((&snapshot).into(), None),
+                automatic_index((&snapshot).into())
             );
             assert_eq!(
-                test.session.next_index(&snapshot, Some(-1)),
-                manual_skip_index(&snapshot, -1)
+                test.session.next_index((&snapshot).into(), Some(-1)),
+                manual_skip_index((&snapshot).into(), -1)
             );
         }
     }
@@ -3309,7 +3744,7 @@ mod tests {
         ] {
             test.session.set_mode(mode).expect("mode");
             let before = test.session.snapshot();
-            let expected = automatic_index(&before).map(|i| before.queue.items[i].id.clone());
+            let expected = automatic_index((&before).into()).map(|i| before.queue.items[i].id.clone());
             assert_eq!(test.session.preview_next_track(), expected);
             assert_eq!(test.session.snapshot(), before);
             assert_eq!(test.requests.load(Ordering::SeqCst), 0);
@@ -3408,22 +3843,22 @@ mod tests {
     #[test]
     fn automatic_modes_choose_stable_indices() {
         assert_eq!(
-            automatic_index(&snapshot(PlaybackMode::Sequence, 0, 3)),
+            automatic_index((&snapshot(PlaybackMode::Sequence, 0, 3)).into()),
             Some(1)
         );
         assert_eq!(
-            automatic_index(&snapshot(PlaybackMode::Sequence, 2, 3)),
+            automatic_index((&snapshot(PlaybackMode::Sequence, 2, 3)).into()),
             None
         );
         assert_eq!(
-            automatic_index(&snapshot(PlaybackMode::RepeatAll, 2, 3)),
+            automatic_index((&snapshot(PlaybackMode::RepeatAll, 2, 3)).into()),
             Some(0)
         );
         assert_eq!(
-            automatic_index(&snapshot(PlaybackMode::RepeatOne, 1, 3)),
+            automatic_index((&snapshot(PlaybackMode::RepeatOne, 1, 3)).into()),
             Some(1)
         );
-        let shuffled = automatic_index(&snapshot(PlaybackMode::Shuffle, 1, 3))
+        let shuffled = automatic_index((&snapshot(PlaybackMode::Shuffle, 1, 3)).into())
             .expect("shuffle has a next item");
         assert!(shuffled < 3);
         assert_ne!(shuffled, 1);
@@ -3432,14 +3867,14 @@ mod tests {
     #[test]
     fn manual_skip_wraps_but_shuffle_avoids_current_item() {
         assert_eq!(
-            manual_skip_index(&snapshot(PlaybackMode::Sequence, 2, 3), 1),
+            manual_skip_index((&snapshot(PlaybackMode::Sequence, 2, 3)).into(), 1),
             Some(0)
         );
         assert_eq!(
-            manual_skip_index(&snapshot(PlaybackMode::RepeatOne, 0, 3), -1),
+            manual_skip_index((&snapshot(PlaybackMode::RepeatOne, 0, 3)).into(), -1),
             Some(2)
         );
-        let shuffled = manual_skip_index(&snapshot(PlaybackMode::Shuffle, 0, 3), 1)
+        let shuffled = manual_skip_index((&snapshot(PlaybackMode::Shuffle, 0, 3)).into(), 1)
             .expect("shuffle has a next item");
         assert_ne!(shuffled, 0);
     }

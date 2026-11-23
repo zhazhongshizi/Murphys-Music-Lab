@@ -132,6 +132,7 @@ impl RadarReader {
 pub(super) struct RadarPlayback {
     reader: RadarReader,
     ids: Vec<String>,
+    queue_generation: u64,
     next_index: usize,
     in_flight: bool,
     starting_intent: Option<u64>,
@@ -189,7 +190,7 @@ impl PlaybackSession {
             self.cancel_radar_locked();
             (
                 self.radar_epoch.load(Ordering::SeqCst),
-                self.queue.snapshot().generation,
+                self.queue.with_view(|queue| queue.generation),
                 self.play_intent.load(Ordering::SeqCst),
             )
         };
@@ -232,6 +233,7 @@ impl PlaybackSession {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(RadarPlayback {
                 reader,
                 ids: queue.items.iter().map(|item| item.id.clone()).collect(),
+                queue_generation: queue.generation,
                 next_index: 4,
                 in_flight: false,
                 starting_intent: Some(intent),
@@ -298,41 +300,36 @@ impl PlaybackSession {
     }
 
     fn prepare_radar_refill(&self) -> Option<(u64, RadarReader, Vec<String>)> {
-        let plan = {
-            let _operation = self
-                .operation
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut radar = self
-                .radar
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _operation = self
+            .operation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut radar = self
+            .radar
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        radar.as_ref()?;
+        // Even a paused/in-flight reader must reject external queue edits.
+        // Selection can bump the generation without changing the ID order.
+        self.queue.with_view(|queue| {
             let state = radar.as_mut()?;
-            let snapshot = self.snapshot_unlocked();
-            if !snapshot
-                .queue
-                .items
-                .iter()
-                .map(|item| &item.id)
-                .eq(state.ids.iter())
-            {
-                self.radar_epoch.fetch_add(1, Ordering::SeqCst);
-                *radar = None;
+            if queue.generation != state.queue_generation {
+                if !queue.items.iter().map(|item| &item.id).eq(state.ids.iter()) {
+                    self.radar_epoch.fetch_add(1, Ordering::SeqCst);
+                    *radar = None;
+                    return None;
+                }
+                state.queue_generation = queue.generation;
+            }
+            if state.starting_intent.is_some() || state.in_flight || state.ids.len() >= QUEUE_LIMIT {
                 return None;
             }
-            if state.starting_intent.is_some()
-                || snapshot.player.state != PlayerState::Playing
-                || state.in_flight
-                || state.ids.len() >= QUEUE_LIMIT
-            {
+            let player = self.playback.cached_snapshot();
+            if player.state != PlayerState::Playing {
                 return None;
             }
-            let id = snapshot
-                .player
-                .current_track
-                .as_ref()
-                .map(|track| &track.id)?;
-            let Some(index) = state.ids.iter().position(|value| value == id) else {
+            let id = &player.current_track.as_ref()?.id;
+            let Some(index) = queue.index_of(id) else {
                 *radar = None;
                 return None;
             };
@@ -342,13 +339,12 @@ impl PlaybackSession {
                 return None;
             }
             state.in_flight = true;
-            (
+            Some((
                 self.radar_epoch.load(Ordering::SeqCst),
                 state.reader.clone(),
                 state.ids.clone(),
-            )
-        };
-        Some(plan)
+            ))
+        })
     }
 
     fn refill_radar(&self, epoch: u64, mut reader: RadarReader, ids: Vec<String>) {
@@ -371,7 +367,7 @@ impl PlaybackSession {
         };
         state.in_flight = false;
         if self.radar_epoch.load(Ordering::SeqCst) != epoch
-            || self.playback.snapshot().state != PlayerState::Playing
+            || self.playback.cached_snapshot().state != PlayerState::Playing
         {
             return;
         }
@@ -379,6 +375,7 @@ impl PlaybackSession {
             Ok(items) => match self.queue.enqueue_many_if_unchanged(items, &ids) {
                 Ok(Some(queue)) => {
                     state.ids = queue.items.iter().map(|item| item.id.clone()).collect();
+                    state.queue_generation = queue.generation;
                     state.reader = reader;
                     state.next_index = state
                         .ids

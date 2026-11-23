@@ -21,6 +21,7 @@ import { MvLyricOffsetControl } from "../player/MvPlaybackSettings";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import { StageSpectrum } from "../spectrum/StageSpectrum";
 import { CachedGlow } from "./CachedGlow";
+import type { GlowIntensityLevel } from "./coverPalette";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
 
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
@@ -59,20 +60,29 @@ function StageScrollingLyrics({ track }: { track: NonNullable<ReturnType<typeof 
   );
 }
 
+export interface ListeningStageGlowColors {
+  readonly primary?: string;
+  readonly vibrant?: string;
+  readonly ambient?: string;
+  readonly top?: string;
+}
+
 export function ListeningStage({
   settings,
   liveSpectrumEnabled = false,
   spectrumRenderable = true,
   spectrumPaletteKey,
-  cachedGlow = false,
   glowPaletteKey = "",
+  glowIntensity,
+  glowColors,
 }: {
   readonly settings?: ReactNode;
   readonly liveSpectrumEnabled?: boolean;
   readonly spectrumRenderable?: boolean;
   readonly spectrumPaletteKey?: string;
-  readonly cachedGlow?: boolean;
   readonly glowPaletteKey?: string;
+  readonly glowIntensity?: GlowIntensityLevel;
+  readonly glowColors?: ListeningStageGlowColors;
 }) {
   const track = usePlayerSelector(getCurrentTrack);
   const nativeMode = usePlayerSelector(selectNativeMode);
@@ -99,12 +109,15 @@ export function ListeningStage({
         className="stage__ambient"
         style={{ "--ambient-color": track.accent } as CSSProperties}
       >
-        {cachedGlow ? <>
-          <CachedGlow kind="artwork-core" paletteKey={glowPaletteKey} />
-        </> : <>
-          <span aria-hidden="true" className="stage__glow stage__glow--field" />
-          <span aria-hidden="true" className="stage__glow stage__glow--artwork-core" />
-        </>}
+        <CachedGlow
+          kind="artwork-core"
+          paletteKey={glowPaletteKey}
+          intensity={glowIntensity}
+          primaryColor={glowColors?.primary}
+          vibrantColor={glowColors?.vibrant}
+          ambientColor={glowColors?.ambient}
+          topColor={glowColors?.top}
+        />
       </div>
 
       <section className="stage__cover-column" aria-label="当前专辑">

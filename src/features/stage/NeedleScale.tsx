@@ -28,10 +28,14 @@ export function NeedleScale({ progress }: NeedleScaleProps) {
           />
         ))}
       </div>
-      <span aria-hidden="true" className="needle-scale__marker">
-        <span className="needle-scale__point" />
-        <span className="needle-scale__arm" />
-      </span>
+      <div aria-hidden="true" className="needle-scale__track">
+        <div className="needle-scale__slider">
+          <span className="needle-scale__marker">
+            <span className="needle-scale__point" />
+            <span className="needle-scale__arm" />
+          </span>
+        </div>
+      </div>
       <span className="needle-scale__label">唱针刻度</span>
     </div>
   );

@@ -2,6 +2,8 @@ pub mod auth;
 pub mod catalog;
 mod commands;
 pub mod cover;
+mod media_budget;
+mod media_cache;
 pub mod credentials;
 mod desktop;
 pub mod device_identity;
@@ -171,6 +173,7 @@ struct AppState {
     queue: Option<Arc<QueueService>>,
     persistence: Option<Arc<PersistenceService>>,
     cover: Option<Arc<CoverService>>,
+    media: Option<Arc<multi_provider::media_bridge::SmoothRuntime>>,
     auth_snapshot: Arc<RwLock<AuthSnapshot>>,
     #[cfg(windows)]
     auth_event_stop: Option<Arc<AtomicBool>>,
@@ -205,6 +208,7 @@ impl AppState {
             queue: None,
             persistence: None,
             cover: None,
+            media: None,
             auth_snapshot: Arc::new(RwLock::new(AuthSnapshot::unavailable())),
             #[cfg(windows)]
             auth_event_stop: None,
@@ -233,10 +237,18 @@ impl AppState {
     #[cfg(windows)]
     fn initialize(app: &tauri::AppHandle) -> Self {
         let mut state = Self::bootstrap();
+        let budget = Arc::new(media_budget::MediaBudget::default());
+        state.media = std::env::current_exe()
+            .ok()
+            .and_then(|executable| executable.parent().map(|root| root.join("media-cache")))
+            .map(|root| {
+                let cache = Arc::new(media_cache::MediaCache::open(root, budget.clone()));
+                Arc::new(multi_provider::media_bridge::SmoothRuntime::new(cache))
+            });
         state.cover = std::env::current_exe()
             .ok()
             .and_then(|executable| executable.parent().map(|root| root.join("cover-cache")))
-            .and_then(|root| CoverService::new(root).ok())
+            .and_then(|root| CoverService::with_budget(root, budget).ok())
             .map(Arc::new);
         state.local_music = LocalMusicService::from_current_exe().ok().map(Arc::new);
         if let (Some(data), Ok(exe)) = (application_data_directory(app), std::env::current_exe()) {
@@ -350,7 +362,9 @@ impl AppState {
                 let service = Arc::new(multi_provider::bilibili::BilibiliService::new(state.registry.clone()));
                 if let Some(cover) = &state.cover {
                     let service = service.clone();
-                    cover.set_bilibili_lookup(move |bvid| service.cover_url(bvid).map_err(|_| CoverError::CoverUnavailable));
+                    cover.set_bilibili_lookup(move |bvid, speculative| {
+                        service.cover_url(bvid, speculative).map_err(|_| CoverError::CoverUnavailable)
+                    });
                 }
                 state.bilibili = Some(service);
             }
@@ -402,6 +416,9 @@ impl AppState {
         state.playback = WindowsMediaPlayerEngine::new().ok().map(|player| {
             let mut controller =
                 PlaybackController::new(business_provider.clone(), Box::new(player));
+            if let Some(media) = &state.media {
+                controller = controller.with_smooth(media.clone(), state.registry.clone());
+            }
             if let Some(n) = &state.netease {
                 controller = controller.with_netease(n.clone());
             }
@@ -452,7 +469,8 @@ impl AppState {
                     dynamic_lyrics_port,
                     state.local_music.clone(),
                 )
-                .with_lyric_service(state.lyrics.clone()),
+                .with_lyric_service(state.lyrics.clone())
+                .with_preload_cover(state.cover.clone()),
             );
             session.set_default_quality(default_quality);
             if let Some(provider) = &qq_provider {
@@ -1232,6 +1250,7 @@ pub fn run() {
             commands::playback::queue_move,
             commands::playback::queue_play,
             commands::settings::settings_snapshot,
+            commands::settings::media_cache_control,
             commands::updates::updates_control,
             commands::settings::settings_set_preferred_quality,
             commands::settings::settings_set_live_spectrum_enabled,

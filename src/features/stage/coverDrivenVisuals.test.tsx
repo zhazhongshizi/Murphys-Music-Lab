@@ -100,22 +100,36 @@ describe("封面驱动动态视觉集成", () => {
     });
   });
 
-  it("轻量微光与原版均保留播放态动态，切换不改变播放", async () => {
+  it("轻量动态微光开关控制 0 帧静态与动态切换、持久化并保持播放", async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     const appShell = container.querySelector<HTMLElement>(".app-shell");
+    expect(appShell).toHaveAttribute("data-glow-renderer", "cached");
     expect(appShell).toHaveAttribute("data-glow-motion", "still");
 
     playerActions.toggle();
     expect(appShell).toHaveAttribute("data-glow-renderer", "cached");
     await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "playing"));
+
     await user.click(screen.getByRole("button", { name: "设置" }));
-    await user.click(screen.getByRole("menuitemcheckbox", { name: "轻量动态微光" }));
-    expect(appShell).toHaveAttribute("data-glow-renderer", "original");
-    await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "playing"));
+    const glowMotionSwitch = screen.getByRole("menuitemcheckbox", { name: "轻量动态微光" });
+    expect(glowMotionSwitch).toHaveAttribute("aria-checked", "true");
+
+    await user.click(glowMotionSwitch);
+    expect(glowMotionSwitch).toHaveAttribute("aria-checked", "false");
+    expect(localStorage.getItem("qqmusic_glow_motion_enabled")).toBe("off");
+    expect(appShell).toHaveAttribute("data-glow-renderer", "cached");
+    await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "still"));
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
 
     playerActions.seekBy(1_000);
-    expect(appShell).toHaveAttribute("data-glow-motion", "playing");
+    expect(appShell).toHaveAttribute("data-glow-motion", "still");
+
+    await user.click(glowMotionSwitch);
+    expect(glowMotionSwitch).toHaveAttribute("aria-checked", "true");
+    expect(localStorage.getItem("qqmusic_glow_motion_enabled")).toBe("on");
+    expect(appShell).toHaveAttribute("data-glow-renderer", "cached");
+    await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "playing"));
 
     playerActions.toggle();
     await waitFor(() => expect(appShell).toHaveAttribute("data-glow-motion", "still"));

@@ -1,4 +1,5 @@
 import { LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
+import type { Window as TauriWindow } from "@tauri-apps/api/window";
 
 export interface WindowSnapshot {
   size: {
@@ -154,57 +155,81 @@ export async function listenWindowMinimized(
   onMinimized: (minimized: boolean) => void,
 ): Promise<() => void> {
   if (!isTauriRuntime()) return () => undefined;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    return await subscribeWindowMinimized(getCurrentWindow(), onMinimized);
+  } catch {
+    return () => undefined;
+  }
+}
+
+async function subscribeWindowMinimized(
+  currentWin: TauriWindow,
+  onMinimized: (minimized: boolean) => void,
+): Promise<() => void> {
+  let disposed = false;
+  const publish = (minimized: boolean) => {
+    if (!disposed) onMinimized(minimized);
+  };
   const onExplicitState = (event: Event) => {
     if (event instanceof CustomEvent && typeof event.detail === "boolean") {
-      onMinimized(event.detail);
+      publish(event.detail);
+    }
+  };
+  const read = async () => {
+    try {
+      publish(await currentWin.isMinimized());
+    } catch {
+      // Keep observing native changes and document visibility.
     }
   };
   window.addEventListener(WINDOW_MINIMIZED_EVENT, onExplicitState);
-  try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    const currentWin = getCurrentWindow();
-    const publish = async () => {
-      try {
-        onMinimized(await currentWin.isMinimized());
-      } catch {
-        // Ignore window-state query errors; document visibility remains active.
-      }
-    };
-    await publish();
-    const [unlistenResize, unlistenFocus] = await Promise.all([
-      currentWin.onResized(publish),
-      currentWin.onFocusChanged(({ payload: focused }) => {
-        if (focused) onMinimized(false);
-      }),
-    ]);
-    return () => {
-      window.removeEventListener(WINDOW_MINIMIZED_EVENT, onExplicitState);
-      unlistenResize();
-      unlistenFocus();
-    };
-  } catch {
+  const listeners = await Promise.allSettled([
+    currentWin.onResized(read),
+    currentWin.onFocusChanged(({ payload: focused }) => {
+      if (focused) publish(false);
+      else void read();
+    }),
+  ]);
+  const cleanup = () => {
+    disposed = true;
     window.removeEventListener(WINDOW_MINIMIZED_EVENT, onExplicitState);
-    return () => undefined;
+    for (const listener of listeners) {
+      if (listener.status === "fulfilled") listener.value();
+    }
+  };
+  for (const listener of listeners) {
+    if (listener.status === "rejected") {
+      cleanup();
+      throw listener.reason;
+    }
   }
+  await read();
+  return cleanup;
 }
 
 function documentIsVisible(): boolean {
   return typeof document === "undefined" || document.visibilityState === "visible";
 }
 
+export type WindowRenderability = boolean | null;
+
 export async function listenWindowRenderable(
-  onRenderable: (renderable: boolean) => void,
+  onRenderable: (renderable: WindowRenderability) => void,
 ): Promise<() => void> {
+  const native = isTauriRuntime();
   let disposed = false;
-  let windowVisible = !isTauriRuntime();
-  let minimized = false;
-  let lastPublished: boolean | undefined;
+  let windowVisible: boolean | null = native ? null : true;
+  let minimized: boolean | null = native ? null : false;
+  let lastPublished: WindowRenderability | undefined;
   let unlistenVisible: () => void = () => undefined;
   let unlistenMinimized: () => void = () => undefined;
 
   const publish = () => {
     if (disposed) return;
-    const renderable = windowVisible && !minimized && documentIsVisible();
+    const renderable = !documentIsVisible() || windowVisible === false || minimized === true
+      ? false
+      : windowVisible === true && minimized === false ? true : null;
     if (renderable === lastPublished) return;
     lastPublished = renderable;
     onRenderable(renderable);
@@ -220,14 +245,8 @@ export async function listenWindowRenderable(
     unlistenMinimized();
   };
 
-  if (!isTauriRuntime()) {
-    publish();
-    return cleanup;
-  }
-
-  windowVisible = false;
-  minimized = true;
   publish();
+  if (!native) return cleanup;
 
   try {
     const [{ listen }, { getCurrentWindow }] = await Promise.all([
@@ -240,25 +259,73 @@ export async function listenWindowRenderable(
       windowVisible = payload;
       publish();
     });
-    unlistenMinimized = await listenWindowMinimized((nextMinimized) => {
+    unlistenMinimized = await subscribeWindowMinimized(currentWin, (nextMinimized) => {
       minimized = nextMinimized;
       publish();
     });
-    const [initialVisible, initialMinimized] = await Promise.all([
-      currentWin.isVisible(),
-      currentWin.isMinimized(),
-    ]);
-    windowVisible = initialVisible;
-    minimized = initialMinimized;
+    windowVisible = await currentWin.isVisible();
     publish();
   } catch {
-    windowVisible = false;
-    minimized = true;
+    windowVisible = null;
+    minimized = null;
     publish();
     unlistenVisible();
     unlistenVisible = () => undefined;
     unlistenMinimized();
     unlistenMinimized = () => undefined;
+  }
+
+  return cleanup;
+}
+
+export async function listenWindowFocused(
+  onFocused: (focused: boolean) => void,
+): Promise<() => void> {
+  let disposed = false;
+  let lastPublished: boolean | undefined;
+  let unlistenFocus: () => void = () => undefined;
+  const publish = (focused: boolean) => {
+    if (disposed || focused === lastPublished) return;
+    lastPublished = focused;
+    onFocused(focused);
+  };
+  const onFocus = () => publish(true);
+  const onBlur = () => publish(false);
+  window.addEventListener("focus", onFocus);
+  window.addEventListener("blur", onBlur);
+
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    window.removeEventListener("focus", onFocus);
+    window.removeEventListener("blur", onBlur);
+    unlistenFocus();
+  };
+
+  if (!isTauriRuntime()) {
+    publish(true);
+    return cleanup;
+  }
+
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const currentWin = getCurrentWindow();
+    unlistenFocus = await currentWin.onFocusChanged(({ payload: focused }) => {
+      publish(focused);
+    });
+    let initialFocused = true;
+    if (typeof currentWin.isFocused === "function") {
+      try {
+        initialFocused = await currentWin.isFocused();
+      } catch {
+        initialFocused = true;
+      }
+    }
+    publish(initialFocused);
+  } catch {
+    publish(true);
+    unlistenFocus();
+    unlistenFocus = () => undefined;
   }
 
   return cleanup;

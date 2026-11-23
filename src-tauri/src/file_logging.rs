@@ -165,6 +165,84 @@ pub(crate) fn native_failure(generation: u64, hresult: Option<i32>) {
 pub(crate) fn native_event(event: &'static str, generation: u64) {
     record(&serde_json::json!({"event":event, "generation":generation}));
 }
+
+pub(crate) fn natural_advance(generation: u64, smooth: bool, preload: bool) {
+    record(&serde_json::json!({
+        "event": "natural_advance", "generation": generation,
+        "smoothEnabled": smooth, "preloadEnabled": smooth && preload,
+    }));
+}
+
+/// A per-request number correlates a provider resolve with its eventual CDN stream.
+/// No media, account or queue identifiers enter these records.
+#[derive(Clone, Copy)]
+pub(crate) struct PlaybackTrace {
+    id: u64,
+    pub(crate) speculative: bool,
+}
+
+impl PlaybackTrace {
+    pub(crate) fn new(speculative: bool) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self { id: NEXT.fetch_add(1, Ordering::Relaxed), speculative }
+    }
+
+    pub(crate) fn mark(self, stage: &'static str, outcome: &'static str) {
+        self.emit(stage, outcome, None);
+    }
+
+    fn emit(self, stage: &'static str, outcome: &'static str, elapsed: Option<u64>) {
+        record(&serde_json::json!({
+            "event": "playback_phase", "traceId": self.id,
+            "role": if self.speculative { "preload" } else { "playback" },
+            "stage": stage, "outcome": outcome, "elapsedMs": elapsed,
+        }));
+    }
+
+    pub(crate) fn begin(self, stage: &'static str) -> PlaybackSpan {
+        self.mark(stage, "start");
+        PlaybackSpan { trace: self, stage, start: std::time::Instant::now(), outcome: "interrupted" }
+    }
+}
+
+pub(crate) struct PlaybackSpan {
+    trace: PlaybackTrace,
+    stage: &'static str,
+    start: std::time::Instant,
+    outcome: &'static str,
+}
+
+impl PlaybackSpan {
+    pub(crate) fn finish(mut self, outcome: &'static str) {
+        self.outcome = outcome;
+    }
+}
+
+impl Drop for PlaybackSpan {
+    fn drop(&mut self) {
+        self.trace.emit(self.stage, self.outcome, Some(self.start.elapsed().as_millis() as u64));
+    }
+}
+pub(crate) fn media_traffic(
+    elapsed_ms: u64,
+    budget_bytes_per_sec: u64,
+    [audio, preload, covers, foreground_probes, cache, preload_probes, disk_cache]: [u64; 7],
+) {
+    record(&serde_json::json!({
+        "event": "media_traffic",
+        "elapsedMs": elapsed_ms,
+        "budgetBytesPerSec": budget_bytes_per_sec,
+        "audioBytes": audio,
+        "preloadBytes": preload,
+        "coverBytes": covers,
+        "probeBytes": foreground_probes + preload_probes,
+        "playbackProbeBytes": foreground_probes,
+        "preloadProbeBytes": preload_probes,
+        "cacheReadBytes": cache,
+        "diskCacheReadBytes": disk_cache,
+    }));
+}
 pub(crate) fn provider_failure(code: &'static str, generation: u64) {
     record(&serde_json::json!({"event":"provider_recovery", "code":code,"generation":generation}));
 }

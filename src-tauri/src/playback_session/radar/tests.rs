@@ -67,6 +67,36 @@ fn playing_at(session: &PlaybackSession, index: usize) {
     session.playback.play().unwrap();
 }
 
+#[test]
+fn steady_radar_checks_allow_selection_only_changes_without_full_snapshots() {
+    for length in [10, 1_000] {
+        let (test, native, _) = crate::playback_session::tests::counted_playing(length, 6_000);
+        let session = &test.session;
+        let feed = Feed::new(10);
+        let queue = session.queue.snapshot();
+        *session.radar.lock().unwrap() = Some(RadarPlayback {
+            reader: RadarReader::new(feed.catalog(), 0, RadarSeed::unseeded()),
+            ids: queue.items.iter().map(|item| item.id.clone()).collect(),
+            queue_generation: queue.generation,
+            next_index: 4,
+            in_flight: false,
+            starting_intent: None,
+        });
+        let queue_reads = session.queue.full_snapshot_reads.load(Ordering::SeqCst);
+        let player_reads = native.load(Ordering::SeqCst);
+        for _ in 0..20 {
+            assert!(session.prepare_radar_refill().is_none());
+        }
+        session.queue.select(1).unwrap();
+        assert!(session.prepare_radar_refill().is_none());
+        assert_eq!(session.radar.lock().unwrap().as_ref().unwrap().queue_generation,
+            session.queue.with_view(|queue| queue.generation));
+        assert_eq!(session.queue.full_snapshot_reads.load(Ordering::SeqCst), queue_reads);
+        assert_eq!(native.load(Ordering::SeqCst), player_reads);
+        assert_eq!(feed.calls.load(Ordering::SeqCst), 0);
+    }
+}
+
 fn recover_and_refill(session: &PlaybackSession, next_id: &str) {
     {
         let mut failed = session.failed_tracks.lock().unwrap();

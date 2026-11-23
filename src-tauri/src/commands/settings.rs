@@ -58,6 +58,28 @@ pub(crate) fn settings_snapshot(
         .map_err(public_persistence_error)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub(crate) enum MediaCacheRequest {
+    Status,
+    Configure { enabled: bool, limit_mib: u32, preload_enabled: Option<bool> },
+    Clear,
+}
+
+#[tauri::command]
+pub(crate) async fn media_cache_control(
+    request: MediaCacheRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::media_cache::CacheStatus, &'static str> {
+    let cache = state.media.as_ref().ok_or("media_cache_unavailable")?.cache.clone();
+    let status = tauri::async_runtime::spawn_blocking(move || match request {
+        MediaCacheRequest::Status => Ok(cache.status()),
+        MediaCacheRequest::Configure { enabled, limit_mib, preload_enabled } => cache.configure(enabled, limit_mib, preload_enabled),
+        MediaCacheRequest::Clear => Ok(cache.clear()),
+    }).await.map_err(|_| "media_cache_unavailable")?;
+    status.map_err(|_| "media_cache_settings_failed")
+}
+
 #[tauri::command]
 pub(crate) async fn settings_set_preferred_quality(
     preferred_quality: String,

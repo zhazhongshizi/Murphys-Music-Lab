@@ -83,6 +83,8 @@ B 站可播放 track 的 `video` 必须保留原始 `title`（视频标题）、
 
 网易只返回试听片段时以 preview_only 报告，不把片段作为完整歌曲成功解析；权益不足用 entitlement_denied，资源不可用用 media_unavailable。播放成功不代表全平台“无损”，实际 codec/bitrate/quality 必须取返回值。
 
+宿主在每次开始播放时重新请求 `playback.resolve`。预加载的解析属于推测性读取，宿主不以该读取的业务失败推进账号恢复或播放历史。音轨的曲目 ID、码率、时长、DASH 表示及候选地址不能单独证明字节内容版本。宿主只在当前授权、表示与同一完整资源地址的 CDN 强 ETag 均匹配时复用已提交区间；上游禁止保存时限制为当前播放的供给。地址与校验器留在 Rust，公开 DTO 保持原契约。
+
 credential 为 `{version:1, providerId, payload}`；payload 是由所属适配器解释的 JSON 文本，宿主视为秘密材料。完整序列化 envelope 的 UTF-8 长度最多 64 KiB（不是 JS 字符数）；schema 字符上限只是初筛。不得输出 Debug/日志。恢复时必须匹配所属 Provider，之后才可传入子进程。
 
 ## 公开 DTO 与旧数据

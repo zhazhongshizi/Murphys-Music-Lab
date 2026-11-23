@@ -24,7 +24,10 @@ export function DiscoveryTabs({ value, onChange, includeNewSongs = true }: {
 export function RecommendationPanel({ kind, accountKey, active = true, onOpen }: {
   kind: RecommendationKind; accountKey: string; active?: boolean; onOpen: (entity: CatalogEntity) => void;
 }) {
-  const { page, error, pageNumber, busy, notice, act, actAll, refresh, goToPage } = useRecommendations({ kind, accountKey, active });
+  const isRadar = kind === "radar";
+  const { page, error, pageNumber, busy, notice, act, actAll, refresh, goToPage } = useRecommendations({
+    kind, accountKey, active, pageSize: isRadar ? 10 : undefined, fillPage: isRadar,
+  });
   const label = DISCOVERY_TABS.find(([tab]) => tab === kind)![1];
   return <section className="catalog-recommendations" aria-label={label}>
     <header className="recommendation-heading"><div><h2>{label}</h2><p>QQ 音乐实时推荐{accountKey.startsWith("authenticated:") ? " · 当前账号" : " · 登录后可获得个人推荐"}</p></div>

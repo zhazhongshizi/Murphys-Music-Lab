@@ -49,23 +49,24 @@ function radarFeed() {
 }
 
 /** Shared requests and queue semantics; presentation belongs to each mode. */
-export function useRecommendations({ kind, accountKey, active = true, pageSize }: {
-  kind: RecommendationKind; accountKey: string; active?: boolean; pageSize?: number;
+export function useRecommendations({ kind, accountKey, active = true, pageSize, fillPage = false }: {
+  kind: RecommendationKind; accountKey: string; active?: boolean; pageSize?: number; fillPage?: boolean;
 }) {
-  const context = `${accountKey}:${kind}:${pageSize ?? "upstream"}`;
+  const context = `${accountKey}:${kind}:${pageSize ?? "upstream"}:${fillPage}`;
   const [pagination, setPagination] = useState({ context, number: 1 });
   const pageNumber = pagination.context === context ? pagination.number : 1;
   const [retry, setRetry] = useState(0);
   const radar = useMemo(() => kind === "radar" ? radarFeed() : null, [kind, accountKey, retry]);
-  const paged = useMemo(() => pageSize ? recommendationPages(async (generation, page) => {
-    const result = radar ? await radar.read(generation, page) : kind === "playlists" ? await getRecommendedPlaylists(generation, page) : await getRecommendedSongs(kind, generation, page);
+  const generation = useRef(0);
+  const paged = useMemo(() => pageSize ? recommendationPages(async (epoch, page) => {
+    if (fillPage && generation.current !== epoch) throw new Error("stale_recommendations");
+    const result = radar ? await radar.read(epoch, page) : kind === "playlists" ? await getRecommendedPlaylists(epoch, page) : await getRecommendedSongs(kind, epoch, page);
     return kind === "guess" ? { ...result, hasMore: false } : result;
-  }, pageSize) : null, [kind, accountKey, retry, pageSize, radar]);
+  }, pageSize, fillPage) : null, [kind, accountKey, retry, pageSize, radar, fillPage]);
   const key = `${context}:${pageNumber}:${retry}`;
   const [state, setState] = useState<{ key: string; page?: CatalogSongPage | CatalogEntityPage; error?: boolean }>({ key: "" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ key: "", text: "" });
-  const generation = useRef(0);
   const pending = useRef(false);
   const mounted = useRef(false);
   const current = useRef({ key, active, state });

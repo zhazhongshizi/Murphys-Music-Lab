@@ -10,6 +10,7 @@ import {
   LibraryAdapterError,
   parsePlaylistPage,
   previewOrganizer,
+  setSongsLiked,
 } from "./libraryAdapter";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -108,6 +109,16 @@ describe("library adapter", () => {
     });
     await expect(createPlaylist("夜航")).rejects.toEqual(
       new LibraryAdapterError("QMG-LIBRARY-UNKNOWN"),
+    );
+  });
+
+  it("取消喜欢的明确拒绝保留独立错误码且不重放", async () => {
+    invokeMock.mockRejectedValue({ code: "access_denied", cause: "SENTINEL_PRIVATE_RESPONSE" });
+    await expect(setSongsLiked(["song-mid"], false)).rejects.toEqual(
+      new LibraryAdapterError("QMG-LIBRARY-DENIED"),
+    );
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith(
+      LIBRARY_COMMANDS.setLiked, { songIds: ["song-mid"], liked: false },
     );
   });
 });

@@ -1,9 +1,9 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Condvar, Mutex, Weak},
     time::{Duration, SystemTime},
 };
 
@@ -14,6 +14,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::network_policy::{DnsResolver, RemoteUrlPurpose, SystemDnsResolver, TrustedRemoteUrl};
+use crate::media_budget::{MediaBudget, Traffic, BURST};
 
 pub const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
 const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
@@ -23,7 +24,7 @@ const CACHE_EXTENSION: &str = "cover";
 const ALBUM_COVER_URL_PREFIX: &str = "https://y.gtimg.cn/music/photo_new/T002R300x300M000";
 const ARTIST_COVER_URL_PREFIX: &str = "https://y.gtimg.cn/music/photo_new/T001R300x300M000";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CoverKind {
     Album,
     Artist,
@@ -81,26 +82,38 @@ pub struct CoverResponse {
 
 pub trait CoverTransport: Send + Sync {
     fn fetch(&self, url: &Url) -> Result<CoverResponse, CoverError>;
+    fn fetch_while(&self, url: &Url, allowed: &dyn Fn() -> bool) -> Result<CoverResponse, CoverError> {
+        if !allowed() { return Err(CoverError::CoverUnavailable); }
+        self.fetch(url)
+    }
 }
 
 struct ReqwestCoverTransport {
     client: Client,
+    budget: Arc<MediaBudget>,
+    active: Mutex<()>,
 }
 
 impl ReqwestCoverTransport {
-    fn new() -> Result<Self, CoverError> {
+    fn new(budget: Arc<MediaBudget>) -> Result<Self, CoverError> {
         Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(65))
             .build()
-            .map(|client| Self { client })
+            .map(|client| Self { client, budget, active: Mutex::new(()) })
             .map_err(|_| CoverError::NetworkUnavailable)
     }
 }
 
 impl CoverTransport for ReqwestCoverTransport {
     fn fetch(&self, url: &Url) -> Result<CoverResponse, CoverError> {
-        let response = self
+        self.fetch_while(url, &|| true)
+    }
+
+    fn fetch_while(&self, url: &Url, allowed: &dyn Fn() -> bool) -> Result<CoverResponse, CoverError> {
+        let _active = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !self.budget.reserve_blocking(BURST, allowed) { return Err(CoverError::CoverUnavailable); }
+        let mut response = self
             .client
             .get(url.clone())
             .header(reqwest::header::ACCEPT, "image/jpeg,image/png,image/webp")
@@ -135,12 +148,15 @@ impl CoverTransport for ReqwestCoverTransport {
         }
 
         let mut body = Vec::new();
-        response
-            .take((MAX_COVER_BYTES + 1) as u64)
-            .read_to_end(&mut body)
-            .map_err(|_| CoverError::NetworkUnavailable)?;
-        if body.len() > MAX_COVER_BYTES {
-            return Err(CoverError::ImageTooLarge);
+        let mut buffer = [0; BURST];
+        let length = response.content_length();
+        loop {
+            let count = response.read(&mut buffer).map_err(|_| CoverError::NetworkUnavailable)?;
+            self.budget.record(Traffic::Cover, count);
+            if body.len() + count > MAX_COVER_BYTES { return Err(CoverError::ImageTooLarge); }
+            body.extend_from_slice(&buffer[..count]);
+            if count == 0 || length == Some(body.len() as u64) { break; }
+            if !self.budget.reserve_blocking(BURST, allowed) { return Err(CoverError::CoverUnavailable); }
         }
 
         Ok(CoverResponse {
@@ -152,7 +168,8 @@ impl CoverTransport for ReqwestCoverTransport {
     }
 }
 
-type BilibiliCoverLookup = dyn Fn(&str) -> Result<String, CoverError> + Send + Sync;
+type BilibiliCoverLookup = dyn Fn(&str, bool) -> Result<String, CoverError> + Send + Sync;
+type CoverFlight = (Mutex<Option<Result<CoverPayload, CoverError>>>, Condvar);
 
 pub struct CoverService {
     playlist_urls: Mutex<BTreeMap<String, String>>,
@@ -160,11 +177,18 @@ pub struct CoverService {
     resolver: Arc<dyn DnsResolver>,
     transport: Arc<dyn CoverTransport>,
     bilibili_lookup: Mutex<Option<Arc<BilibiliCoverLookup>>>,
+    pending: Mutex<HashMap<(CoverKind, String), Weak<CoverFlight>>>,
 }
 
 impl CoverService {
     pub fn new(cache_root: PathBuf) -> Result<Self, CoverError> {
-        let transport = Arc::new(ReqwestCoverTransport::new()?);
+        let budget = Arc::new(MediaBudget::default());
+        budget.set_enabled(false);
+        Self::with_budget(cache_root, budget)
+    }
+
+    pub(crate) fn with_budget(cache_root: PathBuf, budget: Arc<MediaBudget>) -> Result<Self, CoverError> {
+        let transport = Arc::new(ReqwestCoverTransport::new(budget)?);
         Self::with_parts(cache_root, Arc::new(SystemDnsResolver), transport)
     }
 
@@ -183,24 +207,33 @@ impl CoverService {
             resolver,
             transport,
             bilibili_lookup: Mutex::new(None),
+            pending: Mutex::default(),
         })
     }
 
     pub fn get(&self, raw_key: &str) -> Result<CoverPayload, CoverError> {
+        self.get_with_policy(raw_key, &|| true, false)
+    }
+
+    pub(crate) fn preload_while(&self, raw_key: &str, allowed: &dyn Fn() -> bool) -> Result<CoverPayload, CoverError> {
+        self.get_with_policy(raw_key, allowed, true)
+    }
+
+    fn get_with_policy(&self, raw_key: &str, allowed: &dyn Fn() -> bool, speculative: bool) -> Result<CoverPayload, CoverError> {
         if let Some(bvid) = raw_key.strip_prefix("bili_") {
-            return self.get_bilibili(raw_key, || {
+            return self.get_bilibili_while(raw_key, allowed, || {
                 let lookup = self.bilibili_lookup.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone().ok_or(CoverError::CoverUnavailable)?;
-                lookup(bvid)
+                lookup(bvid, speculative)
             });
         }
         if raw_key.starts_with("ne_") {
-            return self.get_with_kind(CoverKind::Netease, raw_key);
+            return self.get_with_source(CoverKind::Netease, raw_key, allowed, || self.trusted_url(CoverKind::Netease, raw_key));
         }
-        self.get_with_kind(CoverKind::Album, raw_key)
+        self.get_with_source(CoverKind::Album, raw_key, allowed, || self.trusted_url(CoverKind::Album, raw_key))
     }
 
-    pub fn set_bilibili_lookup(&self, lookup: impl Fn(&str) -> Result<String, CoverError> + Send + Sync + 'static) {
+    pub(crate) fn set_bilibili_lookup(&self, lookup: impl Fn(&str, bool) -> Result<String, CoverError> + Send + Sync + 'static) {
         *self.bilibili_lookup.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(lookup));
     }
 
@@ -249,8 +282,13 @@ impl CoverService {
         self.get_with_kind(CoverKind::Playlist, raw_key)
     }
 
+    #[cfg(test)]
     fn get_bilibili(&self, raw_key: &str, resolve: impl FnOnce() -> Result<String, CoverError>) -> Result<CoverPayload, CoverError> {
-        self.get_with_source(CoverKind::Bilibili, raw_key, || {
+        self.get_bilibili_while(raw_key, &|| true, resolve)
+    }
+
+    fn get_bilibili_while(&self, raw_key: &str, allowed: &dyn Fn() -> bool, resolve: impl FnOnce() -> Result<String, CoverError>) -> Result<CoverPayload, CoverError> {
+        self.get_with_source(CoverKind::Bilibili, raw_key, allowed, || {
             let value = resolve()?;
             let url = Url::parse(&value).map_err(|_| CoverError::UnsafeUrl)?;
             if !matches!(url.host_str(), Some("i0.hdslb.com" | "i1.hdslb.com" | "i2.hdslb.com")) {
@@ -261,11 +299,34 @@ impl CoverService {
     }
 
     fn get_with_kind(&self, kind: CoverKind, raw_key: &str) -> Result<CoverPayload, CoverError> {
-        self.get_with_source(kind, raw_key, || self.trusted_url(kind, raw_key))
+        self.get_with_source(kind, raw_key, &|| true, || self.trusted_url(kind, raw_key))
     }
 
-    fn get_with_source(&self, kind: CoverKind, raw_key: &str, source: impl FnOnce() -> Result<TrustedRemoteUrl, CoverError>) -> Result<CoverPayload, CoverError> {
+    fn get_with_source(&self, kind: CoverKind, raw_key: &str, allowed: &dyn Fn() -> bool, source: impl FnOnce() -> Result<TrustedRemoteUrl, CoverError>) -> Result<CoverPayload, CoverError> {
         let key = validate_cache_key(raw_key)?;
+        let (flight, owner) = {
+            let mut pending = self.pending.lock().unwrap();
+            pending.retain(|_, flight| flight.strong_count() > 0);
+            let index = (kind, key.to_owned());
+            if let Some(flight) = pending.get(&index).and_then(Weak::upgrade) {
+                (flight, false)
+            } else {
+                let flight = Arc::new((Mutex::new(None), Condvar::new()));
+                pending.insert(index, Arc::downgrade(&flight));
+                (flight, true)
+            }
+        };
+        if !owner {
+            let result = flight.0.lock().unwrap();
+            return flight.1.wait_while(result, |result| result.is_none()).unwrap().as_ref().unwrap().clone();
+        }
+        let result = self.lookup(kind, key, &|| allowed() || Arc::strong_count(&flight) > 1, source);
+        *flight.0.lock().unwrap() = Some(result.clone());
+        flight.1.notify_all();
+        result
+    }
+
+    fn lookup(&self, kind: CoverKind, key: &str, allowed: &dyn Fn() -> bool, source: impl FnOnce() -> Result<TrustedRemoteUrl, CoverError>) -> Result<CoverPayload, CoverError> {
         let cache_path = self.cache_path(kind, key);
         if cache_path.is_file() {
             match read_cached(&cache_path) {
@@ -280,13 +341,13 @@ impl CoverService {
             }
         }
 
+        if !allowed() { return Err(CoverError::CoverUnavailable); }
         let mut target = source()?;
         for redirect_count in 0..=MAX_REDIRECTS {
-            let response = self.transport.fetch(target.expose_to_trusted_backend())?;
+            let response = self.transport.fetch_while(target.expose_to_trusted_backend(), allowed)?;
             if (200..300).contains(&response.status) {
                 let payload = validate_image(response.content_type.as_deref(), response.body)?;
-                self.write_cached(kind, key, &payload)?;
-                self.prune_cache();
+                if self.write_cached(kind, key, &payload).is_ok() { self.prune_cache(); }
                 return Ok(payload);
             }
             if (300..400).contains(&response.status) {
@@ -570,7 +631,7 @@ mod tests {
         let transport = Arc::new(FakeTransport::new(vec![jpeg_response()]));
         let service = CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone()).unwrap();
         let key = "bili_BV17x411w7KC";
-        service.set_bilibili_lookup(|bvid| {
+        service.set_bilibili_lookup(|bvid, _| {
             assert_eq!(bvid, "BV17x411w7KC");
             Ok("https://i0.hdslb.com/bfs/archive/fixture.jpg".into())
         });
@@ -589,7 +650,7 @@ mod tests {
             status: 302, content_type: None, location: Some("https://y.gtimg.cn/other.jpg".into()), body: vec![],
         }]));
         let service = CoverService::with_parts(root.clone(), Arc::new(PublicResolver), transport.clone()).unwrap();
-        service.set_bilibili_lookup(|_| Ok("https://i0.hdslb.com/bfs/archive/fixture.jpg".into()));
+        service.set_bilibili_lookup(|_, _| Ok("https://i0.hdslb.com/bfs/archive/fixture.jpg".into()));
         assert_eq!(service.get("bili_BV17x411w7KC"), Err(CoverError::RedirectRejected));
         assert_eq!(transport.calls.lock().unwrap().len(), 1);
         let _ = fs::remove_dir_all(root);

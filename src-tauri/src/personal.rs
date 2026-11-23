@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS personal_deleted_queue (singleton_id INTEGER PRIMARY 
 CREATE TABLE IF NOT EXISTS listening_intervals (track_id TEXT NOT NULL, ended_ms INTEGER NOT NULL, listened_ms INTEGER NOT NULL, qualified_plays INTEGER NOT NULL) STRICT;
 CREATE INDEX IF NOT EXISTS listening_intervals_time ON listening_intervals(ended_ms);
 ";
+pub(crate) const LISTENING_DAILY_DAY_INDEX: &str =
+    "CREATE INDEX IF NOT EXISTS listening_daily_day ON listening_daily(day);";
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct BookmarkMetadata {

@@ -52,10 +52,14 @@ export function usePlaylistRemoval(
       if (!isCurrent()) return;
       setNotice(`已从“${selected.playlist.title}”移出 ${ids.length} 首歌曲`);
       onRemoved(ids);
-    } catch {
+    } catch (error) {
       if (catalogCacheRevision() === selected.revision) invalidatePlaylistSongs(selected.playlist);
       if (isCurrent()) {
-        setNotice("移出结果未确认，请刷新歌单核对；应用没有自动重复提交");
+        const denied = typeof error === "object" && error !== null
+          && "code" in error && error.code === "QMG-LIBRARY-DENIED";
+        setNotice(denied
+          ? "移出未成功：请求被服务端拒绝"
+          : "移出结果未确认，请刷新歌单核对；应用没有自动重复提交");
       }
     } finally {
       writing.current = false;

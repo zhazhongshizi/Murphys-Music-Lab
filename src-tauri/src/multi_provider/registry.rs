@@ -21,7 +21,7 @@ struct State {
     accepting: bool,
     deletions: usize,
     write_targets: HashSet<(u64, String)>,
-    likes: Option<(u64, HashSet<String>)>,
+    likes: Option<(u64, Arc<HashSet<String>>)>,
     likes_version: u64,
     unresolved_writes: HashMap<(u64,String),String>,
 }
@@ -152,6 +152,19 @@ impl ProviderRegistry {
         }
         Ok(s.lifecycle.generation())
     }
+    pub(crate) fn playback_account(&self, id: OnlineProviderId) -> Option<(u64, String)> {
+        if id == OnlineProviderId::Qqmusic {
+            return self.qq.as_ref()?.playback_account();
+        }
+        let slot = self.slot(id).ok()?;
+        let state = slot.state.lock().ok()?;
+        match state.lifecycle.snapshot(slot.registration.capabilities.clone()).status {
+            super::lifecycle::PublicStatus::Ready { account, .. } => {
+                Some((state.lifecycle.generation(), account.id))
+            }
+            _ => None,
+        }
+    }
     pub fn remote_ready(
         &self,
         id: OnlineProviderId,
@@ -221,7 +234,7 @@ impl ProviderRegistry {
             if confirmed{s.unresolved_writes.remove(&key);}else{s.unresolved_writes.insert(key,fingerprint);}
         }
     }
-    pub fn cached_netease_likes(&self)->Option<HashSet<String>> {
+    pub fn cached_netease_likes(&self) -> Option<Arc<HashSet<String>>> {
         let slot=self.slot(OnlineProviderId::Netease).ok()?;slot.observe_exit().ok()?;
         let s=slot.state.lock().unwrap();
         let (g,ids)=s.likes.as_ref()?;
@@ -238,20 +251,32 @@ impl ProviderRegistry {
         let mut s=slot.state.lock().unwrap();
         if s.lifecycle.generation()!=g||!s.lifecycle.business_allowed()||version!=s.likes_version{return Err(Error::Stale);}
         let account=match s.lifecycle.snapshot(slot.registration.capabilities.clone()).status {super::lifecycle::PublicStatus::Ready{account,..}=>account,_=>return Err(Error::Stale)};
-        s.likes=Some((g,ids.clone()));
         s.unresolved_writes.retain(|(epoch,key),fingerprint| {
             if *epoch!=g||!key.starts_with("like:"){return true;}
             let Ok(op)=serde_json::from_str::<Value>(fingerprint) else{return true;};
             let Some(song)=op["params"]["songId"].as_str() else{return true;};
             ids.contains(&format!("netease:track:{song}"))!=op["params"]["liked"].as_bool().unwrap_or(false)
         });
-        Ok(json!({"accountId":account.id,"ids":ids}))
+        let response = json!({"accountId":account.id,"ids":&ids});
+        if s.likes.as_ref().is_none_or(|(epoch, cached)| *epoch != g || **cached != ids) {
+            s.likes = Some((g, Arc::new(ids)));
+        }
+        Ok(response)
     }
     pub fn verified_like(&self,g:u64,track:&str,liked:bool) {
         if let Ok(slot)=self.slot(OnlineProviderId::Netease) {let mut s=slot.state.lock().unwrap();
             if s.lifecycle.business_allowed()&&s.lifecycle.generation()==g {
                 s.likes_version=s.likes_version.wrapping_add(1);
-                if let Some((epoch,ids))=&mut s.likes {if *epoch==g {if liked {ids.insert(track.into());}else{ids.remove(track);}}}
+                if let Some((epoch, ids)) = &mut s.likes {
+                    if *epoch == g && ids.contains(track) != liked {
+                        let ids = Arc::make_mut(ids);
+                        if liked {
+                            ids.insert(track.into());
+                        } else {
+                            ids.remove(track);
+                        }
+                    }
+                }
             }
         }
     }
@@ -437,6 +462,26 @@ impl ProviderRegistry {
         method: &str,
         params: Value,
     ) -> Result<Value, Error> {
+        self.request_inner(id, generation, method, params, false)
+    }
+
+    pub(crate) fn request_speculative(
+        &self, id: OnlineProviderId, generation: u64, method: &str, params: Value,
+    ) -> Result<Value, Error> {
+        if !matches!(method, "playback.resolve" | "video.resolve") {
+            return Err(Error::Context);
+        }
+        self.request_inner(id, generation, method, params, true)
+    }
+
+    fn request_inner(
+        &self,
+        id: OnlineProviderId,
+        generation: u64,
+        method: &str,
+        params: Value,
+        speculative: bool,
+    ) -> Result<Value, Error> {
         let slot = self.slot(id)?;
         slot.observe_exit()?;
         if protocol::constants()["methods"][method]["access"] != "ready"
@@ -462,7 +507,7 @@ impl ProviderRegistry {
             // credential_invalid error. Retire only this source, retain storage.
             slot.fail(generation, ErrorCode::CredentialInvalid, None)?;
         }
-        if v["ok"]==false {
+        if v["ok"]==false && !speculative {
             let code=serde_json::from_value::<ErrorCode>(v["error"]["code"].clone()).unwrap_or(ErrorCode::ProviderUnavailable);
             if matches!(code,ErrorCode::CredentialInvalid|ErrorCode::AuthenticationRequired|ErrorCode::VerificationRequired|ErrorCode::RateLimited) {
                 slot.fail(generation,code,v["error"]["retryAfterMs"].as_u64().map(Duration::from_millis))?;

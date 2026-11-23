@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 
 from .catalog import _normalize_items, _playlist, _song
 from .session import QQMusicSession
+from .upstream_errors import classify_upstream_error
 
 IMPLEMENTED_LIBRARY_METHODS = (
     "library.playlists",
@@ -138,24 +139,22 @@ class QQMusicLibrarySource:
                 "song.like",
                 "song.unlike",
             }:
-                song_info = await _resolve_song_info(client, cast("list[str]", params["songIds"]))
-                if operation in {"playlist.addSongs", "song.like"}:
-                    from qqmusic_api.modules.songlist import SonglistApi
+                from qqmusic_api.modules.songlist import SonglistApi
 
-                    # Both entry points use the same AddSonglist endpoint.
-                    songlist = SonglistApi(self._session.android_executor())
-                    if operation == "playlist.addSongs":
-                        succeeded = await songlist.add_songs(
-                            cast("int", params["playlistId"]), song_info, credential=credential
-                        )
-                    else:
-                        succeeded = await songlist.like_song(song_info, credential=credential)
-                elif operation == "playlist.removeSongs":
-                    succeeded = await client.songlist.del_songs(
+                song_info = await _resolve_song_info(client, cast("list[str]", params["songIds"]))
+                songlist = SonglistApi(self._session.executor_for(operation))
+                if operation == "playlist.addSongs":
+                    succeeded = await songlist.add_songs(
                         cast("int", params["playlistId"]), song_info, credential=credential
                     )
+                elif operation == "playlist.removeSongs":
+                    succeeded = await songlist.del_songs(
+                        cast("int", params["playlistId"]), song_info, credential=credential
+                    )
+                elif operation == "song.like":
+                    succeeded = await songlist.like_song(song_info, credential=credential)
                 else:
-                    succeeded = await client.songlist.unlike_song(song_info, credential=credential)
+                    succeeded = await songlist.unlike_song(song_info, credential=credential)
                 return {"succeeded": succeeded, "affectedCount": len(song_info)}
             if operation in {"playlist.favorite", "playlist.unfavorite"}:
                 playlist_id = cast("int", params["playlistId"])
@@ -423,25 +422,5 @@ def _model_payload(value: object) -> Mapping[str, object]:
 
 
 def _map_upstream_error(error: Exception) -> LibraryFailure:
-    from pydantic import ValidationError
-    from qqmusic_api import (
-        ApiDataError,
-        BaseApiException,
-        CredentialExpiredError,
-        CredentialInvalidError,
-        HTTPError,
-        NetworkError,
-        RatelimitedError,
-    )
-
-    if isinstance(error, NetworkError | HTTPError):
-        return LibraryFailure(LibraryFailureCode.NETWORK_UNAVAILABLE, retryable=True)
-    if isinstance(error, RatelimitedError):
-        return LibraryFailure(LibraryFailureCode.RATE_LIMITED, retryable=True)
-    if isinstance(error, CredentialExpiredError | CredentialInvalidError):
-        return LibraryFailure(LibraryFailureCode.AUTHENTICATION_REQUIRED)
-    if isinstance(error, ApiDataError | ValidationError | KeyError | TypeError | ValueError):
-        return LibraryFailure(LibraryFailureCode.UPSTREAM_SCHEMA_CHANGED)
-    if isinstance(error, BaseApiException):
-        return LibraryFailure(LibraryFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
-    return LibraryFailure(LibraryFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
+    failure = classify_upstream_error(error)
+    return LibraryFailure(LibraryFailureCode(failure.code.value), retryable=failure.retryable)

@@ -298,6 +298,117 @@ describe("native player bridge", () => {
     });
   });
 
+  it("stops snapshot polling and 15s likes refresh when renderable=false, then refreshes once when renderable=true", async () => {
+    vi.useFakeTimers();
+    const refreshLikesSpy = vi.spyOn(playerActions, "refreshProviderLikes").mockResolvedValue(undefined);
+    const { rerender } = render(<NativePlayerBridge renderable={false} />);
+
+    expect(mocks.sessionSnapshot).not.toHaveBeenCalled();
+    expect(refreshLikesSpy).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(mocks.sessionSnapshot).not.toHaveBeenCalled();
+    expect(refreshLikesSpy).not.toHaveBeenCalled();
+
+    rerender(<NativePlayerBridge renderable />);
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(1);
+    expect(refreshLikesSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => vi.advanceTimersByTime(499));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+
+    rerender(<NativePlayerBridge renderable={false} />);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+    expect(refreshLikesSpy).toHaveBeenCalledTimes(1);
+    refreshLikesSpy.mockRestore();
+  });
+
+  it("syncs a natural track change at 2000ms when native visibility is unknown", async () => {
+    vi.useFakeTimers();
+    render(<><NativePlayerBridge renderable={null} focused /><PlayerStateProbe /></>);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId("player-current")).toHaveTextContent(`${PLAYER.currentTrack.id}:0`);
+
+    mocks.sessionSnapshot.mockResolvedValue({
+      queue: MULTI_TRACK_QUEUE,
+      player: { ...MULTI_TRACK_PLAYER, generation: PLAYER.generation + 1 },
+      mode: "sequence",
+    });
+    act(() => vi.advanceTimersByTime(1999));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("player-current")).toHaveTextContent("native-b:1");
+
+    setDocumentVisibility("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    act(() => vi.advanceTimersByTime(5000));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+    setDocumentVisibility("visible");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it("throttles bridge polling to 2000ms when focused=false and restores 500ms when focused=true", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<NativePlayerBridge focused={false} />);
+
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    rerender(<NativePlayerBridge focused />);
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+    act(() => vi.advanceTimersByTime(499));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(2);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    rerender(<NativePlayerBridge focused={false} />);
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(3);
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(3);
+    act(() => vi.advanceTimersByTime(1));
+    expect(mocks.sessionSnapshot).toHaveBeenCalledTimes(4);
+  });
+
+  it("skips 15s provider likes refresh when document is hidden", async () => {
+    vi.useFakeTimers();
+    const refreshLikesSpy = vi.spyOn(playerActions, "refreshProviderLikes").mockResolvedValue(undefined);
+    render(<NativePlayerBridge renderable />);
+    expect(refreshLikesSpy).toHaveBeenCalledTimes(1);
+
+    setDocumentVisibility("hidden");
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(refreshLikesSpy).toHaveBeenCalledTimes(1);
+
+    setDocumentVisibility("visible");
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(refreshLikesSpy).toHaveBeenCalledTimes(2);
+    refreshLikesSpy.mockRestore();
+  });
+
   it("reuses native track and queue references across position-only refreshes without losing lyrics", async () => {
     let latestTrack: ReturnType<typeof getCurrentTrack> = null;
     let latestQueue: readonly unknown[] = [];

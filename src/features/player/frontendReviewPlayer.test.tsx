@@ -127,3 +127,21 @@ it("account/session changes retire late like replies and an incomplete read neve
   expect(probe.result.current.likesReady).toBe(false);
   expect(mocks.liked).toHaveBeenCalledTimes(100);
 });
+
+it.each([
+  ["QMG-LIBRARY-DENIED", "取消喜欢未成功：请求被服务端拒绝"],
+  ["QMG-LIBRARY-UNKNOWN", "喜欢状态待核对；未自动重复提交"],
+])("keeps the heart and distinguishes unlike failure %s without replay", async (code, notice) => {
+  const probe = renderHook(usePlayerSnapshot);
+  mocks.liked.mockResolvedValue({ items: [{ id: "song" }], hasMore: false });
+  await act(async () => playerActions.syncAccountLikes());
+  const error = Object.assign(new Error(code), { code });
+  mocks.setLiked.mockRejectedValue(error);
+  await act(async () => {
+    await expect(playerActions.setSongLiked("song", false)).rejects.toBe(error);
+  });
+  expect(probe.result.current.likedIds).toContain("song");
+  expect(probe.result.current.likeNotice).toBe(notice);
+  expect(probe.result.current.likePendingIds).toEqual([]);
+  expect(mocks.setLiked).toHaveBeenCalledExactlyOnceWith(["song"], false);
+});

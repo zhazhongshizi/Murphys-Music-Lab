@@ -15,6 +15,7 @@ import { RemoteControlSettings } from "../features/player/RemoteControlSettings"
 import { LoggingSettings } from "../features/player/LoggingSettings";
 import { ShortcutSettings } from "../features/player/ShortcutSettings";
 import UpdateSettings from "../features/player/UpdateSettings";
+import MediaCacheSettings from "../features/player/MediaCacheSettings";
 import { QueueDrawer } from "../features/player/QueueDrawer";
 import { ListeningStage } from "../features/stage/ListeningStage";
 import { CachedGlow } from "../features/stage/CachedGlow";
@@ -129,8 +130,8 @@ interface StageSettingsProps {
   onFixtureStatusChange: (status: FixtureStatus) => void;
   glowIntensity: GlowIntensityLevel;
   onGlowIntensityChange: (intensity: GlowIntensityLevel) => void;
-  cachedGlow: boolean;
-  onCachedGlowToggle: () => void;
+  glowMotionEnabled: boolean;
+  onGlowMotionToggle: () => void;
   dynamicLyricsEnabled: boolean;
   onDynamicLyricsToggle: () => void;
   liveSpectrumEnabled: boolean;
@@ -146,8 +147,8 @@ function StageSettings({
   onFixtureStatusChange,
   glowIntensity,
   onGlowIntensityChange,
-  cachedGlow,
-  onCachedGlowToggle,
+  glowMotionEnabled,
+  onGlowMotionToggle,
   dynamicLyricsEnabled,
   onDynamicLyricsToggle,
   liveSpectrumEnabled,
@@ -255,12 +256,13 @@ function StageSettings({
         <ShortcutSettings />
         <LoggingSettings />
         <UpdateSettings />
+        <MediaCacheSettings />
         <div className="fixture-menu__divider" role="separator" />
         <span className="section-label" role="presentation">封面氛围</span>
         <button
-          aria-checked={cachedGlow}
+          aria-checked={glowMotionEnabled}
           className="stage-menu__switch-item"
-          onClick={onCachedGlowToggle}
+          onClick={onGlowMotionToggle}
           role="menuitemcheckbox"
           type="button"
         >
@@ -328,6 +330,13 @@ function StageSettings({
   );
 }
 
+export interface GlowColors {
+  readonly primary: string;
+  readonly vibrant: string;
+  readonly ambient: string;
+  readonly top: string;
+}
+
 interface NormalModeProps {
   onEnterRhine: () => void;
   accountLabel: string;
@@ -342,8 +351,10 @@ interface NormalModeProps {
   fixtureStatus: FixtureStatus;
   setFixtureStatus: Dispatch<SetStateAction<FixtureStatus>>;
   glowIntensity: GlowIntensityLevel;
-  cachedGlow: boolean;
-  setCachedGlow: Dispatch<SetStateAction<boolean>>;
+  glowMotionEnabled: boolean;
+  handleGlowMotionToggle: () => void;
+  glowMotionActive: boolean;
+  glowColors: GlowColors;
   handleGlowIntensityChange: (level: GlowIntensityLevel) => void;
   dynamicLyricsEnabled: boolean;
   handleDynamicLyricsToggle: () => void;
@@ -376,8 +387,10 @@ export function NormalMode({
   fixtureStatus,
   setFixtureStatus,
   glowIntensity,
-  cachedGlow,
-  setCachedGlow,
+  glowMotionEnabled,
+  handleGlowMotionToggle,
+  glowMotionActive,
+  glowColors,
   handleGlowIntensityChange,
   dynamicLyricsEnabled,
   handleDynamicLyricsToggle,
@@ -400,11 +413,18 @@ export function NormalMode({
   return (
     <ArtistNavigationContext.Provider value={artist => { setQueueOpen(false); setSettingsOpen(false); artistNavigation.openArtist(artist); }}>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
-      {cachedGlow && (
-        <div className="app-shell__ambient" aria-hidden="true">
-          <CachedGlow kind="field" paletteKey={glowPaletteKey} />
-        </div>
-      )}
+      <div className="app-shell__ambient" aria-hidden="true">
+        <CachedGlow
+          kind="field"
+          paletteKey={glowPaletteKey}
+          animate={glowMotionActive}
+          intensity={glowIntensity}
+          primaryColor={glowColors.primary}
+          vibrantColor={glowColors.vibrant}
+          ambientColor={glowColors.ambient}
+          topColor={glowColors.top}
+        />
+      </div>
       <TopBar
         accountLabel={accountLabel}
         onAccount={() => {
@@ -437,8 +457,8 @@ export function NormalMode({
               onOpenTerminal={handleEnterTerminal}
               fixtureStatus={fixtureStatus}
               glowIntensity={glowIntensity}
-              cachedGlow={cachedGlow}
-              onCachedGlowToggle={() => setCachedGlow((value) => !value)}
+              glowMotionEnabled={glowMotionEnabled}
+              onGlowMotionToggle={handleGlowMotionToggle}
               onFixtureStatusChange={setFixtureStatus}
               onGlowIntensityChange={handleGlowIntensityChange}
               dynamicLyricsEnabled={dynamicLyricsEnabled}
@@ -451,8 +471,9 @@ export function NormalMode({
             liveSpectrumEnabled={liveSpectrumEnabled}
             spectrumRenderable={windowRenderable && !artistNavigation.artist}
             spectrumPaletteKey={spectrumPaletteKey}
-            cachedGlow={cachedGlow}
             glowPaletteKey={glowPaletteKey}
+            glowIntensity={glowIntensity}
+            glowColors={glowColors}
           />
         ) : (
           <Suspense fallback={<PublicState kind="loading" />}>

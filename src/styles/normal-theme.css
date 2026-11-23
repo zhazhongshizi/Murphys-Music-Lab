@@ -38,9 +38,38 @@
 .app-shell.app-shell--normal :is(.top-bar__nav, .player-bar, .back-button) {
   border: 1px solid var(--glass-edge);
   background: linear-gradient(135deg, rgb(255 255 255 / 12%), transparent 55%), var(--glass-fill);
-  backdrop-filter: blur(28px) saturate(155%);
-  -webkit-backdrop-filter: blur(28px) saturate(155%);
+  backdrop-filter: blur(12px) saturate(125%);
+  -webkit-backdrop-filter: blur(12px) saturate(125%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 19%), inset 0 -1px 0 rgb(255 255 255 / 5%), 0 12px 40px rgb(0 0 0 / 14%);
+}
+.app-shell.app-shell--normal[data-view="stage"] :is(.top-bar__nav, .player-bar, .back-button) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 13%), rgb(255 255 255 / 3%) 48%, transparent 72%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cover-primary, #789575) 16%, rgb(24 30 40 / 74%)),
+      color-mix(in srgb, var(--cover-ambient, #19362b) 18%, rgb(17 22 30 / 82%))
+    );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    inset 0 -1px 0 rgb(255 255 255 / 6%),
+    0 12px 36px rgb(0 0 0 / 22%);
+}
+.app-shell.app-shell--normal[data-view="stage"][data-cover-tone="light"] :is(.top-bar__nav, .player-bar, .back-button) {
+  border-color: rgb(255 255 255 / 78%);
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 48%), rgb(255 255 255 / 14%) 55%, transparent),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cover-surface-raised, #edf2f0) 76%, rgb(255 255 255 / 78%)),
+      color-mix(in srgb, var(--cover-surface-base, #dfe6e3) 72%, rgb(255 255 255 / 70%))
+    );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 85%),
+    inset 0 -1px 0 rgb(24 33 31 / 6%),
+    0 10px 30px rgb(24 33 31 / 10%);
 }
 .app-shell.app-shell--normal .top-bar__nav { padding: 5px; border-radius: 30px; }
 .app-shell.app-shell--normal .top-bar__nav button { border-radius: 24px; }
@@ -407,12 +436,48 @@ body:has(.app-shell.app-shell--normal) > .playlist-picker__menu { background: va
   overflow: hidden;
   overflow: clip;
   pointer-events: none;
+  contain: layout style paint;
+}
+.app-shell.app-shell--normal .stage__glow,
+.app-shell.app-shell--normal .player-bar::before,
+.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .stage__glow--field,
+.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .stage__glow--artwork-core,
+.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .player-bar::before {
+  animation: none;
+  will-change: auto;
 }
 .app-shell.app-shell--normal .stage__glow--cached[data-cached="true"] {
+  inset: 0;
   background: none;
   filter: none;
 }
-.stage__glow--cached canvas { position: absolute; display: block; border-radius: 0; }
+.app-shell.app-shell--normal .stage__glow--cached.stage__glow--artwork-core[data-cached="true"] {
+  top: 18%;
+  left: clamp(12px, 3vw, 48px);
+  right: auto;
+  bottom: auto;
+  width: min(48vw, 560px);
+  height: min(48vw, 560px);
+}
+.stage__glow--cached canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+/* Static 64x64 high-pass dither tile (raster PNG, zero SVG feTurbulence CPU cost) to break 8-bit gradient banding. */
+.app-shell.app-shell--normal .stage__ambient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAgMAAADXB5lNAAAACVBMVEUAAACAgID////B0t2jAAAAA3RSTlOMAIz2V+kxAAADX0lEQVR42gXBwW6qShgA4N+m3rRdFcIQ6UqIkPY8hTZgwJVD5p8wrhzCEO1T1EYaOSsxQqSro5Hm9Dzl/T4oZvszZRtOcHIKu5KCyMQ06fJ0cBDb05BGMMEg4YE2OopE7LoW4U3UJrURox3pFyRC2PifQUN4vcWu5pJmoJJz64y2yBNMXdvrg1VGZipaaWisF1xoDXKmbDsk3rpx/ybC1wH3ijsms4PNqGonvwIQ+UTnWKRY3j5Q5S9Ai1e1NjwFA+R/jI/ZEkhto+LkvKuY2SnNA5LWwUiedSMi2UbWATTDr3wXP9VPqmTNqLpC7OiPX7gkS3abbIPVFFZv5vOE4XmBl4JQvAKZo2i4MLOcxMEMEc6uoZErjYmftEmGCPrD+jszud01c/Q5R/i50sdJZUTj4kleTpUFj6+zxTdxG4WhDPwbBZwkk/4xnnCKIszXfXh9CdP8+bDOFKec0RN8B7+5yS49UUgly/oWNFFYznOwDmsxL/beD3xjGTuDUk9SYz2wmAa9ESqdFlikZtRuqYKcs//IwMV5vsRkIRpwbeyylqbexJTF2K9g00Q3PLBifJOxt1AR/BhxyxRdyXGcMs0dgO4pFtH4diAql7cxg+jHL9lavHXHSAU3ZApifCyTD3hHKxl/v6AEn4/8Yy15dsB/Gq0RRG0fURN1vVU3uS0QSpNENA618BO7XhocYSrtajBt8g7Z5Ae5AHn/mwyX94HBP5IJ4hC81Zzni7r08CXpDiIHrZ+yPTM4V1gimWuQ8lTOPrON0dsUbD/7AunaFtv5b9aPih1kfTDv3Jght3ev2mFYtAjz+ryKomNkdY7zwokBIiJ4Pcas0vJYY94F7k4X0iNrpzhSdW2YDi5DuXZ6pxPfGf1xX8KcswXG7r2pY5PNchOsg6pDxH2VDvBpTjLwk76495FPbfFEPdcD4tVufWLz6+yV5ZpDwTQSvEsecCO5JfODA6ottkrbR4JmRT5KHajTpCzUr0QoKqZ2LKEwJNJqywJc4snJEkgaYShxLjP5UJIsiMCtsCsUmq/ir+7pXwzoghluHFTdcuo6YeDC1/yeH9SJ3Jku/mGNgoknMqkJJYbv6DEKcKG0X7LtuKsXqNHuHxjrWctCIdDRGm5p7yDCpM+LAt10FV4DJv4HuRZQDU6PdqMAAAAASUVORK5CYII=");
+  background-repeat: repeat;
+  background-size: 64px 64px;
+  opacity: 0.038;
+}
 
 
 /* Settings share the lyrics/queue column, with scrolling contained above the player. */

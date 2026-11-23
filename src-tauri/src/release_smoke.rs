@@ -25,6 +25,7 @@ pub fn provider_acl_report(
         "provider_write",
         "provider_verify_write",
         "provider_likes",
+        "media_cache_control",
     ];
     for command in commands {
         if authority
@@ -132,6 +133,12 @@ fn provider_ipc_report(app: &tauri::AppHandle) -> Result<serde_json::Value, Stri
             }
             _ => return Err("non-main or remote login was not rejected by ACL".into()),
         }
+    }
+    let status = invoke(app, "main", "media_cache_control", json!({"request":{"action":"status"}}), false)?;
+    let InvokeResponse::Ok(body) = status else { return Err("main media cache status rejected".into()); };
+    let value: Value = body.deserialize().map_err(|e| e.to_string())?;
+    if value["enabled"] != true || value["available"] != true || value["limitMib"] != 1024 {
+        return Err("isolated installation media cache defaults mismatch".into());
     }
     Ok(
         json!({"mainStatusProviders":3,"mainLoginReachedHandler":true,"trayDenied":true,"remoteDenied":true,"noQrOrNetworkRequested":true}),

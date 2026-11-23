@@ -450,6 +450,11 @@ impl PersistenceService {
         let mut connection = Connection::open(path).map_err(|_| PersistenceError::Unavailable)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
+        // An additive index can also be installed on existing v12 databases.
+        // Leave user_version intact so older builds can still open the data.
+        connection
+            .execute_batch(crate::personal::LISTENING_DAILY_DAY_INDEX)
+            .map_err(|_| PersistenceError::Unavailable)?;
         Ok(Self {
             connection: Mutex::new(connection),
         })
@@ -1472,6 +1477,42 @@ mod tests {
             .pragma_query_value(None, "journal_mode", |row| row.get(0))
             .expect("read journal mode");
         assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+    }
+
+    #[test]
+    fn existing_listening_history_gets_day_index_without_changing_retention() {
+        const DAY: u64 = 86_400_000;
+        let database = TestDatabase::new();
+        let service = PersistenceService::open(&database.path).unwrap();
+        let day = 20_000;
+        let plan = |db: &PersistenceService| {
+            db.connection().unwrap().query_row(
+                "EXPLAIN QUERY PLAN DELETE FROM listening_daily WHERE day < ?1",
+                [day as i64 - 30],
+                |row| row.get::<_, String>(3),
+            ).unwrap()
+        };
+        // Recreate the index-free layout of an existing version-12 database.
+        service.connection().unwrap().execute("DROP INDEX listening_daily_day", []).unwrap();
+        service.record_listening("track", "Track", "Artist", 1000, true, (day - 31) * DAY).unwrap();
+        service.record_listening("track", "Track", "Artist", 2000, false, (day - 30) * DAY).unwrap();
+        assert!(plan(&service).contains("SCAN listening_daily"));
+        drop(service);
+
+        let service = PersistenceService::open(&database.path).unwrap();
+        assert_eq!(service.schema_version(), Ok(12));
+        let indexed = plan(&service);
+        assert!(indexed.contains("SEARCH listening_daily") && indexed.contains("listening_daily_day"));
+        service.record_listening("track", "Track", "Artist", 3000, true, day * DAY).unwrap();
+        let connection = service.connection().unwrap();
+        let mut query = connection.prepare("SELECT day,listened_ms,qualified_plays FROM listening_daily ORDER BY day").unwrap();
+        let rows = query.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))
+            .unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(rows, [(day as i64 - 30, 2000, 0), (day as i64, 3000, 1)]);
+        let totals = connection.query_row("SELECT listened_ms,qualified_plays FROM listening_totals", [], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        }).unwrap();
+        assert_eq!(totals, (6000, 2));
     }
 
     #[test]

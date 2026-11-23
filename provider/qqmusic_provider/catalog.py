@@ -12,7 +12,9 @@ from typing import Any, Protocol, cast
 
 from qqmusic_api.algorithms import qrc_decrypt
 
+from .request_policy import apply_request_identity
 from .session import QQMusicSession
+from .upstream_errors import classify_upstream_error
 
 _MAX_TEXT = 512
 _MAX_KEYWORD = 100
@@ -81,7 +83,6 @@ class QQMusicCatalogSource:
 
     def _build_request(self, operation: str, params: Mapping[str, object]) -> Awaitable[object]:
         from qqmusic_api.core.request import CgiRequest, HttpRequest
-        from qqmusic_api.core.versioning import Platform
         from qqmusic_api.modules.search import SearchType
 
         client = cast("Any", self._get_client())
@@ -105,7 +106,7 @@ class QQMusicCatalogSource:
                 highlight=False,
             )
         elif operation == "recommend.guess":
-            request = replace(client.recommend.get_guess_recommend(), platform=Platform.ANDROID)
+            request = client.recommend.get_guess_recommend()
         elif operation == "recommend.radar":
             request = client.recommend.get_radar_recommend(page=cast("int", params["page"]))
         elif operation == "recommend.playlists":
@@ -157,7 +158,10 @@ class QQMusicCatalogSource:
             request = client.lyric.get_lyric(cast("str", params["id"]), trans=True, roma=True)
         else:  # pragma: no cover - runtime allowlist prevents this
             raise CatalogFailure(CatalogFailureCode.INVALID_PARAMS)
-        return cast("Awaitable[object]", replace(request, response_model=None))
+        return cast(
+            "Awaitable[object]",
+            replace(apply_request_identity(operation, request), response_model=None),
+        )
 
 
 class CatalogService:
@@ -179,28 +183,8 @@ class CatalogService:
 
 
 def _map_upstream_error(error: Exception) -> CatalogFailure:
-    from pydantic import ValidationError
-    from qqmusic_api import (
-        ApiDataError,
-        BaseApiException,
-        CredentialExpiredError,
-        CredentialInvalidError,
-        HTTPError,
-        NetworkError,
-        RatelimitedError,
-    )
-
-    if isinstance(error, NetworkError | HTTPError):
-        return CatalogFailure(CatalogFailureCode.NETWORK_UNAVAILABLE, retryable=True)
-    if isinstance(error, RatelimitedError):
-        return CatalogFailure(CatalogFailureCode.RATE_LIMITED, retryable=True)
-    if isinstance(error, CredentialExpiredError | CredentialInvalidError):
-        return CatalogFailure(CatalogFailureCode.AUTHENTICATION_REQUIRED)
-    if isinstance(error, ApiDataError | ValidationError | KeyError | TypeError | ValueError):
-        return CatalogFailure(CatalogFailureCode.UPSTREAM_SCHEMA_CHANGED)
-    if isinstance(error, BaseApiException):
-        return CatalogFailure(CatalogFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
-    return CatalogFailure(CatalogFailureCode.UPSTREAM_UNAVAILABLE, retryable=True)
+    failure = classify_upstream_error(error)
+    return CatalogFailure(CatalogFailureCode(failure.code.value), retryable=failure.retryable)
 
 
 def _validate_params(operation: str, raw: Mapping[str, object]) -> dict[str, object]:

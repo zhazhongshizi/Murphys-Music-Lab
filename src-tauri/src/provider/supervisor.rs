@@ -140,6 +140,7 @@ pub struct ProviderRequest {
     params: Map<String, Value>,
     semantics: RequestSemantics,
     timeout: Option<Duration>,
+    speculative: bool,
 }
 
 impl std::fmt::Debug for ProviderRequest {
@@ -171,6 +172,7 @@ impl ProviderRequest {
             params,
             semantics: RequestSemantics::ReadOnlyReplayable,
             timeout: None,
+            speculative: false,
         }
     }
 
@@ -180,6 +182,7 @@ impl ProviderRequest {
             params,
             semantics: RequestSemantics::WriteNeverReplay,
             timeout: None,
+            speculative: false,
         }
     }
 
@@ -190,6 +193,15 @@ impl ProviderRequest {
 
     pub(crate) fn semantics(&self) -> RequestSemantics {
         self.semantics
+    }
+
+    pub(crate) fn speculative(mut self) -> Self {
+        self.speculative = true;
+        self
+    }
+
+    pub(crate) fn is_speculative(&self) -> bool {
+        self.speculative
     }
 }
 
@@ -811,6 +823,7 @@ impl Coordinator {
         for id in ids {
             let should_replay = self.pending.get(&id).is_some_and(|entry| {
                 entry.request.semantics == RequestSemantics::ReadOnlyReplayable
+                    && !entry.request.is_speculative()
                     && entry.replay_count == 0
             });
             if should_replay {

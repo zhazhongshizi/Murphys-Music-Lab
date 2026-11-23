@@ -4,7 +4,11 @@ import type { CatalogEntityPage } from "../../contracts/catalogBrowse";
 type Page = CatalogSongPage | CatalogEntityPage;
 
 /** Repage upstream batches without losing their overflow or refetching on Back. */
-export function recommendationPages(read: (generation: number, page: number) => Promise<Page>, size: number) {
+export function recommendationPages(
+  read: (generation: number, page: number) => Promise<Page>,
+  size: number,
+  fillPage = false,
+) {
   const pages: Page[] = [];
   let batch: Page | undefined, offset = 0, sourcePage = 0;
   let queue = Promise.resolve();
@@ -14,7 +18,7 @@ export function recommendationPages(read: (generation: number, page: number) => 
     const used = new Set<Page>();
     while (items.length < size) {
       if (!current || cursor === current.items.length) {
-        if (fetched || (current && (!current.hasMore || source === 100))) break;
+        if ((!fillPage && fetched) || (current && (!current.hasMore || source === 100))) break;
         const next = await read(generation, source + 1);
         if (next.generation !== generation) throw new Error("stale_recommendations");
         current = next; source++; cursor = 0; fetched = true;

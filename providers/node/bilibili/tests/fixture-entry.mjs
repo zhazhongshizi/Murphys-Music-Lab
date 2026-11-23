@@ -1,6 +1,11 @@
-import { fixture } from './fixture.mjs';
+import { fixture, response } from './fixture.mjs';
 import { runProvider } from '../main.mjs';
-const f = fixture();
+const coverFault = process.argv[3];
+const f = fixture({ hook: url => {
+  if (url.pathname !== '/x/web-interface/view' || url.searchParams.get('bvid') !== 'BV17x411w7KD') return;
+  if (coverFault === 'rate_limited') return response(null, { status: 429 });
+  if (coverFault === 'verification_required') return response(null, { code: -352 });
+} });
 const restore = f.transport.restore.bind(f.transport);
 f.transport.restore = c => restore(c.payload === 'SYNTHETIC_TEST_ONLY' ? f.credential : c);
 // Tests may supply a synthetic *verified* lifetime. The production adapter has

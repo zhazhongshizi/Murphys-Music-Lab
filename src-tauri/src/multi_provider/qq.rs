@@ -169,6 +169,13 @@ impl QqHost {
     pub fn generation(&self) -> u64 {
         self.state.lock().unwrap().lifecycle.generation()
     }
+    pub(crate) fn playback_account(&self) -> Option<(u64, String)> {
+        let state = self.state.lock().unwrap();
+        if !state.lifecycle.business_allowed() {
+            return None;
+        }
+        Some((state.lifecycle.generation(), state.account.as_ref()?.music_id.clone()))
+    }
     pub fn account(&self) -> Option<PublicAccount> {
         let s = self.state.lock().unwrap();
         if s.lifecycle.business_allowed() {
@@ -544,7 +551,7 @@ impl ProviderRequestPort for QqHost {
                     .map(str::to_owned);
             }
         }
-        if reply.is_err() {
+        if reply.is_err() && !request.is_speculative() {
             self.fail(generation);
         }
         if let Ok(ProviderReply::Failure { code, .. }) = &reply {
@@ -552,7 +559,7 @@ impl ProviderRequestPort for QqHost {
                 code.as_str(),
                 "credential_invalid" | "authentication_required"
             );
-            if !auth && invalid {
+            if !auth && invalid && !request.is_speculative() {
                 // A business endpoint can reject its request identity even while the
                 // shared credential is valid. Verify on the same Provider without
                 // routing through QqHost or replaying the original operation.

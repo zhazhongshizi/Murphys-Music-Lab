@@ -70,7 +70,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码与本地构建版本为 2.0.4；线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码版本为 2.1.0，线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider`、`node`、`providers`、`contracts`、`licenses` 及资源清单。
 3. 新构建的 portable 包使用 `Murphys-Music-Lab` 名称前缀，运行包内的 `Music-Lab.exe`；历史发行包的启动文件仍为 `qqmusic-gui.exe`。现有数据目录沿用原标识。多来源构建包含 Python Provider、固定 Node 24.22.2 和全部运行依赖，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。
@@ -150,7 +150,8 @@ QQ 凭据仍保存在 Windows Credential Manager；新来源凭据以 Windows DP
 | 智能随机状态 | 本机 SQLite，例如 `smart-shuffle.sqlite3` |
 | 界面偏好、搜索及部分统计 | 当前用户的本机 WebView 存储 |
 | 设备身份 | 本机应用数据目录的设备文件 |
-| 封面缓存 | 应用旁 `cover-cache`，只缓存图片，不缓存音频 |
+| 封面缓存 | 应用旁 `cover-cache` |
+| 在线歌曲缓存 | 应用旁 `media-cache`，默认上限 1 GiB；通过「平滑播放与缓存」查看、调额或清理 |
 | 诊断日志 | 默认关闭，开启后写到应用旁 `logs`，不自动上传 |
 
 程序会使用已登录来源认证与播放所需的 QQ 音乐、网易云或 Bilibili 网络请求；本地保存不等于离线。项目没有自动遥测上传。详见 [隐私说明](docs/privacy.md)。反馈时只提供复现步骤、版本和脱敏截图，不上传凭据导出、数据库、Cookie、二维码、连接码或整个用户数据目录。安全问题见 [SECURITY](SECURITY.md)。

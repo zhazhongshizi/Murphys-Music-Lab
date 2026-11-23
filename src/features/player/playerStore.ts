@@ -749,7 +749,11 @@ export const playerActions = {
       return true;
     } catch (error) {
       if (epoch === likesEpoch && identity === playbackSessionIdentity()) {
-        emit({ ...snapshot, likeNotice: "喜欢状态待核对；未自动重复提交" });
+        const denied = typeof error === "object" && error !== null
+          && "code" in error && error.code === "QMG-LIBRARY-DENIED";
+        emit({ ...snapshot, likeNotice: denied
+          ? `${liked ? "喜欢" : "取消喜欢"}未成功：请求被服务端拒绝`
+          : "喜欢状态待核对；未自动重复提交" });
       }
       throw error;
     } finally {

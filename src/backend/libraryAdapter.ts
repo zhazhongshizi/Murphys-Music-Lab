@@ -29,6 +29,7 @@ export type LibraryAdapterErrorCode =
   | "QMG-LIBRARY-001"
   | "QMG-LIBRARY-002"
   | "QMG-LIBRARY-AUTH"
+  | "QMG-LIBRARY-DENIED"
   | "QMG-LIBRARY-DRIFT"
   | "QMG-LIBRARY-EXPIRED"
   | "QMG-LIBRARY-UNKNOWN";
@@ -181,6 +182,7 @@ function safePublicError(error: unknown): LibraryAdapterErrorCode {
   if (typeof error !== "object" || error === null || !("code" in error)) return "QMG-LIBRARY-001";
   switch ((error as { code?: unknown }).code) {
     case "authentication_required": return "QMG-LIBRARY-AUTH";
+    case "access_denied": return "QMG-LIBRARY-DENIED";
     case "organizer_plan_drifted": return "QMG-LIBRARY-DRIFT";
     case "organizer_plan_expired": return "QMG-LIBRARY-EXPIRED";
     case "write_outcome_unknown": return "QMG-LIBRARY-UNKNOWN";

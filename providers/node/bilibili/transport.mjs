@@ -4,6 +4,9 @@ import { fail, ProviderFault } from './fault.mjs';
 
 export const API = 'https://api.bilibili.com';
 export const PASSPORT = 'https://passport.bilibili.com';
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+// Video details may embed a whole UGC collection even for a single-part video.
+const MAX_VIDEO_VIEW_RESPONSE_BYTES = 4 * MAX_RESPONSE_BYTES;
 const COOKIE_NAMES = new Set(['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid', 'buvid3', 'buvid4', 'b_nut']);
 const PATHS = new Set([
   '/x/v3/fav/resource/ids',
@@ -82,12 +85,15 @@ export class Transport {
     if (cookies) this.acceptCookies(response.headers, u.href);
     const reader = response.body?.getReader();
     if (!reader) fail('upstream_schema_changed');
+    const maxBytes = u.origin === API && u.pathname === '/x/web-interface/view'
+      ? MAX_VIDEO_VIEW_RESPONSE_BYTES
+      : MAX_RESPONSE_BYTES;
     const chunks = []; let length = 0;
     try {
       while (true) {
         const { value, done } = await reader.read(); if (done) break;
         length += value.length;
-        if (length > 1048576) fail('upstream_schema_changed');
+        if (length > maxBytes) fail('upstream_schema_changed');
         chunks.push(value);
       }
     } catch (e) { if (e instanceof ProviderFault) throw e; fail('network_unavailable', true); }
