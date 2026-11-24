@@ -143,11 +143,16 @@
 /* Normal Mode (Vinyl Greenhouse) ProviderWorkspace */
 .provider-workspace[data-variant="default"] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 268px;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   height: 100%;
   overflow: hidden;
   color: var(--paper, #f1ebdd);
+}
+
+.provider-workspace[data-variant="default"]:has(> .catalog-inspector) {
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: 16px;
 }
 
 .provider-workspace--embedded {
@@ -580,7 +585,8 @@
 }
 
 @media (max-width: 960px) {
-  .provider-workspace[data-variant="default"] {
+  .provider-workspace[data-variant="default"],
+  .provider-workspace[data-variant="default"]:has(> .catalog-inspector) {
     grid-template-columns: minmax(0, 1fr);
   }
   .provider-inspector {

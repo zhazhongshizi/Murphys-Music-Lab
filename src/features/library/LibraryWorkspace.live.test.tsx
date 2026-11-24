@@ -202,6 +202,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
   it("桌面喜欢页取消喜欢后读回列表，提交失败不自动重放", async () => {
     const user = userEvent.setup();
     renderWorkspace("liked", { state: "authenticated" });
+    await user.click(await screen.findByRole("button", { name: "曲目检视栏" }));
     const unlike = await screen.findByRole("button", { name: "取消喜欢" });
     await user.click(unlike);
     expect(setLikedMock).toHaveBeenCalledExactlyOnceWith([SONG.id], false);
@@ -231,6 +232,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     expect((await screen.findAllByText("晴天")).length).toBeGreaterThan(0);
     expect(searchMock).toHaveBeenCalledWith("晴天", expect.any(Number), 1);
 
+    await user.click(screen.getByRole("button", { name: "曲目检视栏" }));
     await user.click(screen.getByRole("button", { name: "立即播放" }));
     await waitFor(() => expect(enqueueMock).toHaveBeenCalled());
     expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
@@ -254,6 +256,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     expect(playMock).toHaveBeenCalledWith(SONG.id, 1);
     expect(await screen.findByText("已开始播放")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "曲目检视栏" }));
     expect(screen.getByRole("button", { name: "立即播放" })).toBeInTheDocument();
     await user.click(within(refreshedRow).getByRole("button", { name: "立即播放 晴天" }));
     await waitFor(() => expect(enqueueMock).toHaveBeenCalledTimes(2));
@@ -303,6 +306,7 @@ it.each(["discover", "search"] as const)("gates the %s online view through signe
     await user.click((await screen.findAllByRole("button", { name: "打开歌单" }))[0]!);
     await screen.findByRole("heading", { name: "我喜欢" });
 
+    await user.click(screen.getByRole("button", { name: "曲目检视栏" }));
     await user.click(screen.getByRole("combobox", { name: "目标歌单：我喜欢" }));
     await user.click(screen.getByRole("option", { name: "夜航目标" }));
     await user.click(screen.getByRole("button", { name: "加入歌单" }));

@@ -104,7 +104,7 @@ export function PlayerBar({ onOpenQueue, onOpenStage, queueOpen, accountKey, aut
       : "喜欢";
 
   return (
-    <footer className="player-bar" aria-label="播放器控制">
+    <footer className="player-bar" aria-label="播放器控制" data-compact={onOpenStage ? "false" : "true"}>
       <PlaybackNotice />
       <div className="player-bar__track">
         {onOpenStage ? (

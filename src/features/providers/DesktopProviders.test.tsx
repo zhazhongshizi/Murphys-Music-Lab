@@ -118,6 +118,10 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     const workspace = within(screen.getByRole("region", { name: "网易云曲库" }));
     expect(workspace.queryByRole("button", { name: "喜欢的歌曲" })).not.toBeInTheDocument(); expect(workspace.queryByRole("button", { name: "自建" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "歌曲" } }); fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    if (variant === "default") {
+      await screen.findByRole("checkbox", { name: song.title });
+      fireEvent.click(screen.getByRole("button", { name: "曲目检视栏" }));
+    }
     fireEvent.click(await screen.findByRole("button", { name: "网易喜欢 / 歌单操作" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "喜欢此歌曲" })).toBeDisabled()); expect(api.nativeProviderWrite).not.toHaveBeenCalled();
   });
@@ -135,6 +139,10 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     await open(variant, "bilibili");
     fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "视频" } });
     fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
+    if (variant === "default") {
+      await screen.findByRole("button", { name: `播放 ${video.title}` });
+      fireEvent.click(screen.getByRole("button", { name: "曲目检视栏" }));
+    }
     return screen.findByRole("button", { name: "播放" });
   }
   it.each([true, false])("single-part video acts directly without a part picker (play=%s)", async play => {
@@ -164,6 +172,10 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     await open(variant, "bilibili");
     fireEvent.click(screen.getByRole("button", { name: "自建" }));
     fireEvent.click(await screen.findByRole("button", { name: "打开收藏夹" }));
+    if (variant === "default") {
+      await screen.findByRole("checkbox", { name: video.title });
+      fireEvent.click(screen.getByRole("button", { name: "曲目检视栏" }));
+    }
     fireEvent.click(await screen.findByRole("button", { name: "播放" }));
     await waitFor(() => expect(nativeQueuePlay).toHaveBeenCalledExactlyOnceWith(part.id, 1));
     expect(api.nativeProviderEnqueueTracks).toHaveBeenCalledExactlyOnceWith([part]);
@@ -309,6 +321,8 @@ describe.each(["default", "rhine"] as const)("%s full provider desktop", variant
     await screen.findByRole("button", { name: "打开歌单" });
     if (variant === "default") {
       expect(view.container.querySelector(".catalog-pane")).not.toBeNull();
+      expect(view.container.querySelector(".catalog-inspector")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "曲目检视栏" }));
       expect(view.container.querySelector(".catalog-inspector")).not.toBeNull();
       expect(view.container.querySelector(".playlist-grid .playlist-card")).not.toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "打开歌单" }));
@@ -690,6 +704,10 @@ it("F08/U09/U11: blocks unavailable tracks/videos, never displays 在线 as audi
   fireEvent.change(screen.getByLabelText("搜索关键词"), { target: { value: "失效" } });
   fireEvent.click(screen.getByRole("button", { name: "搜索此来源" }));
   await screen.findAllByText("失效视频");
+  const toggleBtn = screen.getByRole("button", { name: "曲目检视栏" });
+  if (toggleBtn.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(toggleBtn);
+  }
   expect(screen.getByRole("button", { name: "播放" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "加入队列" })).toBeDisabled();
 }, 15_000);
@@ -1222,8 +1240,11 @@ it("Bilibili favorite folder uses QQ-style table rows, right CURRENT SELECTION i
   expect(screen.queryByRole("navigation", { name: "此来源功能" })).not.toBeInTheDocument();
   expect(screen.getByPlaceholderText("在此收藏夹中搜索视频、UP 主或 BV 号")).toBeInTheDocument();
 
-  // Clicking second video row updates CURRENT SELECTION inspector
+  // Clicking first video row opens CURRENT SELECTION inspector; clicking second video row updates it
+  expect(view.container.querySelector("aside.catalog-inspector")).toBeNull();
+  fireEvent.click(within(table!).getByText("收藏视频 A").closest("tr")!);
   const inspector = view.container.querySelector<HTMLElement>("aside.catalog-inspector")!;
+  expect(inspector).not.toBeNull();
   expect(within(inspector).getByRole("heading", { name: "收藏视频 A" })).toBeInTheDocument();
   fireEvent.click(within(table!).getByText("收藏视频 B").closest("tr")!);
   expect(within(inspector).getByRole("heading", { name: "收藏视频 B" })).toBeInTheDocument();

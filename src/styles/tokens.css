@@ -54,13 +54,19 @@
   --cover-glow-motion-opacity: 0.08;
 }
 
-/* Shared normal-mode tokens for both the main document and detached tray window. */
+/* Shared normal-mode 15% crystal translucency tokens for both main document and detached tray window. */
 :root {
   --normal-font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  --normal-paper: #f7f8fc;
-  --normal-muted: #d2d8e1;
-  --normal-subtle: #aeb9c8;
-  --normal-panel: #252e3c;
-  --normal-edge: rgb(255 255 255 / 23%);
-  --normal-fill: rgb(30 36 48 / 82%);
+  --normal-paper: #f7f9fc;
+  --normal-muted: rgb(236 242 249 / 78%);
+  --normal-subtle: rgb(212 223 235 / 54%);
+  --normal-panel: #1c232f;
+  --normal-panel-alpha: 15%;
+  --normal-panel-base: color-mix(in srgb, var(--cover-ambient, #19362b) 38%, #080a0d);
+  --normal-edge: color-mix(in srgb, var(--cover-vibrant, #b8c77a) 14%, rgb(255 255 255 / 14%));
+  --normal-fill: color-mix(in srgb, var(--normal-panel-base) var(--normal-panel-alpha), transparent);
+  --normal-sheen: inset 0 1px 0 rgb(255 255 255 / 10%);
+  --normal-popover-fill: color-mix(in srgb, var(--normal-panel-base) 92%, transparent);
+  --normal-row-hover: rgb(255 255 255 / 6%);
+  --normal-row-active: color-mix(in srgb, var(--cover-vibrant, #b8c77a) 14%, rgb(255 255 255 / 5%));
 }

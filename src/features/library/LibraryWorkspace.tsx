@@ -19,7 +19,13 @@ import { usePlaylistPlayback } from "./usePlaylistPlayback";
 import { useLibraryCatalog } from "./useLibraryCatalog";
 import { catalogAccessMessage } from "../catalog/catalogAccess";
 import { Icon } from "../../components/Icon";
+import {
+  InspectorHeaderBar,
+  InspectorToggleButton,
+  useInspectorDrawer,
+} from "../../components/InspectorDrawerControl";
 import { Tooltip } from "../../components/Tooltip";
+import { TrackRowActions } from "../../components/TrackRowActions";
 import type { ArtistRef } from "../../contracts/artist";
 import { SongArtistLinks } from "../artist/SongArtistLinks";
 import type { CatalogSong, CatalogSongPage } from "../../contracts/catalog";
@@ -235,6 +241,7 @@ export default function LibraryWorkspace({
   const [inspectedPlaylistTrack, setInspectedPlaylistTrack] = useState<CatalogSong | null>(null);
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetailState>({ state: "idle" });
   const [openedEntity, setOpenedEntity] = useState<CatalogEntity | null>(null);
+  const inspector = useInspectorDrawer(false);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!query.trim() || !["search","discover"].includes(section)) return;
@@ -329,6 +336,14 @@ export default function LibraryWorkspace({
   const selectedTrack: CatalogDisplayTrack | null = playlistDetail.state === "ready" && inspectedPlaylistTrack
     ? { source: "live", track: inspectedPlaylistTrack }
     : visibleTracks.find(({ track }) => track.id === selectedId) ?? visibleTracks[0] ?? null;
+  const canInspect = Boolean(
+    selectedTrack &&
+    !recommendationsOpen &&
+    !((section === "search" || (section === "discover" && query.trim())) && searchType !== "songs") &&
+    (section !== "playlists" || playlistDetail.state === "ready") &&
+    section !== "organizer",
+  );
+  const inspectorMounted = Boolean(canInspect && (remote || inspector.inspectorOpen) && selectedTrack);
   const heading = SECTION_HEADINGS[section];
   const createdPlaylists: readonly PlaylistSummary[] = createdPlaylistsState.state === "ready"
     ? createdPlaylistsState.page.items
@@ -568,7 +583,7 @@ export default function LibraryWorkspace({
               ? `${playlistDetail.playlist.songCount} 首歌曲 · QQ 音乐实时歌单`
               : liveCatalog.state === "preview" && section !== "playlists" && section !== "organizer" ? "本地界面预览 · 5 首编辑精选" : heading.subtitle}</p>
           </div>
-          {playlistDetail.state !== "idle" ? (
+          {playlistDetail.state !== "idle" || (!remote && canInspect) ? (
             <div className="playlist-detail__actions">
               {playlistDetail.state === "ready" && playlistDetail.page.items.length > 0 ? (
                 <button
@@ -580,9 +595,14 @@ export default function LibraryWorkspace({
                   <Icon name="play" size={16} />{playlistPlaybackBusy ? "正在准备…" : "播放全部"}
                 </button>
               ) : null}
-              <button className="text-button playlist-detail__back" onClick={closePlaylist} type="button">
-                <Icon name="back" size={16} />返回全部歌单
-              </button>
+              {playlistDetail.state !== "idle" ? (
+                <button className="text-button playlist-detail__back" onClick={closePlaylist} type="button">
+                  <Icon name="back" size={16} />返回全部歌单
+                </button>
+              ) : null}
+              {!remote && canInspect ? (
+                <InspectorToggleButton open={inspector.inspectorOpen} onToggle={inspector.toggleInspector} />
+              ) : null}
             </div>
           ) : null}
         </header>
@@ -692,10 +712,27 @@ export default function LibraryWorkspace({
                     </Tooltip>
                   </div>
                 </td>
-                <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setInspectedPlaylistTrack(track); }} type="button"><strong>{track.title}</strong><small>{track.id}</small></button></td>
+                <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); setInspectedPlaylistTrack(track); inspector.openInspector(); }} type="button"><strong>{track.title}</strong><small>{track.id}</small></button></td>
                 <td><ArtistLinks artists={track.artists} onOpenArtist={openArtist} /></td>
                 <td><AlbumLink track={track} onOpen={setOpenedEntity} /></td><td><span className="quality-tag">{qualityLabel(track)}</span></td>
-                <td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>
+                <td className="catalog-table__duration">
+                  <div className="catalog-duration-actions">
+                    <TrackRowActions
+                      className="catalog-row-quick-actions"
+                      title={track.title}
+                      variant="compact"
+                      stopPropagation
+                      onPlay={() => {
+                        setSelectedId(track.id);
+                        setInspectedPlaylistTrack(track);
+                        void updateNativeQueue(track, true);
+                      }}
+                      onNext={() => void playNext(track)}
+                      onEnqueue={() => void updateNativeQueue(track, false)}
+                    />
+                    <span>{formatDuration(track.durationMs)}</span>
+                  </div>
+                </td>
               </>}
             />
           )
@@ -827,8 +864,8 @@ export default function LibraryWorkspace({
                         </Tooltip>
                       </td>
                       <td><AlbumArtwork compact track={artworkTrack} /></td>
-                      <td><button className="catalog-table__title" onClick={() => setSelectedId(track.id)} type="button"><strong>{track.title}</strong><small>{track.identifier}</small></button>{remote && value.source === "live" && value.track.albumId ? <small className="remote-song-album"><AlbumLink track={value.track} onOpen={setOpenedEntity} /></small> : null}</td>
-                      <td>{value.source === "live" ? <ArtistLinks artists={value.track.artists} onOpenArtist={openArtist} /> : track.artist}</td><td><AlbumLink track={track} onOpen={setOpenedEntity} /></td><td><span className="quality-tag">{track.quality}</span></td><td className="catalog-table__duration">{formatDuration(track.durationMs)}</td>
+                      <td><button className="catalog-table__title" onClick={() => { setSelectedId(track.id); inspector.openInspector(); }} type="button"><strong>{track.title}</strong><small>{track.identifier}</small></button>{remote && value.source === "live" && value.track.albumId ? <small className="remote-song-album"><AlbumLink track={value.track} onOpen={setOpenedEntity} /></small> : null}</td>
+                      <td>{value.source === "live" ? <ArtistLinks artists={value.track.artists} onOpenArtist={openArtist} /> : track.artist}</td><td><AlbumLink track={track} onOpen={setOpenedEntity} /></td><td><span className="quality-tag">{track.quality}</span></td><td className="catalog-table__duration"><div className="catalog-duration-actions">{value.source === "live" ? <TrackRowActions className="catalog-row-quick-actions" title={track.title} variant="compact" stopPropagation onNext={() => void playNext(value.track)} onEnqueue={() => void updateNativeQueue(value.track, false)} /> : null}<span>{formatDuration(track.durationMs)}</span></div></td>
                     </tr>
                   );
                 })}
@@ -842,11 +879,16 @@ export default function LibraryWorkspace({
           </div>
         )}
         {liveCatalog.state === "ready" && (section === "search" || query.trim() || (remote && section === "liked")) ? <div className="remote-pagination"><button className="text-button" disabled={remotePage === 1} onClick={() => setRemotePage(p => p - 1)}>上一页</button><span>第 {remotePage} 页</span><button className="text-button" disabled={!liveCatalog.page.hasMore || remotePage >= 100} onClick={() => setRemotePage(p => p + 1)}>下一页</button></div> : null}
+        {!inspectorMounted && queueNotice ? <p aria-live="polite" className="playlist-songs__notice">{queueNotice}</p> : null}
+        {!inspectorMounted && !(section === "playlists" && playlistDetail.state === "idle") && libraryNotice ? <p aria-live="polite" className="playlist-songs__notice">{libraryNotice}</p> : null}
       </section>
 
-      {selectedTrack && !recommendationsOpen && !((section === "search" || (section === "discover" && query.trim())) && searchType !== "songs") && (section !== "playlists" || playlistDetail.state === "ready") && section !== "organizer" ? (
+      {inspectorMounted && selectedTrack ? (
         <aside className="catalog-inspector" aria-label="当前选中曲目">
-          <span className="section-label">CURRENT SELECTION</span>
+          <InspectorHeaderBar
+            label="CURRENT SELECTION"
+            onClose={remote ? undefined : inspector.closeInspector}
+          />
           <AlbumArtwork
             compact
             track={selectedTrack.source === "preview" ? selectedTrack.track : liveArtworkTrack(selectedTrack.track)}
@@ -864,7 +906,7 @@ export default function LibraryWorkspace({
             <>
               <div className="catalog-inspector__play-actions">
                 <Tooltip content="下一首播放">
-                  <button aria-label={`下一首播放 ${selectedTrack.track.title}`} className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
+                  <button aria-label="下一首播放选中曲目" className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
                 </Tooltip>
                 <button className="text-button text-button--primary catalog-inspector__play" onClick={() => void updateNativeQueue(selectedTrack.track, true)} type="button"><Icon name="play" size={17} />{remote ? "在电脑播放" : "立即播放"}</button>
               </div>

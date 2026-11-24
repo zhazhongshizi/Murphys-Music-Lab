@@ -11,16 +11,9 @@ import type {
   ProviderWriteRequest,
 } from "../../contracts/providers";
 import { nativeQueueEnqueueNext, nativeQueuePlay, nativeQueueReplace } from "../../backend/nativeQueueAdapter";
-import { Icon } from "../../components/Icon";
-import { Tooltip } from "../../components/Tooltip";
 import { getCurrentTrack, playerActions, usePlayerSelector } from "../player/playerStore";
-import { ProviderLibraryActions } from "../library/ProviderLibraryActions";
-import { PlaylistActionIcon } from "../rhine/PlaylistActionIcon";
-import { SongCover } from "../rhine/SongCover";
-import { AlbumArtwork, type ArtworkTrack } from "../stage/AlbumArtwork";
-import { SOURCE_LABELS, useDesktopProviders } from "./DesktopProviders";
-import { SourceBadge } from "./SourceBadge";
-import { ProviderPlaylistDetail } from "./ProviderPlaylistDetail";
+import type { ArtworkTrack } from "../stage/AlbumArtwork";
+import { useDesktopProviders } from "./DesktopProviders";
 import {
   MAX_PROVIDER_BATCH_ITEMS,
   MAX_SEARCH_SELECT_ALL,
@@ -29,25 +22,27 @@ import {
   filterProviderTracks,
   filterProviderVideos,
   formatProviderAvailability,
-  hasBrowsableProviderItems,
   isProviderTrackPlayable,
   isProviderVideoPlayable,
   readAllProviderPages,
   sortSelectedProviderTracks,
   type OrderedTrackSelection,
 } from "./providerListHelpers";
-import { RhinePlaylistSelection } from "../rhine/RhinePlaylistView";
-import { ArchiveSearchHeading, ArchiveSearchBody } from "../rhine/ArchiveSearchLayout";
-import { CatalogSearchInput } from "../catalog/CatalogSearchInput";
-import { SearchHistoryList } from "../library/searchHistory";
 import { useProviderSearchHistory, type ProviderSearchKind } from "./providerSearchHistory";
+import { ProviderRhineEmptyView, ProviderRhineView } from "./ProviderRhineView";
+import { ProviderNormalEmptyView, ProviderNormalView } from "./ProviderNormalView";
 
-type Tab = "songs" | "playlists" | "videos" | "created" | "favorite" | "likes";
-type Row = ProviderTrack | ProviderContainer | ProviderVideo;
+export type ProviderTab = "songs" | "playlists" | "videos" | "created" | "favorite" | "likes";
+export type ProviderRow = ProviderTrack | ProviderContainer | ProviderVideo;
+
+export type ClassifiedProviderEntry =
+  | { readonly kind: "track"; readonly row: ProviderTrack; readonly position: number }
+  | { readonly kind: "container"; readonly row: ProviderContainer; readonly position: number }
+  | { readonly kind: "video"; readonly row: ProviderVideo; readonly position: number };
 
 const SEARCH_DISPLAY_PAGE_SIZE = 50;
 
-const label: Record<Tab, string> = {
+const TAB_LABELS: Record<ProviderTab, string> = {
   songs: "歌曲搜索",
   playlists: "歌单搜索",
   videos: "视频搜索",
@@ -59,11 +54,11 @@ const label: Record<Tab, string> = {
 const ARTWORK_VARIANTS: readonly ArtworkTrack["artworkVariant"][] = ["fern", "moon", "tide", "train", "mist"];
 const ARTWORK_ACCENTS = ["#789575", "#9f9878", "#61858b", "#8c765e", "#72847c"] as const;
 
-function isTrack(row: Row): row is ProviderTrack {
+function isTrack(row: ProviderRow): row is ProviderTrack {
   return "creatorKind" in row;
 }
 
-function isContainer(row: Row): row is ProviderContainer {
+function isContainer(row: ProviderRow): row is ProviderContainer {
   return "ownership" in row;
 }
 
@@ -146,59 +141,31 @@ export function ProviderWorkspace({
       : "登录此来源后访问曲库。当前播放保持不变。";
     if (variant === "rhine") {
       return (
-        <section
-          className="provider-workspace provider-workspace--rhine-empty rhine-empty"
-          data-variant="rhine"
-          aria-label={`${SOURCE_LABELS[source]}曲库`}
-        >
-          <p className="rhine-eyebrow">ARCHIVE ACCESS / {source.toUpperCase()}</p>
-          <h1>{SOURCE_LABELS[source]}</h1>
-          <p role="status">{statusMessage}</p>
-          <div className="provider-buttons provider-buttons--center">
-            <button type="button" onClick={onAccount}>打开此来源账号</button>
-            <button type="button" onClick={() => void refresh(source)}>刷新账号状态</button>
-            {onDeck && <button type="button" onClick={onDeck}>进入当前播放磁带机</button>}
-          </div>
-        </section>
+        <ProviderRhineEmptyView
+          source={source}
+          statusMessage={statusMessage}
+          onAccount={onAccount}
+          onRefresh={() => void refresh(source)}
+          onDeck={onDeck}
+        />
       );
     }
     return (
-      <section
-        id={embedded ? undefined : "main-content"}
-        tabIndex={-1}
-        className={embedded ? "provider-workspace provider-workspace--embedded" : "provider-workspace"}
-        data-variant="default"
-        aria-label={`${SOURCE_LABELS[source]}曲库`}
-      >
-        <div className="catalog-pane provider-catalog-pane">
-          <header className="catalog-pane__header">
-            <div>
-              <span className="section-label">{source === "netease" ? "NETEASE CLOUD MUSIC" : "BILIBILI AUDIO / VIDEO"}</span>
-              <h1>{likesOnly ? "喜欢的音乐" : SOURCE_LABELS[source]}</h1>
-              <p>{likesOnly ? `随当前 ${SOURCE_LABELS[source]}账号同步` : "此来源搜索与个人曲库 · 切换来源不会打断当前播放"}</p>
-            </div>
-          </header>
-          {sourceNavigation}
-          <div className="catalog-empty provider-empty-card">
-            <p role="status">{statusMessage}</p>
-            <span>在平台账号面板完成扫码或恢复登录后，即可浏览与管理此来源曲库。</span>
-            <div className="provider-empty-card__actions">
-              <button className="text-button text-button--primary" type="button" onClick={onAccount}>打开此来源账号</button>
-              <button className="text-button" type="button" onClick={() => void refresh(source)}>刷新账号状态</button>
-            </div>
-          </div>
-        </div>
-        <aside className="catalog-inspector provider-inspector" aria-label="来源状态概览">
-          <span className="section-label">SOURCE STATUS</span>
-          <AlbumArtwork compact track={providerArtworkTrack({ id: `${source}:preview`, title: SOURCE_LABELS[source], artist: "GREENHOUSE SESSION" })} />
-          <h3>{SOURCE_LABELS[source]}</h3>
-          <p>{status?.state === "restoring" ? "正在恢复登录凭据" : "尚未连接此来源账号"}</p>
-          <dl>
-            <div><dt>当前状态</dt><dd>{status?.state === "restoring" ? "恢复中" : "待登录"}</dd></div>
-            <div><dt>混合队列</dt><dd>保持当前播放</dd></div>
-          </dl>
-        </aside>
-      </section>
+      <ProviderNormalEmptyView
+        source={source}
+        embedded={embedded}
+        likesOnly={likesOnly}
+        statusState={status?.state}
+        statusMessage={statusMessage}
+        sourceNavigation={sourceNavigation}
+        previewArtworkTrack={providerArtworkTrack({
+          id: `${source}:preview`,
+          title: source === "netease" ? "网易云" : "Bilibili",
+          artist: "GREENHOUSE SESSION",
+        })}
+        onAccount={onAccount}
+        onRefresh={() => void refresh(source)}
+      />
     );
   }
 
@@ -211,7 +178,6 @@ export function ProviderWorkspace({
       embedded={embedded}
       sourceNavigation={sourceNavigation}
       onAccount={onAccount}
-      onDeck={onDeck}
       onArchive={onArchive}
       initialSection={initialSection}
       sectionTrigger={sectionTrigger}
@@ -230,7 +196,6 @@ function ReadyWorkspace({
   embedded,
   sourceNavigation,
   onAccount,
-  onDeck,
   onArchive,
   initialSection,
   sectionTrigger,
@@ -245,7 +210,6 @@ function ReadyWorkspace({
   embedded: boolean;
   sourceNavigation?: ReactNode;
   onAccount: () => void;
-  onDeck?: () => void;
   onArchive?: () => void;
   initialSection: "created" | "favorite" | "search" | "likes";
   sectionTrigger: number;
@@ -259,8 +223,8 @@ function ReadyWorkspace({
   const availableTabs: readonly string[] = likesOnly
     ? caps.libraryKinds.filter(kind => kind === "likes")
     : [...caps.searchKinds, ...caps.libraryKinds];
-  const tabs = availableTabs.filter((t): t is Tab => t in label);
-  const [tab, setTab] = useState<Tab>(
+  const tabs = availableTabs.filter((t): t is ProviderTab => t in TAB_LABELS);
+  const [tab, setTab] = useState<ProviderTab>(
     likesOnly ? "likes" : initialSection !== "search" && tabs.includes(initialSection) ? initialSection : tabs[0] ?? "created",
   );
   const prevSection = useRef(initialSection);
@@ -269,7 +233,7 @@ function ReadyWorkspace({
     if (prevSection.current === initialSection && prevSectionTrigger.current === sectionTrigger) return;
     prevSection.current = initialSection;
     prevSectionTrigger.current = sectionTrigger;
-    const nextTab: Tab =
+    const nextTab: ProviderTab =
       initialSection !== "search" && tabs.includes(initialSection) ? initialSection : tabs[0] ?? "created";
     navigate(nextTab);
   }, [initialSection, sectionTrigger]);
@@ -281,7 +245,7 @@ function ReadyWorkspace({
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
-  const [result, setResult] = useState<ProviderPage<Row> | null>(null);
+  const [result, setResult] = useState<ProviderPage<ProviderRow> | null>(null);
   const [readError, setReadError] = useState(false);
   const [container, setContainer] = useState<ProviderContainer | null>(null);
   const [video, setVideo] = useState<ProviderVideo | null>(null);
@@ -289,10 +253,10 @@ function ReadyWorkspace({
   const [partsError, setPartsError] = useState(false);
   const [parts, setParts] = useState<ProviderPage<ProviderTrack> | null>(null);
   const initialParts = useRef<{ bvid: string; data: ProviderPage<ProviderTrack> } | null>(null);
-  const [allListRows, setAllListRows] = useState<readonly Row[] | null>(null);
+  const [allListRows, setAllListRows] = useState<readonly ProviderRow[] | null>(null);
   const [allListError, setAllListError] = useState(false);
   const [allListRetry, setAllListRetry] = useState(0);
-  const allListCache = useRef<{ key: string; rows: readonly Row[] } | null>(null);
+  const allListCache = useRef<{ key: string; rows: readonly ProviderRow[] } | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<Map<string, OrderedTrackSelection>>(() => new Map());
   const [selectedVideos, setSelectedVideos] = useState<Map<string, { video: ProviderVideo; position: number }>>(() => new Map());
@@ -413,7 +377,7 @@ function ReadyWorkspace({
     const isValid = () => active && current() && token === selection.current;
     setAllListRows(null);
     setAllListError(false);
-    void readAllProviderPages<Row>(
+    void readAllProviderPages<ProviderRow>(
       (nextPage, size) => {
         if (video) return api.nativeProviderVideoParts(video.bvid, nextPage, size);
         if (container) {
@@ -464,14 +428,17 @@ function ReadyWorkspace({
         if (active && current()) setParts(data);
       })
       .catch(() => {
-        if (active && current()) { setPartsError(true); setNotice("分 P 读取失败，请手动刷新"); }
+        if (active && current()) {
+          setPartsError(true);
+          setNotice("分 P 读取失败，请手动刷新");
+        }
       });
     return () => {
       active = false;
     };
   }, [video?.bvid, partsPage, reload]);
 
-  function navigate(next: Tab) {
+  function navigate(next: ProviderTab) {
     selection.current++;
     setTab(next);
     setContainer(null);
@@ -493,7 +460,7 @@ function ReadyWorkspace({
     setFilterResultPage(1);
   }
 
-  function submitSearch(value: string, kind: Tab = tab) {
+  function submitSearch(value: string, kind: ProviderTab = tab) {
     const keyword = value.trim();
     if (!keyword || !["songs", "playlists", "videos"].includes(kind) || !tabs.includes(kind)) return;
     navigate(kind);
@@ -920,11 +887,11 @@ function ReadyWorkspace({
     container.allowedActions.includes(removeAction),
   );
 
-  const rows: Row[] = video ? [...(parts?.items ?? [])] : [...(result?.items ?? [])];
+  const rows: ProviderRow[] = video ? [...(parts?.items ?? [])] : [...(result?.items ?? [])];
   const currentListPage = video ? partsPage : page;
   const displayMatchSize = variant === "rhine" ? 20 : SEARCH_DISPLAY_PAGE_SIZE;
-  const rawMatchedRows: readonly { row: Row; position: number }[] = inListSearching
-    ? (allListRows ?? []).flatMap<{ row: Row; position: number }>((row, position) => {
+  const rawMatchedRows: readonly { row: ProviderRow; position: number }[] = inListSearching
+    ? (allListRows ?? []).flatMap<{ row: ProviderRow; position: number }>((row, position) => {
         if (isTrack(row)) {
           return filterProviderTracks([row], filterQuery).length > 0 ? [{ row, position }] : [];
         }
@@ -934,7 +901,7 @@ function ReadyWorkspace({
         return [];
       })
     : [];
-  const pagedEntries: readonly { row: Row; position: number }[] = inListSearching
+  const pagedEntries: readonly { row: ProviderRow; position: number }[] = inListSearching
     ? rawMatchedRows.slice((filterResultPage - 1) * displayMatchSize, filterResultPage * displayMatchSize)
     : rows.map((row, index) => ({ row, position: (currentListPage - 1) * activePageSize + index }));
   const isRowsLoading = inListSearching
@@ -944,9 +911,22 @@ function ReadyWorkspace({
       : loading;
   const isRowsError = inListSearching ? allListError : video ? partsError : readError;
   const pagedRows = pagedEntries.map(entry => entry.row);
+  const classifiedPagedEntries: readonly ClassifiedProviderEntry[] = pagedEntries.map(({ row, position }) =>
+    isTrack(row)
+      ? { kind: "track", row, position }
+      : isContainer(row)
+        ? { kind: "container", row, position }
+        : { kind: "video", row, position },
+  );
   const visibleTrackRows = pagedRows.filter(isTrack);
   const containerRows = pagedRows.filter(isContainer);
   const videoRows = pagedRows.filter((r): r is ProviderVideo => !isTrack(r) && !isContainer(r));
+  const pagedTrackEntries = classifiedPagedEntries.flatMap(entry =>
+    entry.kind === "track" ? [{ row: entry.row, position: entry.position }] : [],
+  );
+  const pagedVideoEntries = classifiedPagedEntries.flatMap(entry =>
+    entry.kind === "video" ? [{ row: entry.row, position: entry.position }] : [],
+  );
   const showingVideos = variant === "default" && !isRowsLoading && !isRowsError && videoRows.length > 0 && !visibleTrackRows.length && !containerRows.length;
   const selectableEntries: readonly OrderedTrackSelection[] = isRowsLoading || isRowsError
     ? []
@@ -1026,1303 +1006,240 @@ function ReadyWorkspace({
     setFilterResultPage(1);
   }
 
-  if (variant === "rhine" && (container || video)) {
-    return <section className="provider-workspace provider-workspace--rhine" data-variant="rhine" data-rhine-view="detail" aria-label={`${SOURCE_LABELS[id]}曲库`}>
-      <ProviderPlaylistDetail key={video?.bvid ?? container!.id} id={id} container={container} video={video}
-        data={(video ? parts : result) as ProviderPage<ProviderTrack | ProviderVideo> | null}
-        loading={video ? !parts && !partsError : loading} failed={video ? partsError : readError}
-        page={video ? partsPage : page} pageSize={video ? 100 : 20} reload={reload} busy={busy} notice={notice} selected={selected} playingTrackId={playingTrackId}
-        onBack={handleBack} onPage={n => { selection.current++; if (video) setPartsPage(n); else setPage(n); }}
-        onRefresh={() => { selection.current++; allListCache.current = null; setSelected(new Map()); setPage(1); setPartsPage(1); setReload(r => r + 1); }}
-        onCheck={check} onClear={() => setSelected(new Map())}
-        onEnqueue={(tracks, play, next) => { if (play && tracks[0]) setActiveTrackId(tracks[0].id); void enqueue(tracks, play, next); }}
-        onVideo={(row, play, next) => void openVideo(row, play, next)} onEnqueueAll={play => video ? void enqueueAll(play) : void enqueueContainer(play)}
-        canRemove={!lastWrite && caps.writeActions.includes(removeAction) && !!container?.allowedActions.includes(removeAction)}
-        onRemove={() => { if (container) void write({ providerId: id, accountId: status.account.id, operation: { kind: "removeItems", containerId: container.id, trackIds: orderedSelectedTracks.map(t => t.id) } }); }}
-        verification={lastWrite ? { disabled: busy, onVerify: () => void write(lastWrite, true) } : undefined}
-        subscriptions={container && id === "netease" && container.allowedActions.some(action => action === "playlist.subscribe" || action === "playlist.unsubscribe") ? <RhinePlaylistSelection>
-          {([true, false] as const).filter(subscribed => container.allowedActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe")).map(subscribed => <button key={String(subscribed)} disabled={busy || !!lastWrite || !caps.writeActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe")}
-            onClick={() => void write({ providerId: id, accountId: status.account.id, operation: { kind: "setSubscribed", containerId: container.id, subscribed } })}>{subscribed ? "收藏此歌单" : "取消收藏此歌单"}</button>)}
-        </RhinePlaylistSelection> : undefined} />
-    </section>;
+  function handleToggleSelectAll() {
+    if (showingVideos) {
+      setSelectedVideos(prev => {
+        const next = new Map(prev);
+        let capped = false;
+        for (const entry of selectableVideoEntries) {
+          if (allInScopeSelected) next.delete(entry.video.bvid);
+          else if (!next.has(entry.video.bvid)) {
+            if (next.size < MAX_SEARCH_SELECT_ALL) next.set(entry.video.bvid, entry);
+            else capped = true;
+          }
+        }
+        if (capped) setNotice(`最多同时选择 ${MAX_SEARCH_SELECT_ALL} 项`);
+        return next;
+      });
+      return;
+    }
+    setSelected(prev => {
+      const next = new Map(prev);
+      let capped = false;
+      for (const entry of selectableEntries) {
+        if (allInScopeSelected) next.delete(entry.track.id);
+        else if (!next.has(entry.track.id)) {
+          if (next.size < MAX_SEARCH_SELECT_ALL) next.set(entry.track.id, entry);
+          else capped = true;
+        }
+      }
+      if (capped) setNotice(`最多同时选择 ${MAX_SEARCH_SELECT_ALL} 项`);
+      return next;
+    });
+  }
+
+  function handleLinkInputChange(value: string) {
+    inputValue.current = value;
+    selection.current++;
+    setLinkInput(value);
+    setVideo(null);
+    setParts(null);
+  }
+
+  function handlePageChange(nextPage: number) {
+    if (video) setPartsPage(nextPage);
+    else setPage(nextPage);
+  }
+
+  function handleRetryList() {
+    if (inListSearching) setAllListRetry(r => r + 1);
+    else setReload(r => r + 1);
   }
 
   if (variant === "rhine") {
     return (
-      <section
-        className="provider-workspace provider-workspace--rhine"
-        data-variant="rhine"
-        data-rhine-view={isRhineShelf ? "shelf" : isRhineDetail ? "detail" : "search"}
-        aria-label={`${SOURCE_LABELS[id]}曲库`}
-      >
-        {isRhineShelf ? (
-          <>
-            {loading && <p className="rhine-empty" role="status">正在读取此来源…</p>}
-            {!loading && !containerRows.length && (
-              <p className="rhine-empty">{id === "bilibili" && tab === "favorite"
-                ? result ? "本页没有收藏的他人收藏夹" : "暂未读取到收藏的他人收藏夹"
-                : result ? "此页没有条目" : "请选择功能或输入关键词"}</p>
-            )}
-            {activeContainer && (
-              <div className="rhine-browse-content">
-                <section className="rhine-selection">
-                  <p className="rhine-eyebrow">
-                    {activeContainer.ownership === "created" ? "CREATED" : "FAVORITE"} / {String(safeContainerIdx + 1).padStart(2, "0")} · ID {activeContainer.id}
-                  </p>
-                  <h1>{activeContainer.title}</h1>
-                  <p>{activeContainer.itemCount} 项 · {activeContainer.ownership === "created" ? "自建" : "收藏"}</p>
-                  <button type="button" aria-label={id === "bilibili" ? "打开收藏夹" : "打开歌单"} onClick={() => void openContainer(activeContainer)}>抽取档案 · {id === "bilibili" ? "打开收藏夹" : "打开歌单"} ↗</button>
-                </section>
-              </div>
-            )}
-            <div className="rhine-catalog">
-              {containerRows.length > 0 && (
-                <div className="rhine-card-list" aria-label="选择容器">
-                  {containerRows.map((row, index) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      aria-pressed={index === safeContainerIdx}
-                      onClick={() => setContainerIdx(index)}
-                      onDoubleClick={() => void openContainer(row)}
-                    >
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <strong>{row.title}</strong>
-                      <small>{row.itemCount} 项</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <nav className="rhine-pages provider-pagination" aria-label="来源列表分页">
-                <button type="button" disabled={busy || page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
-                <span>第 {page} 页{result?.total != null ? ` · 共 ${result.total} 项` : ""}</span>
-                <button type="button" disabled={busy || !result?.hasMore || page >= 1000} onClick={() => setPage(p => p + 1)}>下一页</button>
-              </nav>
-            </div>
-            <p className="rhine-shelf-notice" role="status" aria-live="polite">{notice}</p>
-          </>
-        ) : (
-          <div className="rhine-search provider-rhine-search"
-            onKeyDown={event => {
-              if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
-              event.stopPropagation();
-              if (container || video) handleBack();
-              else if (onArchive) onArchive();
-            }}>
-            <ArchiveSearchHeading onClose={() => {
-              if (video) handleBack();
-              else if (onArchive) onArchive();
-              else navigate(tabs.includes("created") ? "created" : "favorite");
-            }} />
-            <div className="provider-search-forms">
-            {["songs", "playlists", "videos"].includes(tab) && (
-              <form className="rhine-search-form" onSubmit={event => { event.preventDefault(); submitSearch(input); }}>
-                <CatalogSearchInput autoFocus suggestions={false} label="搜索关键词"
-                  placeholder={tab === "playlists" ? "搜索歌单" : tab === "videos" ? "搜索视频标题或 UP 主" : "搜索歌曲、歌手或专辑名"}
-                  value={input} onChange={setInput} onSubmit={value => submitSearch(value)} />
-                <button type="submit" aria-label="搜索此来源" disabled={!input.trim()}>搜索 ↗</button>
-              </form>
-            )}
-
-            {id === "bilibili" && (
-              <details className="provider-video-link">
-              <summary>通过 BV/AV 或链接打开分 P</summary>
-              <form
-                className="rhine-search-form provider-rhine-bili-form"
-                onSubmit={e => {
-                  e.preventDefault();
-                  void resolveVideo(inputValue.current, true);
-                }}
-              >
-                <label className="sr-only" htmlFor="rhine-bili-link-input">BV/AV 或视频链接</label>
-                <input
-                  id="rhine-bili-link-input"
-                  aria-label="BV/AV 或视频链接"
-                  placeholder="粘贴 BV / AV 号、bilibili.com 或 b23.tv 链接直达分 P…"
-                  value={linkInput}
-                  onChange={e => {
-                    inputValue.current = e.target.value;
-                    selection.current++;
-                    setLinkInput(e.target.value);
-                    setVideo(null);
-                    setParts(null);
-                  }}
-                  maxLength={4096}
-                />
-                <button type="submit" disabled={!linkInput.trim()}>读取视频分 P</button>
-              </form>
-              </details>
-            )}
-
-            </div>
-            <div className="catalog-type-tabs" aria-label="搜索类型">
-              {tabs.filter(t => ["songs", "playlists", "videos", "likes"].includes(t)).map(t => (
-                <button key={t} type="button" aria-pressed={t === tab} onClick={() => {
-                  if (query && t !== "likes") submitSearch(input || query, t);
-                  else navigate(t);
-                }}>{t === "songs" ? "歌曲" : t === "playlists" ? "歌单" : t === "videos" ? "视频" : label[t]}</button>
-              ))}
-            </div>
-            <ArchiveSearchBody history={<SearchHistoryList
-              entries={searchHistory.entries.filter(entry => tabs.includes(entry.type))}
-              labels={{songs: "歌曲", playlists: "歌单", videos: "视频"}}
-              onSelect={entry => submitSearch(entry.query, entry.type)} onClear={searchHistory.clear}
-            />}>
-            {!container && !video && <div className="rhine-search-summary">
-              <h2>{tab === "songs" ? "歌曲" : tab === "playlists" ? "歌单" : tab === "videos" ? "视频" : label[tab]}</h2>
-              {query && <span>“{query}”{result?.total != null ? " · 共 " + result.total + " 项" : ""}</span>}
-            </div>}
-
-            {tab === "likes" && id === "netease" && !container && !video && (
-              <div className="rhine-playlist-search">
-                <label className="catalog-search">
-                  <Icon name="search" size={18} />
-                  <span className="sr-only">搜索喜欢的歌曲、歌手或专辑</span>
-                  <input
-                    value={filterQuery}
-                    placeholder="在喜欢的歌曲中搜索歌曲、歌手或专辑"
-                    type="search"
-                    maxLength={100}
-                    onChange={event => {
-                      setFilterQuery(event.currentTarget.value);
-                      setFilterResultPage(1);
-                    }}
-                  />
-                  {filterQuery && (
-                    <button aria-label="清空列表搜索" type="button" onClick={() => { setFilterQuery(""); setFilterResultPage(1); }}>
-                      <Icon name="close" size={16} />
-                    </button>
-                  )}
-                </label>
-              </div>
-            )}
-
-            {(pagedRows.length > 0 || selected.size > 0 || lastWrite || tab === "likes") && <div className="rhine-playlist-selection provider-buttons">
-              {tab === "likes" && id === "netease" && !container && !video && (
-                <>
-                  <button type="button" disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(result)} onClick={() => void enqueueLikes(true)}>
-                    播放全部
-                  </button>
-                  <button type="button" disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(result)} onClick={() => void enqueueLikes(false)}>
-                    全部歌曲加入队列
-                  </button>
-                </>
-              )}
-              {(selectableEntries.length > 0 || selected.size > 0) && (
-                <>
-                  <label className="playlist-songs__select-all">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={allInScopeSelected}
-                      disabled={busy || !selectableEntries.length}
-                      onChange={() => {
-                        setSelected(prev => {
-                          const next = new Map(prev);
-                          let capped = false;
-                          for (const entry of selectableEntries) {
-                            if (allInScopeSelected) next.delete(entry.track.id);
-                            else if (!next.has(entry.track.id)) {
-                              if (next.size < MAX_SEARCH_SELECT_ALL) next.set(entry.track.id, entry);
-                              else capped = true;
-                            }
-                          }
-                          if (capped) setNotice(`最多同时选择 ${MAX_SEARCH_SELECT_ALL} 项`);
-                          return next;
-                        });
-                      }}
-                    />
-                    {inListSearching ? "全选搜索结果" : "全选本页"}
-                  </label>
-                  <span>已选 {selected.size} 项</span>
-                  <button type="button" disabled={busy || !selected.size} onClick={() => setSelected(new Map())}>
-                    清空选择
-                  </button>
-                </>
-              )}
-              <button type="button" disabled={busy || !selected.size} onClick={() => void enqueue(orderedSelectedTracks, false)}>
-                选中加入队列（{selected.size}/{MAX_SEARCH_SELECT_ALL}）
-              </button>
-              <button type="button" disabled={busy || !selected.size} onClick={() => void enqueue(orderedSelectedTracks, true)}>
-                播放选中
-              </button>
-              {container && (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    Boolean(lastWrite) ||
-                    !selected.size ||
-                    !caps.writeActions.includes(removeAction) ||
-                    !container.allowedActions.includes(removeAction)
-                  }
-                  onClick={() =>
-                    void write({
-                      providerId: id,
-                      accountId: status.account.id,
-                      operation: { kind: "removeItems", containerId: container.id, trackIds: orderedSelectedTracks.map(t => t.id) },
-                    })
-                  }
-                >
-                  {id === "bilibili" ? "从当前收藏夹移出选中" : "从当前歌单移出选中"}
-                </button>
-              )}
-              {lastWrite && (
-                <button type="button" disabled={busy} onClick={() => void write(lastWrite, true)}>
-                  只读核对结果
-                </button>
-              )}
-              <button type="button" disabled={busy} onClick={() => { allListCache.current = null; setReload(r => r + 1); }}>
-                刷新
-              </button>
-            </div>}
-
-            <p className="rhine-notice" role="status" aria-live="polite">{notice}</p>
-
-            <div className="provider-rhine-results">
-              {isRowsLoading && <p role="status">{inListSearching ? "正在读取完整列表以搜索…" : "正在读取此来源…"}</p>}
-              {!isRowsLoading && isRowsError && (
-                <p role="alert">
-                  {inListSearching ? "未能读取完整列表，搜索尚未完成" : "读取失败；请手动重试，应用没有重放写入"}{" "}
-                  <button type="button" onClick={() => inListSearching ? setAllListRetry(r => r + 1) : setReload(r => r + 1)}>
-                    重试
-                  </button>
-                </p>
-              )}
-              {!isRowsLoading && !isRowsError && !pagedRows.length && (
-                <p className="rhine-search-empty">
-                  {inListSearching
-                    ? <>没有匹配“{filterQuery.trim()}”的条目 <button type="button" onClick={() => { setFilterQuery(""); setFilterResultPage(1); }}>清空搜索</button></>
-                    : result || parts ? "此页没有条目" : tab === "videos" ? "输入视频标题或 UP 主，寻找想听的内容。" : "输入歌名、歌手或专辑名，寻找想听的音乐。"}
-                </p>
-              )}
-              {!isRowsLoading && !isRowsError && pagedEntries.length > 0 && (
-                <ol className="rhine-songs provider-rhine-songs" start={inListSearching ? (filterResultPage - 1) * displayMatchSize + 1 : ((video ? partsPage : page) - 1) * activePageSize + 1}>
-                  {pagedEntries.map(({ row, position }) => (
-                    <li
-                      key={isTrack(row) || isContainer(row) ? row.id : row.bvid}
-                      className={!isTrack(row) && !isContainer(row) ? "provider-rhine-video-row" : undefined}
-                      data-playing={isTrack(row) && playingTrackId === row.id ? "true" : undefined}
-                    >
-                      {isTrack(row) ? (
-                        <>
-                          <div className="rhine-song-info rhine-song-info--editable">
-                            <input
-                              type="checkbox"
-                              aria-label={row.title}
-                              checked={selected.has(row.id)}
-                              disabled={!usable(row) || busy || (selected.size >= MAX_SEARCH_SELECT_ALL && !selected.has(row.id))}
-                              onChange={e => check(row, position, e.target.checked)}
-                            />
-                            <SongCover cacheKey={row.coverCacheKey} title={row.title} />
-                            <span className="rhine-song-text">
-                              <strong>
-                                {row.title} <SourceBadge track={row} />
-                              </strong>
-                              <small>
-                                {row.creatorKind === "uploader" ? "UP" : "艺人"}：{row.artist} · {row.album} · {formatDuration(row.durationMs)} ·{" "}
-                                {formatProviderAvailability(id, row.availability)}
-                              </small>
-                            </span>
-                          </div>
-                          <span className="rhine-song-actions provider-rhine-actions">
-                            <button
-                              type="button"
-                              className="play-next-button"
-                              title="下一首播放"
-                              aria-label={`下一首播放 ${row.title}`}
-                              disabled={busy || !usable(row)}
-                              onClick={() => void enqueue([row], false, true)}
-                            >
-                              <Icon name="play-next" size={20} />
-                            </button>
-                            <button
-                              type="button"
-                              className="rhine-playlist-icon-button"
-                              title="播放"
-                              aria-label="播放此项"
-                              disabled={busy || !usable(row)}
-                              onClick={() => {
-                                setActiveTrackId(row.id);
-                                void enqueue([row], true);
-                              }}
-                            >
-                              <PlaylistActionIcon kind="play" />
-                            </button>
-                            <button
-                              type="button"
-                              className="rhine-playlist-icon-button"
-                              title="加入队列"
-                              aria-label="加入队列"
-                              disabled={busy || !usable(row)}
-                              onClick={() => void enqueue([row], false)}
-                            >
-                              <PlaylistActionIcon kind="queueAdd" />
-                            </button>
-                            <ProviderLibraryActions
-                              track={row}
-                              variant={variant}
-                              iconOnly
-                              initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
-                            />
-                          </span>
-                        </>
-                      ) : isContainer(row) ? (
-                        <>
-                          <div className="rhine-song-info">
-                            <SongCover title={row.title} />
-                            <span className="rhine-song-text">
-                              <strong>{row.title}</strong>
-                              <small>
-                                {row.id} · {row.itemCount} 项 · {row.ownership === "created" ? "自建" : "收藏"}
-                              </small>
-                            </span>
-                          </div>
-                          <span className="rhine-song-actions provider-rhine-actions">
-                            <button type="button" className="rhine-action-pill" onClick={() => void openContainer(row)}>
-                              {row.kind === "favoriteFolder" ? "打开收藏夹" : "打开歌单"}
-                            </button>
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="rhine-song-info">
-                            <SongCover cacheKey={row.coverCacheKey} title={row.title} />
-                            <span className="rhine-song-text">
-                              <strong>{row.title}</strong>
-                              <small>
-                                UP：{row.uploader} · {row.bvid} · {formatDuration(row.durationMs)} · {formatProviderAvailability("bilibili", row.availability)}
-                              </small>
-                            </span>
-                          </div>
-                          <span className="rhine-song-actions provider-rhine-actions">
-                            <button
-                              type="button"
-                              className="play-next-button"
-                              title="下一首播放"
-                              aria-label={`下一首播放 ${row.title}`}
-                              disabled={busy || !isProviderVideoPlayable(row)}
-                              onClick={() => void openVideo(row, false, true)}
-                            >
-                              <Icon name="play-next" size={20} />
-                            </button>
-                            <button type="button" className="rhine-playlist-icon-button" title="播放" aria-label="播放" disabled={busy || !isProviderVideoPlayable(row)} onClick={() => void openVideo(row, true)}>
-                              <PlaylistActionIcon kind="play" />
-                            </button>
-                            <button type="button" className="rhine-playlist-icon-button" title="加入队列" aria-label="加入队列" disabled={busy || !isProviderVideoPlayable(row)} onClick={() => void openVideo(row, false)}>
-                              <PlaylistActionIcon kind="queueAdd" />
-                            </button>
-                          </span>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-
-            <nav className="rhine-pages provider-pagination" aria-label={video ? "分 P 分页" : "来源列表分页"}>
-              <button
-                type="button"
-                disabled={busy || (inListSearching ? filterResultPage : video ? partsPage : page) <= 1}
-                onClick={() => inListSearching ? setFilterResultPage(p => p - 1) : (video ? setPartsPage(p => p - 1) : setPage(p => p - 1))}
-              >
-                上一页
-              </button>
-              <span>第 {inListSearching ? filterResultPage : video ? partsPage : page} 页</span>
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  (inListSearching
-                    ? filterResultPage * displayMatchSize >= rawMatchedRows.length
-                    : !(video ? parts?.hasMore : result?.hasMore) || (video ? partsPage : page) >= (video ? 100 : 1000))
-                }
-                onClick={() => inListSearching ? setFilterResultPage(p => p + 1) : (video ? setPartsPage(p => p + 1) : setPage(p => p + 1))}
-              >
-                下一页
-              </button>
-            </nav>
-            </ArchiveSearchBody>
-          </div>
-        )}
-      </section>
+      <ProviderRhineView
+        id={id}
+        status={status}
+        caps={caps}
+        tabs={tabs}
+        tab={tab}
+        tabLabels={TAB_LABELS}
+        query={query}
+        input={input}
+        linkInput={linkInput}
+        filterQuery={filterQuery}
+        filterResultPage={filterResultPage}
+        page={page}
+        partsPage={partsPage}
+        reload={reload}
+        busy={busy}
+        notice={notice}
+        loading={loading}
+        readError={readError}
+        partsError={partsError}
+        isRowsLoading={isRowsLoading}
+        isRowsError={isRowsError}
+        result={result}
+        parts={parts}
+        container={container}
+        video={video}
+        pagedRowsCount={pagedRows.length}
+        classifiedPagedEntries={classifiedPagedEntries}
+        rawMatchedRowsCount={rawMatchedRows.length}
+        containerRows={containerRows}
+        selectableEntries={selectableEntries}
+        selected={selected}
+        selectAllRef={selectAllRef}
+        allInScopeSelected={allInScopeSelected}
+        inListSearching={inListSearching}
+        displayMatchSize={displayMatchSize}
+        activePageSize={activePageSize}
+        playingTrackId={playingTrackId}
+        lastWrite={lastWrite}
+        addAction={addAction}
+        removeAction={removeAction}
+        orderedSelectedTracks={orderedSelectedTracks}
+        isRhineShelf={isRhineShelf}
+        isRhineDetail={isRhineDetail}
+        safeContainerIdx={safeContainerIdx}
+        activeContainer={activeContainer}
+        searchHistoryEntries={searchHistory.entries}
+        formatDuration={formatDuration}
+        onClearSearchHistory={searchHistory.clear}
+        onArchive={onArchive}
+        onNavigate={navigate}
+        onSubmitSearch={submitSearch}
+        onInputChange={setInput}
+        onLinkInputChange={handleLinkInputChange}
+        onFilterQueryChange={setFilterQuery}
+        onFilterResultPageChange={setFilterResultPage}
+        onSetContainerIdx={setContainerIdx}
+        onOpenContainer={row => void openContainer(row)}
+        onResolveLinkInput={() => void resolveVideo(inputValue.current, true)}
+        onHandleBack={handleBack}
+        onDetailPageChange={nextPage => {
+          selection.current++;
+          handlePageChange(nextPage);
+        }}
+        onDetailRefresh={() => {
+          selection.current++;
+          allListCache.current = null;
+          setSelected(new Map());
+          setPage(1);
+          setPartsPage(1);
+          setReload(r => r + 1);
+        }}
+        onCheck={check}
+        onToggleSelectAll={handleToggleSelectAll}
+        onClearSelection={() => setSelected(new Map())}
+        onEnqueue={(tracks, play, next) => void enqueue(tracks, play, next)}
+        onEnqueueLikes={play => void enqueueLikes(play)}
+        onEnqueueAll={play => void enqueueAll(play)}
+        onEnqueueContainer={play => void enqueueContainer(play)}
+        onOpenVideo={(row, play, next) => void openVideo(row, play, next)}
+        onWrite={(request, verify) => void write(request, verify)}
+        onRefreshList={() => {
+          allListCache.current = null;
+          setReload(r => r + 1);
+        }}
+        onRetryList={handleRetryList}
+        onPageChange={handlePageChange}
+        onActiveTrackIdChange={setActiveTrackId}
+      />
     );
   }
 
   return (
-    <section
-      id={embedded ? undefined : "main-content"}
-      tabIndex={-1}
-      className={embedded ? "provider-workspace provider-workspace--embedded" : "provider-workspace"}
-      data-variant="default"
-      aria-label={`${SOURCE_LABELS[id]}曲库`}
-    >
-      <div className="catalog-pane provider-catalog-pane">
-        <header className="catalog-pane__header">
-          <div>
-            <span className="section-label">
-              {video
-                ? `VIDEO MULTIPART / ${video.bvid}`
-                : container
-                  ? container.ownership === "created"
-                    ? "CREATED ARCHIVE"
-                    : "COLLECTED ARCHIVE"
-                  : likesOnly
-                    ? "RECORD CATALOG"
-                    : id === "netease"
-                      ? "NETEASE CLOUD CATALOG"
-                      : "BILIBILI MEDIA CATALOG"}
-            </span>
-            <h1>
-              {video
-                ? video.title
-                : container
-                  ? container.title
-                  : likesOnly
-                    ? "喜欢的音乐"
-                    : `${SOURCE_LABELS[id]} · ${status.account.displayName}`}
-            </h1>
-            <p>
-              {video
-                ? `${SOURCE_LABELS[id]} · ${status.account.displayName} · UP：${video.uploader} · ${parts?.total ?? "未知"} 个分 P · 无歌词为正常状态`
-                : container
-                  ? `${container.itemCount} ${id === "bilibili" ? "个视频" : "首歌曲"} · ${SOURCE_LABELS[id]}${container.ownership === "created" ? "自建" : "收藏"}${id === "bilibili" ? "收藏夹" : "歌单"}${container.description ? ` · ${container.description}` : ""}`
-                  : likesOnly
-                    ? `随当前${SOURCE_LABELS[id]}账号同步 · ${status.account.displayName}`
-                    : "此来源搜索与个人曲库"}
-            </p>
-          </div>
-          <div className="playlist-detail__actions">
-            {video && (
-              <>
-                <button
-                  className="text-button text-button--primary"
-                  type="button"
-                  disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(parts)}
-                  onClick={() => void enqueueAll(true)}
-                >
-                  <Icon name="play" size={16} />播放全部分 P
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(parts)}
-                  onClick={() => void enqueueAll(false)}
-                >
-                  <Icon name="queue" size={16} />全部分 P 加入队列
-                </button>
-              </>
-            )}
-            {!video && container && (id === "netease" || id === "bilibili") && (
-              <>
-                <button
-                  className="text-button text-button--primary"
-                  type="button"
-                  disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(result)}
-                  onClick={() => void enqueueContainer(true)}
-                >
-                  <Icon name="play" size={16} />播放全部
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy || isRowsLoading || isRowsError || !hasBrowsableProviderItems(result)}
-                  onClick={() => void enqueueContainer(false)}
-                >
-                  <Icon name="queue" size={16} />{id === "bilibili" ? "全部加入队列" : "全部歌曲加入队列"}
-                </button>
-                {id === "netease" && ([true, false] as const)
-                  .filter(subscribed =>
-                    caps.writeActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe") &&
-                    container.allowedActions.includes(subscribed ? "playlist.subscribe" : "playlist.unsubscribe"),
-                  )
-                  .map(subscribed => (
-                    <button
-                      className="text-button"
-                      type="button"
-                      key={String(subscribed)}
-                      disabled={busy || Boolean(lastWrite)}
-                      onClick={() =>
-                        void write({
-                          providerId: id,
-                          accountId: status.account.id,
-                          operation: { kind: "setSubscribed", containerId: container.id, subscribed },
-                        })
-                      }
-                    >
-                      {subscribed ? "收藏此歌单" : "取消收藏此歌单"}
-                    </button>
-                  ))}
-              </>
-            )}
-            {!video && !container && (likesOnly || tab === "likes") && id === "netease" && (
-              <>
-                <button
-                  className="text-button text-button--primary"
-                  type="button"
-                  disabled={busy || loading || readError || !hasBrowsableProviderItems(result)}
-                  onClick={() => void enqueueLikes(true)}
-                >
-                  <Icon name="play" size={16} />播放全部
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy || loading || readError || !hasBrowsableProviderItems(result)}
-                  onClick={() => void enqueueLikes(false)}
-                >
-                  <Icon name="queue" size={16} />全部歌曲加入队列
-                </button>
-              </>
-            )}
-            {(container || video) && (
-              <button className="text-button playlist-detail__back" type="button" onClick={handleBack}>
-                <Icon name="back" size={16} />{video ? "返回视频列表" : id === "bilibili" ? "返回收藏夹列表" : "返回歌单列表"}
-              </button>
-            )}
-            {!likesOnly && !container && !video && (
-              <button className="text-button" type="button" onClick={onAccount}>
-                管理此来源账号
-              </button>
-            )}
-          </div>
-        </header>
-
-        {sourceNavigation}
-
-        {!likesOnly && !container && !video && <nav className="catalog-type-tabs provider-tabs" aria-label="此来源功能">
-          {tabs.map(t => (
-            <button key={t} type="button" aria-pressed={t === tab} onClick={() => navigate(t)}>
-              {label[t]}
-            </button>
-          ))}
-        </nav>}
-
-        {likesOnly && !tabs.includes("likes") && <p role="status">此来源暂不支持读取喜欢的歌曲。</p>}
-
-        {(likesOnly || tab === "likes" || container || video) && (
-          <label className="catalog-search">
-            <Icon name="search" size={18} />
-            <span className="sr-only">搜索列表内容</span>
-            <input
-              value={filterQuery}
-              placeholder={
-                video
-                  ? "在此视频中搜索分 P 标题"
-                  : container && id === "bilibili"
-                    ? "在此收藏夹中搜索视频、UP 主或 BV 号"
-                    : container
-                      ? "在此歌单中搜索歌曲、歌手或专辑"
-                      : "在喜欢的歌曲中搜索歌曲、歌手或专辑"
-              }
-              type="search"
-              maxLength={100}
-              onChange={event => {
-                setFilterQuery(event.currentTarget.value);
-                setFilterResultPage(1);
-              }}
-            />
-            {filterQuery && (
-              <button aria-label="清空搜索" type="button" onClick={() => { setFilterQuery(""); setFilterResultPage(1); }}>
-                <Icon name="close" size={16} />
-              </button>
-            )}
-          </label>
-        )}
-
-        {!container && (["songs", "playlists", "videos"].includes(tab) || (id === "bilibili" && !video)) && (
-          <div className="provider-search-stack">
-            {["songs", "playlists", "videos"].includes(tab) && (
-              <form
-                className="provider-search-form"
-                onSubmit={event => {
-                  event.preventDefault();
-                  submitSearch(input);
-                }}
-              >
-                <label className="catalog-search">
-                  <Icon name="search" size={18} />
-                  <span className="sr-only">搜索关键词</span>
-                  <input
-                    aria-label="搜索关键词"
-                    value={input}
-                    maxLength={200}
-                    placeholder={
-                      tab === "playlists"
-                        ? "输入关键词搜索网易云歌单…"
-                        : tab === "videos"
-                          ? "输入关键词搜索 Bilibili 视频…"
-                          : "输入歌名、歌手或专辑并搜索…"
-                    }
-                    onChange={event => setInput(event.target.value)}
-                  />
-                </label>
-                <button className="text-button text-button--primary" type="submit" disabled={!input.trim()}>
-                  搜索此来源
-                </button>
-              </form>
-            )}
-
-            {id === "bilibili" && !video && (
-              <form
-                className="provider-search-form provider-search-form--link"
-                onSubmit={e => {
-                  e.preventDefault();
-                  void resolveVideo(inputValue.current, true);
-                }}
-              >
-                <label className="catalog-search">
-                  <Icon name="search" size={18} />
-                  <span className="sr-only">BV/AV 或视频链接</span>
-                  <input
-                    aria-label="BV/AV 或视频链接"
-                    value={linkInput}
-                    placeholder="粘贴 BV / AV 号、bilibili.com 或 b23.tv 链接直达分 P…"
-                    onChange={e => {
-                      inputValue.current = e.target.value;
-                      selection.current++;
-                      setLinkInput(e.target.value);
-                      setVideo(null);
-                      setParts(null);
-                    }}
-                    maxLength={4096}
-                  />
-                </label>
-                <button className="text-button text-button--primary" type="submit" disabled={!linkInput.trim()}>
-                  读取视频分 P
-                </button>
-              </form>
-            )}
-            {!video && ["songs", "playlists", "videos"].includes(tab) && (
-              <SearchHistoryList
-                entries={searchHistory.entries.filter(entry => tabs.includes(entry.type))}
-                labels={{ songs: "歌曲", playlists: "歌单", videos: "视频" }}
-                onSelect={entry => submitSearch(entry.query, entry.type)}
-                onClear={searchHistory.clear}
-              />
-            )}
-          </div>
-        )}
-
-        {query && !container && !video && <p className="provider-query-summary">搜索结果：{query}</p>}
-        {inListSearching && !isRowsLoading && !isRowsError && (
-          <p className="provider-query-summary" role="status">“{filterQuery.trim()}” · 共 {rawMatchedRows.length} 项匹配</p>
-        )}
-
-        <div className="playlist-songs__toolbar provider-toolbar">
-          <div className="playlist-songs__batch-actions provider-buttons">
-            {(activeSelectableCount > 0 || activeSelectionCount > 0) && (
-              <>
-                <label className="playlist-songs__select-all">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allInScopeSelected}
-                    disabled={busy || !activeSelectableCount}
-                    onChange={() => {
-                      if (showingVideos) {
-                        setSelectedVideos(prev => {
-                          const next = new Map(prev);
-                          let capped = false;
-                          for (const entry of selectableVideoEntries) {
-                            if (allInScopeSelected) next.delete(entry.video.bvid);
-                            else if (!next.has(entry.video.bvid)) {
-                              if (next.size < MAX_SEARCH_SELECT_ALL) next.set(entry.video.bvid, entry);
-                              else capped = true;
-                            }
-                          }
-                          if (capped) setNotice(`最多同时选择 ${MAX_SEARCH_SELECT_ALL} 项`);
-                          return next;
-                        });
-                        return;
-                      }
-                      setSelected(prev => {
-                        const next = new Map(prev);
-                        let capped = false;
-                        for (const entry of selectableEntries) {
-                          if (allInScopeSelected) next.delete(entry.track.id);
-                          else if (!next.has(entry.track.id)) {
-                            if (next.size < MAX_SEARCH_SELECT_ALL) next.set(entry.track.id, entry);
-                            else capped = true;
-                          }
-                        }
-                        if (capped) setNotice(`最多同时选择 ${MAX_SEARCH_SELECT_ALL} 项`);
-                        return next;
-                      });
-                    }}
-                  />
-                  {inListSearching ? "全选搜索结果" : "全选本页"}
-                </label>
-                <span className="playlist-songs__count">已选 {activeSelectionCount} 项</span>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy || !activeSelectionCount}
-                  onClick={() => {
-                    setSelected(new Map());
-                    setSelectedVideos(new Map());
-                  }}
-                >
-                  清空选择
-                </button>
-              </>
-            )}
-            {(!((!container && !video && (tab === "created" || tab === "favorite")) || (containerRows.length > 0 && !visibleTrackRows.length && !showingVideos))) && (
-              <>
-                <button
-                  className="text-button text-button--primary"
-                  type="button"
-                  disabled={busy || !activeSelectionCount}
-                  onClick={() => showingVideos ? void runSelectedVideosBatch(true) : void enqueue(orderedSelectedTracks, true)}
-                >
-                  <Icon name="play" size={15} />播放选中
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy || !activeSelectionCount}
-                  onClick={() => showingVideos ? void runSelectedVideosBatch(false) : void enqueue(orderedSelectedTracks, false)}
-                >
-                  选中加入队列（{activeSelectionCount}/{MAX_SEARCH_SELECT_ALL}）
-                </button>
-                {container && !video && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={
-                      busy ||
-                      Boolean(lastWrite) ||
-                      !activeSelectionCount ||
-                      !canRemoveFromContainer
-                    }
-                    onClick={() =>
-                      void write({
-                        providerId: id,
-                        accountId: status.account.id,
-                        operation: {
-                          kind: "removeItems",
-                          containerId: container.id,
-                          trackIds: showingVideos
-                            ? orderedSelectedVideos.map(item => `bilibili:video:${item.bvid}:1`)
-                            : orderedSelectedTracks.map(t => t.id),
-                        },
-                      })
-                    }
-                  >
-                    {id === "bilibili" ? "从当前收藏夹移出选中" : "从当前歌单移出选中"}
-                  </button>
-                )}
-              </>
-            )}
-            {lastWrite && (
-              <button className="text-button text-button--primary" type="button" disabled={busy} onClick={() => void write(lastWrite, true)}>
-                只读核对结果
-              </button>
-            )}
-            <button
-              className="text-button"
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                allListCache.current = null;
-                setSelected(new Map());
-                setSelectedVideos(new Map());
-                setReload(r => r + 1);
-              }}
-            >
-              刷新
-            </button>
-          </div>
-          <p className={notice ? "playlist-songs__notice" : "sr-only"} role="status" aria-live="polite">
-            {notice}
-          </p>
-        </div>
-
-        {isRowsLoading ? (
-          <div className="catalog-empty" role="status">
-            <p>{inListSearching ? "正在读取完整列表以搜索…" : "正在读取此来源…"}</p>
-            <span>按页读取规范化曲目与容器，不会自动重放写操作。</span>
-          </div>
-        ) : isRowsError ? (
-          <div className="catalog-empty" role="alert">
-            <p>{inListSearching ? "未能读取完整列表，搜索尚未完成" : "读取失败；未执行自动重放"}</p>
-            <span>请检查连接与来源状态后手动重试。</span>
-            <button
-              className="text-button text-button--primary"
-              type="button"
-              onClick={() => inListSearching ? setAllListRetry(r => r + 1) : setReload(r => r + 1)}
-            >
-              重试
-            </button>
-          </div>
-        ) : !pagedRows.length ? (
-          <div className="catalog-empty">
-            <p>
-              {inListSearching
-                ? `没有匹配“${filterQuery.trim()}”的条目`
-                : result || parts
-                  ? "此页没有条目"
-                  : "请选择功能或输入关键词"}
-            </p>
-            <span>
-              {inListSearching
-                ? "请尝试更换关键词，或清空搜索查看完整列表。"
-                : ["songs", "playlists", "videos"].includes(tab) && !container && !video
-                  ? "输入关键词后点击“搜索此来源”发起查询。"
-                  : "可切换上方分类标签或点击“刷新”重新读取。"}
-            </span>
-            {inListSearching && (
-              <button className="text-button" type="button" onClick={() => { setFilterQuery(""); setFilterResultPage(1); }}>
-                清空搜索
-              </button>
-            )}
-          </div>
-        ) : containerRows.length > 0 && !visibleTrackRows.length ? (
-          <div className="playlist-grid provider-container-grid">
-            {containerRows.map(row => (
-              <article className="playlist-card provider-container-card" key={row.id}>
-                <div className="provider-container-card__top">
-                  <AlbumArtwork
-                    compact
-                    track={providerArtworkTrack({
-                      id: row.id,
-                      title: row.title,
-                      artist: row.owner.id,
-                    })}
-                  />
-                  <span className="section-label">
-                    {row.ownership === "created" ? "CREATED" : row.ownership === "collected" ? "FAVORITE" : "PLAYLIST"}
-                  </span>
-                </div>
-                <div className="provider-container-card__meta">
-                  <h3>{row.title}</h3>
-                  <p>
-                    {row.itemCount} 项 · {row.ownership === "created" ? "自建" : "收藏"} · {row.id}
-                  </p>
-                </div>
-                {row.description ? <p className="provider-container-card__desc">{row.description}</p> : null}
-                <button className="text-button text-button--primary" type="button" onClick={() => void openContainer(row)}>
-                  {row.kind === "favoriteFolder" ? "打开收藏夹" : "打开歌单"}
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : videoRows.length > 0 && !visibleTrackRows.length ? (
-          <div className="catalog-table-wrap playlist-detail__table">
-            <table className={`catalog-table playlist-songs__table provider-tracks-table${canRemoveFromContainer ? " playlist-songs__table--editable" : ""}`}>
-              <thead>
-                <tr>
-                  <th scope="col"><span className="sr-only">选择视频</span>#</th>
-                  <th scope="col">封面</th>
-                  <th scope="col">曲目</th>
-                  <th scope="col">UP 主</th>
-                  <th scope="col">BV 号</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">时长</th>
-                  {canRemoveFromContainer && <th scope="col">操作</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {pagedEntries.flatMap(({ row, position }) => {
-                  if (isTrack(row) || isContainer(row)) return [];
-                  const checked = selectedVideos.has(row.bvid);
-                  const playable = isProviderVideoPlayable(row);
-                  const isPlaying = playingTrackId.startsWith(`bilibili:video:${row.bvid}:`);
-                  const isInspected = inspectedVideo?.bvid === row.bvid;
-                  const displayNumber = String(position + 1).padStart(2, "0");
-                  return [
-                    <tr
-                      key={row.bvid}
-                      data-playing={isPlaying ? "true" : undefined}
-                      data-selected={isInspected ? "true" : undefined}
-                      className={
-                        isPlaying
-                          ? "catalog-table__active"
-                          : checked
-                            ? "playlist-songs__selected"
-                            : isInspected
-                              ? "provider-row--inspected"
-                              : undefined
-                      }
-                      onClick={() => setActiveVideoBvid(row.bvid)}
-                      onDoubleClick={() => {
-                        if (!busy && playable) {
-                          setActiveVideoBvid(row.bvid);
-                          void openVideo(row, true);
-                        }
-                      }}
-                    >
-                      <td onClick={e => e.stopPropagation()}>
-                        <label className="playlist-songs__check">
-                          <input
-                            type="checkbox"
-                            aria-label={row.title}
-                            checked={checked}
-                            disabled={(!playable && !canRemoveFromContainer) || busy || (selectedVideos.size >= MAX_SEARCH_SELECT_ALL && !checked)}
-                            onChange={e => checkVideo(row, position, e.target.checked)}
-                          />
-                          <span className={isPlaying ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
-                            {displayNumber}
-                          </span>
-                        </label>
-                      </td>
-                      <td>
-                        <AlbumArtwork
-                          compact
-                          track={providerArtworkTrack({
-                            id: row.bvid,
-                            title: row.title,
-                            artist: row.uploader,
-                            coverCacheKey: row.coverCacheKey,
-                          })}
-                        />
-                      </td>
-                      <td>
-                        <div className="provider-track-cell">
-                          <button className="catalog-table__title" type="button" onClick={() => setActiveVideoBvid(row.bvid)}>
-                            <strong>{row.title}</strong>
-                            <small>{row.bvid}</small>
-                          </button>
-                        </div>
-                      </td>
-                      <td>{row.uploader}</td>
-                      <td>{row.bvid}</td>
-                      <td>
-                        <span className="quality-tag">{formatProviderAvailability("bilibili", row.availability)}</span>
-                      </td>
-                      <td className="catalog-table__duration">{formatDuration(row.durationMs)}</td>
-                      {canRemoveFromContainer && (
-                        <td onClick={e => e.stopPropagation()}>
-                          <Tooltip content="移出收藏夹">
-                            <button
-                              className="icon-button icon-button--quiet icon-button--danger"
-                              type="button"
-                              disabled={busy || Boolean(lastWrite)}
-                              aria-label={`将《${row.title}》移出收藏夹`}
-                              onClick={() =>
-                                void write({
-                                  providerId: id,
-                                  accountId: status.account.id,
-                                  operation: {
-                                    kind: "removeItems",
-                                    containerId: container!.id,
-                                    trackIds: [`bilibili:video:${row.bvid}:1`],
-                                  },
-                                })
-                              }
-                            >
-                              <Icon name="trash" size={16} />
-                            </button>
-                          </Tooltip>
-                        </td>
-                      )}
-                    </tr>,
-                  ];
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="catalog-table-wrap playlist-detail__table">
-            <table className={`catalog-table playlist-songs__table provider-tracks-table${canRemoveFromContainer ? " playlist-songs__table--editable" : ""}`}>
-              <thead>
-                <tr>
-                  <th scope="col"><span className="sr-only">选择歌曲</span>#</th>
-                  <th scope="col">封面</th>
-                  <th scope="col">曲目</th>
-                  <th scope="col">{id === "bilibili" ? "UP 主" : "歌手"}</th>
-                  <th scope="col">{id === "bilibili" ? "视频" : "专辑"}</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">时长</th>
-                  {canRemoveFromContainer && <th scope="col">操作</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {pagedEntries.flatMap(({ row, position }) => {
-                  if (!isTrack(row)) return [];
-                  const checked = selected.has(row.id);
-                  const isPlaying = playingTrackId === row.id;
-                  const isInspected = inspectedTrack?.id === row.id;
-                  const displayNumber = String(position + 1).padStart(2, "0");
-                  return [
-                    <tr
-                      key={row.id}
-                      data-playing={isPlaying ? "true" : undefined}
-                      data-selected={isInspected ? "true" : undefined}
-                      className={
-                        isPlaying
-                          ? "catalog-table__active"
-                          : checked
-                            ? "playlist-songs__selected"
-                            : isInspected
-                              ? "provider-row--inspected"
-                              : undefined
-                      }
-                      onClick={() => setActiveTrackId(row.id)}
-                      onDoubleClick={() => {
-                        if (!busy && usable(row)) {
-                          setActiveTrackId(row.id);
-                          void enqueue([row], true);
-                        }
-                      }}
-                    >
-                      <td onClick={e => e.stopPropagation()}>
-                        <label className="playlist-songs__check">
-                          <input
-                            type="checkbox"
-                            aria-label={row.title}
-                            checked={checked}
-                            disabled={!usable(row) || busy || (selected.size >= MAX_SEARCH_SELECT_ALL && !checked)}
-                            onChange={e => check(row, position, e.target.checked)}
-                          />
-                          <span className={isPlaying ? "catalog-needle catalog-needle--active" : "catalog-needle"}>
-                            {displayNumber}
-                          </span>
-                        </label>
-                      </td>
-                      <td>
-                        <AlbumArtwork compact track={providerArtworkTrack(row)} />
-                      </td>
-                      <td>
-                        <div className="provider-track-cell">
-                          <button className="catalog-table__title" type="button" onClick={() => setActiveTrackId(row.id)}>
-                            <strong>{row.title}</strong>
-                            <small>{row.id.replace(/^netease:track:/, "")}</small>
-                          </button>
-                          {row.providerId === "bilibili" && <SourceBadge track={row} />}
-                        </div>
-                      </td>
-                      <td>{row.artist}</td>
-                      <td>{row.album}</td>
-                      <td>
-                        <span className="quality-tag">{formatProviderAvailability(id, row.availability)}</span>
-                      </td>
-                      <td className="catalog-table__duration">{formatDuration(row.durationMs)}</td>
-                      {canRemoveFromContainer && (
-                        <td onClick={e => e.stopPropagation()}>
-                          <Tooltip content="移出歌单">
-                            <button
-                              className="icon-button icon-button--quiet icon-button--danger"
-                              type="button"
-                              disabled={busy || Boolean(lastWrite)}
-                              aria-label={`将《${row.title}》移出歌单`}
-                              onClick={() =>
-                                void write({
-                                  providerId: id,
-                                  accountId: status.account.id,
-                                  operation: {
-                                    kind: "removeItems",
-                                    containerId: container!.id,
-                                    trackIds: [row.id],
-                                  },
-                                })
-                              }
-                            >
-                              <Icon name="trash" size={16} />
-                            </button>
-                          </Tooltip>
-                        </td>
-                      )}
-                    </tr>,
-                  ];
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <nav className="remote-pagination provider-pagination" aria-label={video ? "分 P 分页" : "来源列表分页"}>
-          <button
-            className="text-button"
-            type="button"
-            disabled={busy || (inListSearching ? filterResultPage : video ? partsPage : page) <= 1}
-            onClick={() => inListSearching ? setFilterResultPage(p => p - 1) : (video ? setPartsPage(p => p - 1) : setPage(p => p - 1))}
-          >
-            上一页
-          </button>
-          <span>第 {inListSearching ? filterResultPage : video ? partsPage : page} 页</span>
-          <button
-            className="text-button"
-            type="button"
-            disabled={
-              busy ||
-              (inListSearching
-                ? filterResultPage * displayMatchSize >= rawMatchedRows.length
-                : !(video ? parts?.hasMore : result?.hasMore) || (video ? partsPage : page) >= (video ? 100 : 1000))
-            }
-            onClick={() => inListSearching ? setFilterResultPage(p => p + 1) : (video ? setPartsPage(p => p + 1) : setPage(p => p + 1))}
-          >
-            下一页
-          </button>
-        </nav>
-      </div>
-
-      <aside className="catalog-inspector provider-inspector" aria-label="当前选中详情">
-        <span className="section-label">{inspectedTrack || inspectedVideo ? "CURRENT SELECTION" : "SOURCE ARCHIVE"}</span>
-        <AlbumArtwork
-          compact
-          track={
-            inspectedTrack
-              ? providerArtworkTrack(inspectedTrack)
-              : inspectedVideo
-                ? providerArtworkTrack({
-                    id: inspectedVideo.bvid,
-                    title: inspectedVideo.title,
-                    artist: inspectedVideo.uploader,
-                    coverCacheKey: inspectedVideo.coverCacheKey,
-                  })
-                : providerArtworkTrack({
-                    id: container?.id ?? video?.bvid ?? `${id}:${status.account.id}`,
-                    title: container?.title ?? video?.title ?? status.account.displayName,
-                    artist: SOURCE_LABELS[id],
-                    coverCacheKey: video?.coverCacheKey,
-                  })
-          }
-        />
-        {inspectedTrack ? (
-          <>
-            <h2>{inspectedTrack.title}</h2>
-            <p className="provider-inspector__creator">
-              {inspectedTrack.creatorKind === "uploader" ? `UP 主 · ${inspectedTrack.artist}` : inspectedTrack.artist}
-            </p>
-            <dl>
-              <div>
-                <dt>{id === "bilibili" ? "所属视频" : "专辑"}</dt>
-                <dd>{inspectedTrack.album}</dd>
-              </div>
-              <div>
-                <dt>可用状态</dt>
-                <dd>{formatProviderAvailability(id, inspectedTrack.availability)}</dd>
-              </div>
-              <div>
-                <dt>时长</dt>
-                <dd>{formatDuration(inspectedTrack.durationMs)}</dd>
-              </div>
-              <div>
-                <dt>批量勾选</dt>
-                <dd>{selected.size} / {MAX_SEARCH_SELECT_ALL}</dd>
-              </div>
-            </dl>
-            <div className="catalog-inspector__play-actions">
-              <button
-                aria-label={`下一首播放 ${inspectedTrack.title}`}
-                title="下一首播放"
-                className="text-button play-next-button"
-                disabled={busy || !usable(inspectedTrack)}
-                onClick={() => void enqueue([inspectedTrack], false, true)}
-                type="button"
-              >
-                <Icon name="play-next" size={20} />
-              </button>
-              <button
-                aria-label="播放此项"
-                className="text-button text-button--primary catalog-inspector__play"
-                disabled={busy || !usable(inspectedTrack)}
-                onClick={() => {
-                  setActiveTrackId(inspectedTrack.id);
-                  void enqueue([inspectedTrack], true);
-                }}
-                type="button"
-              >
-                <Icon name="play" size={17} />播放
-              </button>
-            </div>
-            <button
-              aria-label="加入队列"
-              className="text-button"
-              disabled={busy || !usable(inspectedTrack)}
-              onClick={() => void enqueue([inspectedTrack], false)}
-              type="button"
-            >
-              <Icon name="queue" size={17} />加入队列
-            </button>
-            <ProviderLibraryActions
-              track={inspectedTrack}
-              variant={variant}
-              initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
-            />
-          </>
-        ) : inspectedVideo ? (
-          <>
-            <h2>{inspectedVideo.title}</h2>
-            <p className="provider-inspector__creator">UP 主 · {inspectedVideo.uploader}</p>
-            <dl>
-              <div>
-                <dt>BV 号</dt>
-                <dd>{inspectedVideo.bvid}</dd>
-              </div>
-              <div>
-                <dt>可用状态</dt>
-                <dd>{formatProviderAvailability("bilibili", inspectedVideo.availability)}</dd>
-              </div>
-              <div>
-                <dt>时长</dt>
-                <dd>{formatDuration(inspectedVideo.durationMs)}</dd>
-              </div>
-              <div>
-                <dt>批量勾选</dt>
-                <dd>{selectedVideos.size} / {MAX_SEARCH_SELECT_ALL}</dd>
-              </div>
-            </dl>
-            <div className="catalog-inspector__play-actions">
-              <button
-                aria-label={`下一首播放 ${inspectedVideo.title}`}
-                title="下一首播放"
-                className="text-button play-next-button"
-                disabled={busy || !isProviderVideoPlayable(inspectedVideo)}
-                onClick={() => void openVideo(inspectedVideo, false, true)}
-                type="button"
-              >
-                <Icon name="play-next" size={20} />
-              </button>
-              <button
-                className="text-button text-button--primary catalog-inspector__play"
-                disabled={busy || !isProviderVideoPlayable(inspectedVideo)}
-                onClick={() => {
-                  setActiveVideoBvid(inspectedVideo.bvid);
-                  void openVideo(inspectedVideo, true);
-                }}
-                type="button"
-              >
-                <Icon name="play" size={17} />播放
-              </button>
-            </div>
-            <button
-              className="text-button"
-              disabled={busy || !isProviderVideoPlayable(inspectedVideo)}
-              onClick={() => void openVideo(inspectedVideo, false)}
-              type="button"
-            >
-              <Icon name="queue" size={17} />加入队列
-            </button>
-            <ProviderLibraryActions
-              track={{ id: `bilibili:video:${inspectedVideo.bvid}:1`, title: inspectedVideo.title }}
-              variant={variant}
-              initialContainer={container?.allowedActions.includes(addAction) ? container : undefined}
-            />
-          </>
-        ) : (
-          <>
-            <h3>{container ? container.title : video ? video.title : status.account.displayName}</h3>
-            <p>{SOURCE_LABELS[id]} · {label[tab]}</p>
-            <dl>
-              <div>
-                <dt>当前账号</dt>
-                <dd>{status.account.displayName}</dd>
-              </div>
-              <div>
-                <dt>当前分类</dt>
-                <dd>{container ? `容器 (${container.itemCount} 项)` : video ? `分 P (${parts?.total ?? 0} P)` : label[tab]}</dd>
-              </div>
-              <div>
-                <dt>当前页码</dt>
-                <dd>第 {video ? partsPage : page} 页</dd>
-              </div>
-            </dl>
-          </>
-        )}
-      </aside>
-    </section>
+    <ProviderNormalView
+      id={id}
+      status={status}
+      caps={caps}
+      embedded={embedded}
+      likesOnly={likesOnly}
+      sourceNavigation={sourceNavigation}
+      tabs={tabs}
+      tab={tab}
+      tabLabels={TAB_LABELS}
+      query={query}
+      input={input}
+      linkInput={linkInput}
+      filterQuery={filterQuery}
+      filterResultPage={filterResultPage}
+      page={page}
+      partsPage={partsPage}
+      busy={busy}
+      notice={notice}
+      loading={loading}
+      readError={readError}
+      isRowsLoading={isRowsLoading}
+      isRowsError={isRowsError}
+      result={result}
+      parts={parts}
+      container={container}
+      video={video}
+      pagedRowsCount={pagedRows.length}
+      rawMatchedRowsCount={rawMatchedRows.length}
+      containerRows={containerRows}
+      visibleTrackRows={visibleTrackRows}
+      videoRows={videoRows}
+      pagedTrackEntries={pagedTrackEntries}
+      pagedVideoEntries={pagedVideoEntries}
+      showingVideos={showingVideos}
+      activeSelectableCount={activeSelectableCount}
+      allInScopeSelected={allInScopeSelected}
+      activeSelectionCount={activeSelectionCount}
+      selected={selected}
+      selectedVideos={selectedVideos}
+      selectAllRef={selectAllRef}
+      inListSearching={inListSearching}
+      displayMatchSize={displayMatchSize}
+      playingTrackId={playingTrackId}
+      inspectedTrack={inspectedTrack}
+      inspectedVideo={inspectedVideo}
+      canRemoveFromContainer={canRemoveFromContainer}
+      lastWrite={lastWrite}
+      addAction={addAction}
+      orderedSelectedTracks={orderedSelectedTracks}
+      orderedSelectedVideos={orderedSelectedVideos}
+      searchHistoryEntries={searchHistory.entries}
+      formatDuration={formatDuration}
+      getArtworkTrack={providerArtworkTrack}
+      onClearSearchHistory={searchHistory.clear}
+      onAccount={onAccount}
+      onNavigate={navigate}
+      onSubmitSearch={submitSearch}
+      onInputChange={setInput}
+      onLinkInputChange={handleLinkInputChange}
+      onFilterQueryChange={setFilterQuery}
+      onFilterResultPageChange={setFilterResultPage}
+      onOpenContainer={row => void openContainer(row)}
+      onResolveLinkInput={() => void resolveVideo(inputValue.current, true)}
+      onHandleBack={handleBack}
+      onCheckTrack={check}
+      onCheckVideo={checkVideo}
+      onToggleSelectAll={handleToggleSelectAll}
+      onClearSelection={() => {
+        setSelected(new Map());
+        setSelectedVideos(new Map());
+      }}
+      onEnqueue={(tracks, play, next) => void enqueue(tracks, play, next)}
+      onEnqueueLikes={play => void enqueueLikes(play)}
+      onEnqueueAll={play => void enqueueAll(play)}
+      onEnqueueContainer={play => void enqueueContainer(play)}
+      onRunSelectedVideosBatch={play => void runSelectedVideosBatch(play)}
+      onOpenVideo={(row, play, next) => void openVideo(row, play, next)}
+      onWrite={(request, verify) => void write(request, verify)}
+      onRefreshList={() => {
+        allListCache.current = null;
+        setSelected(new Map());
+        setSelectedVideos(new Map());
+        setReload(r => r + 1);
+      }}
+      onRetryList={handleRetryList}
+      onPageChange={handlePageChange}
+      onActiveTrackIdChange={setActiveTrackId}
+      onActiveVideoBvidChange={setActiveVideoBvid}
+    />
   );
 }

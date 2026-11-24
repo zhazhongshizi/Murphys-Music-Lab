@@ -269,4 +269,12 @@ describe("PlayerBar", () => {
     expect(container.querySelector(".player-bar__library .provider-library-trigger--icon")).not.toBeNull();
     expect(container.querySelector(".player-bar__library .provider-library-trigger:not(.provider-library-trigger--icon)")).toBeNull();
   });
+
+  it("P1-07: 根据是否传入 onOpenStage 设置 footer.player-bar 的 data-compact 属性", () => {
+    const { container, rerender } = render(<PlayerBar onOpenQueue={vi.fn()} queueOpen={false} />);
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-compact", "true");
+
+    rerender(<PlayerBar onOpenQueue={vi.fn()} onOpenStage={vi.fn()} queueOpen={false} />);
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-compact", "false");
+  });
 });

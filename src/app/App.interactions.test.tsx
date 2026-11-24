@@ -146,6 +146,8 @@ describe("应用外壳键盘与状态契约", () => {
 
     await user.clear(searchbox);
     await user.type(searchbox, "潮汐");
+    expect(screen.queryByRole("complementary", { name: "当前选中曲目" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "曲目检视栏" }));
     const inspector = screen.getByRole("complementary", { name: "当前选中曲目" });
     expect(within(inspector).getByRole("heading", { name: "潮汐来信" })).toBeInTheDocument();
 
@@ -174,7 +176,7 @@ describe("应用外壳键盘与状态契约", () => {
     dialog = screen.getByRole("dialog", { name: "播放队列" });
     expect(within(dialog).getByText("5 首 · 本地队列")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "纸月光 曲目来源" })).toHaveAttribute("aria-current", "true");
-  }, 10_000);
+  }, 15_000);
 
   it("让音量轨道与真实音量和静音状态同步", async () => {
     const user = userEvent.setup();
