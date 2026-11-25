@@ -14,7 +14,8 @@ const libraryRequests = [];
 const localSong = {id:`local_${'a'.repeat(64)}_mp3`,title:'电脑本地歌曲',artist:'本地歌手',album:'本地专辑',durationMs:240000,format:'mp3'};
 let signedIn = true;
 const catalogSongs = Array.from({length:25}, (_,i)=>({id:`catalog${i}`, title:`曲库歌曲 ${i+1}`, subtitle:'', artists:[{id:'artist1',name:'测试歌手'}], artist:'测试歌手',album:'测试专辑',durationMs:240000,qualityCandidates:['flac','320k','128k'].map(quality=>({quality,available:true,requiresSubscription:false})),availability:{status:'unknown',requiresSubscription:false}}));
-const queue = { generation: 1, selectedIndex: 0, items: Array.from({length: 12}, (_, i) => ({ id: `track${i}`, title: i === 0 ? '夏夜晚风' : `旅途中的旋律 ${i + 1}`, artist: '遥控界面测试', album: '沿途的声音', durationMs: 240000 })) };
+const longTitle = '夏夜晚风 · 音乐节现场录音特别版（含完整前奏与返场合唱）';
+const queue = { generation: 1, selectedIndex: 0, items: Array.from({length: 12}, (_, i) => ({ id: `track${i}`, title: i === 0 ? longTitle : `旅途中的旋律 ${i + 1}`, artist: '遥控界面测试', album: '沿途的声音', durationMs: 240000 })) };
 const player = { state: 'paused', generation: 1, positionMs: 5000, durationMs: 240000, volume: .5, muted: false, currentTrack: {id:queue.items[0].id,title:queue.items[0].title,artist:queue.items[0].artist}, failure: null };
 let mode = 'sequence', unavailable = false;
 const json = (response, status, value) => { response.writeHead(status, {'Content-Type': 'application/json', 'Cache-Control': 'no-store'}); response.end(JSON.stringify(value)); };
@@ -63,6 +64,43 @@ const server = http.createServer((request, response) => {
   response.writeHead(200, {'Content-Type': file[1] + '; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});
   response.end(fs.readFileSync(path.join(root, file[0] === 'index.html' ? 'src/remote' : 'src-tauri/remote-dist', file[0])));
 });
+async function checkPlayerLayout(page) {
+  const bar = page.locator('footer.player-bar');
+  const title = bar.getByText(longTitle, { exact: true });
+  const artist = bar.locator('.player-bar__artist');
+  await title.waitFor({ state: 'attached' });
+  for (const [width, height, showTitle, showArtist] of [
+    [390, 844, false, false], [768, 1024, false, false],
+    [768, 600, true, false], [959, 700, true, false],
+    [960, 700, true, true], [1024, 768, true, true], [1280, 900, true, true],
+  ]) {
+    await page.setViewportSize({ width, height });
+    const size = `${width}×${height}`;
+    assert.equal(await title.isVisible(), showTitle, `track title at ${size}`);
+    assert.equal(await artist.isVisible(), showArtist, `artist at ${size}`);
+    const bounds = await bar.boundingBox();
+    const margin = width <= 959 ? 12 : 24;
+    assert(bounds && Math.abs(bounds.x - margin) < 1 &&
+      Math.abs(bounds.width - (width - 2 * margin)) < 1, `bar margins at ${size}`);
+    const volume = bar.getByLabel('音量', { exact: true });
+    // The compact two-row layout restores the slider hidden at intermediate widths.
+    const showVolume = !showTitle || width > 1100;
+    assert.equal(await volume.isVisible(), showVolume, `volume slider at ${size}`);
+    const controls = [
+      bar.locator('.player-bar__play'), bar.locator('.player-bar__timeline input'),
+      bar.getByRole('button', { name: '打开播放队列' }),
+    ];
+    if (showVolume) controls.push(volume);
+    for (const control of controls) {
+      const box = await control.boundingBox();
+      assert(box && box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width &&
+        box.y >= 0 && box.y + box.height <= height, `playback control inside viewport at ${size}`);
+    }
+    const transitions = await bar.evaluate(el => getComputedStyle(el).transitionProperty.split(', '));
+    assert(!transitions.includes('width') && !transitions.includes('padding'), `desktop morph active at ${size}`);
+  }
+}
+
 (async () => {
   fs.mkdirSync(output, {recursive:true});
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -78,6 +116,12 @@ const server = http.createServer((request, response) => {
     await page.getByRole('button',{name:'连接电脑'}).click();
     await page.getByText('已连接',{exact:true}).waitFor();
 
+    await checkPlayerLayout(page);
+    if (process.argv.includes('--player-layout')) {
+      assert.deepEqual(errors, []);
+      console.log('Remote player layout passed at 7 viewports');
+      return;
+    }
     await page.getByText('把喜欢的歌留在此刻',{exact:true}).waitFor();
     assert.equal(commands.length,0);
     for (const [width,height] of [[390,844],[768,1024],[1280,900]]) {

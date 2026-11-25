@@ -73,7 +73,9 @@ schema 为载荷形状的真相源，constants 为方法和平台 profile 的真
 
 B 站搜索和收藏夹返回 video summary，不为每个列表条目预取分 P。选播/入队时调用 `video.parts`，默认第一 P；批量展开按 page 顺序获取，每批复核播放/账号意图。track identity 只有获取 CID 后生成。收藏增删使用 bvid，不接受 videoPart；宿主将同视频多 P 去重后提交，Provider 再解析所需 aid。
 
-B 站可播放 track 的 `video` 必须保留原始 `title`（视频标题）、`partTitle`（分 P 标题）和从 1 开始的 `partNumber`；外层 title 为分 P 标题，creatorKind 为 uploader，album 为空。公开 `ProviderVideo` 仅用于浏览，不能当作 TrackRef 入队。失效条目的 availability 区分 deleted、permissionDenied、processing 和 noAudio；无法判定才用 unavailable，不把猜测当成平台明确状态。
+B 站可播放 track 的 `video` 保留原始 `title`（投稿标题）、`partTitle`（分 P 标题）和从 1 开始的 `partNumber`。单 P 视频的外层 title 使用投稿标题，多 P 视频的每一 P 使用对应的分 P 标题。判断依据是完整分 P 列表的总数。creatorKind 为 uploader，album 使用投稿标题。公开 `ProviderVideo` 仅用于浏览，不能当作 TrackRef 入队。失效条目的 availability 区分 deleted、permissionDenied、processing 和 noAudio；无法判定才用 unavailable，不把猜测当成平台明确状态。
+
+旧队列未记录分 P 总数。打开队列或翻页时，客户端按需查询当前页仍使用分 P 名的 P1。宿主从 `video.parts` 确认只有一个分 P，且 BV 号和 CID 都与队列项一致时，将该项已保存的投稿标题写回本地队列。离线时保留已有标题。
 
 `library.addItems/removeItems` 完成后读回核对：确认全部应用返回 applied；读回不确定返回 verificationPending。请求可能已提交但无法收到结果，返回 outcome_unknown，retryable=false。不能在 SDK 内重新发送写入；只有用户核对后重新操作。
 

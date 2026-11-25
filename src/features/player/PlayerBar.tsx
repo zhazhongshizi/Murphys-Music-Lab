@@ -18,12 +18,21 @@ import {
   type PlaybackMode,
 } from "./playerStore";
 
+/**
+ * Layout mode for `PlayerBar`:
+ * - `"stage"`: desktop standard-mode ListeningStage centered capsule (collapses cover/title/artist above 600px).
+ * - `"dock"`: desktop standard-mode library/artist full-width docked bar (default).
+ * - `"remote"`: LAN Remote WebUI bar (uses base + `remote.css` breakpoints, never morphed into stage capsule).
+ */
+export type PlayerBarVariant = "stage" | "dock" | "remote";
+
 interface PlayerBarProps {
   onOpenQueue: () => void;
   onOpenStage?: () => void;
   queueOpen: boolean;
   accountKey?: string;
   authenticated?: boolean;
+  variant?: PlayerBarVariant;
 }
 
 const MODE_LABELS: Record<PlaybackMode, string> = {
@@ -75,7 +84,14 @@ function PlayerTimeline({ track }: { track: NonNullable<ReturnType<typeof getCur
   );
 }
 
-export function PlayerBar({ onOpenQueue, onOpenStage, queueOpen, accountKey, authenticated = true }: PlayerBarProps) {
+export function PlayerBar({
+  onOpenQueue,
+  onOpenStage,
+  queueOpen,
+  accountKey,
+  authenticated = true,
+  variant = "dock",
+}: PlayerBarProps) {
   const track = usePlayerSelector(getCurrentTrack);
   const mode = usePlayerSelector(selectMode);
   const isPlaying = usePlayerSelector(selectIsPlaying);
@@ -104,7 +120,7 @@ export function PlayerBar({ onOpenQueue, onOpenStage, queueOpen, accountKey, aut
       : "喜欢";
 
   return (
-    <footer className="player-bar" aria-label="播放器控制" data-compact={onOpenStage ? "false" : "true"}>
+    <footer className="player-bar" aria-label="播放器控制" data-variant={variant}>
       <PlaybackNotice />
       <div className="player-bar__track">
         {onOpenStage ? (

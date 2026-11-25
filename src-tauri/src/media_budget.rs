@@ -7,7 +7,6 @@ use std::{
 };
 
 pub(crate) const BURST: usize = 16 * 1024;
-pub(crate) const MIN_RATE: u64 = 64_000;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Traffic {
@@ -32,8 +31,9 @@ pub(crate) struct Totals {
 /// Shared byte reservations for HTTP requests and bounded streaming reads.
 /// Only one burst can accumulate during idle time.
 pub(crate) struct MediaBudget {
-    enabled: AtomicBool,
+    // Zero means unlimited and bypasses the reservation locks.
     rate: AtomicU64,
+    rate_changed: tokio::sync::Notify,
     foreground: AtomicUsize,
     foreground_order: tokio::sync::Mutex<()>,
     buffer_ready: AtomicBool,
@@ -45,8 +45,8 @@ pub(crate) struct MediaBudget {
 impl Default for MediaBudget {
     fn default() -> Self {
         Self {
-            enabled: AtomicBool::new(true),
-            rate: AtomicU64::new(MIN_RATE),
+            rate: AtomicU64::new(0),
+            rate_changed: tokio::sync::Notify::new(),
             foreground: AtomicUsize::new(0),
             foreground_order: tokio::sync::Mutex::new(()),
             buffer_ready: AtomicBool::new(false),
@@ -58,26 +58,38 @@ impl Default for MediaBudget {
 }
 
 impl MediaBudget {
-    pub fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+    pub fn is_limited(&self) -> bool {
+        self.rate.load(Ordering::Acquire) != 0
     }
 
-    pub fn set_enabled(&self, enabled: bool) {
-        self.enabled.store(enabled, Ordering::Relaxed);
-    }
-
-    pub fn set_bitrate(&self, bits_per_second: u64) {
-        self.rate
-            .store(MIN_RATE.max(bits_per_second / 4), Ordering::Relaxed);
+    pub fn set_rate(&self, bytes_per_second: u64) {
+        let mut state = self.available.lock().unwrap();
+        let previous = self.rate.load(Ordering::Relaxed);
+        if previous == bytes_per_second {
+            return;
+        }
+        let now = Instant::now();
+        let tokens = if previous == 0 {
+            BURST as f64
+        } else {
+            Self::refill(*state, now, previous)
+        };
+        *state = (now, tokens);
+        self.rate.store(bytes_per_second, Ordering::Release);
+        self.rate_changed.notify_waiters();
     }
 
     pub fn set_buffer_ready(&self, ready: bool) {
         self.buffer_ready.store(ready, Ordering::Relaxed);
     }
 
+    fn refill(state: (Instant, f64), now: Instant, rate: u64) -> f64 {
+        (state.1 + now.duration_since(state.0).as_secs_f64() * rate as f64).min(BURST as f64)
+    }
+
     fn try_reserve(&self, bytes: usize, foreground: bool) -> Option<Duration> {
         debug_assert!(bytes <= BURST);
-        if !self.enabled() {
+        if !self.is_limited() {
             return None;
         }
         if !foreground
@@ -88,18 +100,23 @@ impl MediaBudget {
         }
         let mut state = self.available.lock().unwrap();
         let now = Instant::now();
-        let rate = self.rate.load(Ordering::Relaxed) as f64;
-        state.1 = (state.1 + now.duration_since(state.0).as_secs_f64() * rate).min(BURST as f64);
-        state.0 = now;
+        let rate = self.rate.load(Ordering::Relaxed);
+        if rate == 0 {
+            return None;
+        }
+        *state = (now, Self::refill(*state, now, rate));
         if state.1 >= bytes as f64 {
             state.1 -= bytes as f64;
             None
         } else {
-            Some(Duration::from_secs_f64((bytes as f64 - state.1) / rate))
+            Some(Duration::from_secs_f64((bytes as f64 - state.1) / rate as f64))
         }
     }
 
     pub async fn reserve(&self, bytes: usize, traffic: Traffic) {
+        if !self.is_limited() {
+            return;
+        }
         let foreground = matches!(traffic, Traffic::Audio | Traffic::Probe);
         let _pending = foreground.then(|| {
             self.foreground.fetch_add(1, Ordering::AcqRel);
@@ -110,8 +127,15 @@ impl MediaBudget {
         } else {
             None
         };
-        while let Some(delay) = self.try_reserve(bytes, foreground) {
-            tokio::time::sleep(delay).await;
+        loop {
+            let changed = self.rate_changed.notified();
+            let Some(delay) = self.try_reserve(bytes, foreground) else {
+                return;
+            };
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {},
+                _ = changed => {},
+            }
         }
     }
 
@@ -169,5 +193,26 @@ struct ForegroundReservation<'a>(&'a AtomicUsize);
 impl Drop for ForegroundReservation<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn async_audio_and_preload_share_the_blocking_cover_budget() {
+        tauri::async_runtime::block_on(async {
+            let budget = MediaBudget::default();
+            budget.set_rate(16_000);
+            budget.reserve(BURST / 2, Traffic::Audio).await;
+            budget.reserve(BURST / 4, Traffic::Preload).await;
+            assert!(budget.reserve_blocking(BURST / 4, &|| true));
+
+            let mut next = std::pin::pin!(budget.reserve(BURST, Traffic::Audio));
+            assert!(tokio::time::timeout(Duration::from_millis(25), &mut next).await.is_err());
+            budget.set_rate(0);
+            tokio::time::timeout(Duration::from_millis(250), next).await.unwrap();
+        });
     }
 }

@@ -603,6 +603,15 @@ impl PersistenceService {
         Ok(())
     }
 
+    pub(crate) fn update_queue_title(&self, id: &str, previous: &str, title: &str) -> Result<(), PersistenceError> {
+        let updated = self.connection()?.execute(
+            "UPDATE queue_items SET title = ?3 WHERE track_id = ?1 AND title = ?2",
+            params![id, previous, title],
+        ).map_err(|_| PersistenceError::Unavailable)?;
+        if updated != 1 { return Err(PersistenceError::InvalidData); }
+        Ok(())
+    }
+
     pub fn save_queue_selection(&self, id: &str) -> Result<(), PersistenceError> {
         validate_stable_id(id)?;
         self.connection()?

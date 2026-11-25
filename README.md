@@ -70,7 +70,7 @@
 
 ## 下载安装
 
-1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码版本为 2.1.0，线上发行版本以官方页面为准。
+1. 从 [GitHub Releases](https://github.com/zhazhongshizi/Murphys-Music-Lab/releases/latest) 下载 Windows x64 portable ZIP。当前源码版本为 2.1.1，线上发行版本以官方页面为准。
 2. **完整解压**到一个可写目录，保留 EXE 旁的 `provider`、`node`、`providers`、`contracts`、`licenses` 及资源清单。
 3. 新构建的 portable 包使用 `Murphys-Music-Lab` 名称前缀，运行包内的 `Music-Lab.exe`；历史发行包的启动文件仍为 `qqmusic-gui.exe`。现有数据目录沿用原标识。多来源构建包含 Python Provider、固定 Node 24.22.2 和全部运行依赖，无需另装 Python、Node.js 或 Rust。
 4. 若系统缺少 WebView2，安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 后再启动。
@@ -89,6 +89,7 @@
 - 登录后查看歌单，或搜索歌曲、专辑与歌手。队列、喜欢与歌单写入沿用该账号。
 - 可播放性受账号权益、版权、地区与服务端条件限制；无损优先不保证每首歌均有无损资源。
 - MV 补播可在设置中关闭。MV 与原曲不同步时，可调整歌词偏移。
+- 日常听歌时，「游戏模式」默认关闭，播放器可以不限速地边播边缓存。打游戏时，在普通模式的「设置 → 平滑播放与缓存」或莱茵模式的「设置 → 账号与界面 → 平滑播放与缓存」开启「游戏模式」。在线音频、下一首预加载和封面下载共用一个上限，初始为 64 KB/s，可设为 16–16384 KB/s。关闭模式会记住上次的速度。调整对正在分段加载的歌曲即时生效。如果之前关闭了缓存，正在直连的 QQ 歌曲需重新点播。无损等高码率歌曲若因带宽不足而卡顿，可调高上限。
 - 莱茵“设置 → 播放设置 → 默认音质”可选择无损优先、高品质 320k 或标准 128k；与普通界面共用并自动保存，从下次加载歌曲生效。
 
 ### 多来源构建（工程预览，真实验收待补）
@@ -209,6 +210,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-frontend.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 ```
+
+`pnpm test:run` 支持传入测试文件和 Vitest 参数。每次运行会在 `output/vitest/` 下创建独立目录，`console.log` 保留完整测试输出，默认生成的 `results.json` 记录用例名称、耗时和失败堆栈。
+
+验证 Remote 播放栏时，先运行 `pnpm build:remote`，再运行 `node scripts/test-remote-webui.cjs --player-layout`。脚本用本机 Edge、Playwright 和模拟播放数据检查七组视口。
 
 默认 portable 输出到 `output/releases/`。更多开发与冻结说明见 [开发指南](docs/development.md)。普通单元测试不执行真实账号和服务验收。版本需同步 `package.json`、`Cargo.toml`、`Cargo.lock` 的应用条目及 `tauri.conf.json`。
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    media_budget::{MediaBudget, Traffic, BURST, MIN_RATE},
+    media_budget::{MediaBudget, Traffic, BURST},
     media_cache::{digest_parts, MediaCache},
 };
 use axum::{body::Bytes, http::HeaderValue};
@@ -68,6 +68,10 @@ impl SmoothRuntime {
             shared: Mutex::default(),
             requests: Semaphore::new(STREAM_CLIENTS),
         }
+    }
+
+    pub fn bridge_enabled(&self) -> bool {
+        self.budget.is_limited() || self.cache.enabled()
     }
 
     pub fn source(
@@ -311,21 +315,13 @@ impl SmoothSource {
         }
     }
 
-    fn foreground_rate(&self) {
-        self.runtime.budget.set_bitrate(
-            self.bytes_per_second()
-                .unwrap_or(MIN_RATE / 2)
-                .saturating_mul(8),
-        );
-    }
-
     async fn mode(&self, source: &Source, traffic: Traffic) -> Result<&Mode, StatusCode> {
         self.mode
             .get_or_try_init(|| async {
                 // Validate the effective byte representation online on every fresh
                 // playback authorization, including a completely cached recording.
                 let _permit = self.runtime.requests.acquire().await.unwrap();
-                self.runtime.budget.reserve(1, traffic).await;
+                self.reserve(1, traffic).await?;
                 let span = self.trace.get().map(|trace| trace.begin("cdn_probe"));
                 let response = fetch(source, Method::GET, Some(range_header(0, 0)), None).await;
                 if let Some(span) = span {
@@ -366,7 +362,7 @@ impl SmoothSource {
                 let disk_key = self
                     .scope
                     .as_deref()
-                    .filter(|_| retain)
+                    .filter(|_| retain && self.runtime.cache.enabled())
                     .zip(validator.as_ref().and_then(|value| value.to_str().ok()))
                     .map(|(scope, tag)| {
                         // QQ rotates its original-audio signatures independently
@@ -395,6 +391,14 @@ impl SmoothSource {
                 }))
             })
             .await
+    }
+
+    async fn reserve(&self, length: usize, traffic: Traffic) -> Result<(), StatusCode> {
+        self.runtime.budget.reserve(length, traffic).await;
+        if matches!(traffic, Traffic::Preload) && !self.runtime.cache.preload_enabled() {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Ok(())
     }
 
     async fn read_exact(
@@ -434,25 +438,23 @@ impl SmoothSource {
         }
         let stripe = (offset / BLOCK) as usize % ranges.blocks.flights.len();
         let _flight = ranges.blocks.flights[stripe].lock().await;
-        let length = (ranges.length - offset).min(BLOCK) as usize;
-        if let Some(bytes) = ranges
-            .blocks
-            .read(offset)
-            .filter(|_| ranges.retain.load(Ordering::Relaxed))
-        {
-            self.runtime
-                .budget
-                .totals
-                .cache
-                .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-            self.note_first_data("memory");
-            return Ok(bytes);
+        if matches!(traffic, Traffic::Preload) && !self.runtime.cache.preload_enabled() {
+            return Err(StatusCode::NOT_FOUND);
         }
-        if let Some(key) = ranges
-            .disk_key
-            .clone()
-            .filter(|_| ranges.retain.load(Ordering::Relaxed))
-        {
+        let length = (ranges.length - offset).min(BLOCK) as usize;
+        let retain = self.runtime.cache.enabled() && ranges.retain.load(Ordering::Relaxed);
+        if retain {
+            if let Some(bytes) = ranges.blocks.read(offset) {
+                self.runtime
+                    .budget
+                    .totals
+                    .cache
+                    .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                self.note_first_data("memory");
+                return Ok(bytes);
+            }
+        }
+        if let Some(key) = ranges.disk_key.clone().filter(|_| retain) {
             let cache = self.runtime.cache.clone();
             let bytes = tokio::task::spawn_blocking(move || cache.read(&key, offset, length))
                 .await
@@ -476,7 +478,7 @@ impl SmoothSource {
         }
         let end = offset + length as u64 - 1;
         let _permit = self.runtime.requests.acquire().await.unwrap();
-        self.runtime.budget.reserve(length, traffic).await;
+        self.reserve(length, traffic).await?;
         let (mut upstream, _) = fetch(
             source,
             Method::GET,
@@ -507,7 +509,10 @@ impl SmoothSource {
         if !source_allowed(source) {
             return Err(StatusCode::NOT_FOUND);
         }
-        let retain = ranges.retain.load(Ordering::Relaxed);
+        let retain = ranges.retain.load(Ordering::Relaxed) && match traffic {
+            Traffic::Preload => self.runtime.cache.preload_enabled(),
+            _ => self.runtime.cache.enabled(),
+        };
         self.note_first_data("network");
         if retain {
             ranges.blocks.insert(offset, bytes.clone());
@@ -600,7 +605,6 @@ impl SmoothSource {
         if !source_allowed(source) {
             return Err(StatusCode::NOT_FOUND);
         }
-        self.foreground_rate();
         match mode {
             Mode::Ranges(ranges) => {
                 let length = ranges.length;
@@ -646,7 +650,6 @@ impl SmoothSource {
                 let upstream = if let Some(first) = initial.take() {
                     first
                 } else {
-                    self.runtime.budget.reserve(BURST, Traffic::Audio).await;
                     let (response, _) = fetch(source, Method::GET, None, None).await?;
                     if response.status() != StatusCode::OK
                         || response.content_length() != sequence.length
@@ -659,7 +662,7 @@ impl SmoothSource {
                 };
                 sequence.extent.store(0, Ordering::Relaxed);
                 Ok(builder
-                    .body(self.sequential_body(source, sequence, upstream, permit))
+                    .body(self.stream_body(source, upstream, Some(sequence.extent.clone()), Some(permit)))
                     .unwrap())
             }
         }
@@ -706,39 +709,46 @@ impl SmoothSource {
         Body::from_stream(first.chain(remainder))
     }
 
-    fn sequential_body(
+    pub(super) fn stream_body(
         &self,
         source: &Arc<Source>,
-        sequence: &Sequential,
         upstream: reqwest::Response,
-        permit: tokio::sync::OwnedSemaphorePermit,
+        extent: Option<Arc<AtomicU64>>,
+        permit: Option<tokio::sync::OwnedSemaphorePermit>,
     ) -> Body {
         let budget = self.runtime.budget.clone();
-        let extent = sequence.extent.clone();
         let source = source.clone();
         let cancel = source.revoked.subscribe();
-        let length = sequence.length;
+        let length = upstream.content_length();
         let stream = futures_util::stream::try_unfold(
-            (upstream, Bytes::new(), cancel, permit),
-            move |(mut upstream, mut pending, mut revoked, permit)| {
+            (upstream, Bytes::new(), cancel, permit, length),
+            move |(mut upstream, mut pending, mut revoked, permit, mut remaining)| {
                 let (budget, extent, source) = (budget.clone(), extent.clone(), source.clone());
                 async move {
                     if !source_allowed(&source) {
                         return Err(stream_error());
                     }
-                    if length.is_some_and(|length| extent.load(Ordering::Relaxed) >= length) {
+                    if remaining == Some(0) {
                         return Ok(None);
                     }
                     let bytes = tokio::select! {
                         next = async {
-                            budget.reserve(BURST, Traffic::Audio).await;
-                            let mut output = Vec::with_capacity(BURST);
-                            while output.len() < BURST {
+                            if !budget.is_limited() {
+                                return if pending.is_empty() {
+                                    upstream.chunk().await.map_err(|_| stream_error())
+                                } else {
+                                    Ok(Some(std::mem::take(&mut pending)))
+                                };
+                            }
+                            let limit = remaining.map_or(BURST, |bytes| bytes.min(BLOCK) as usize);
+                            budget.reserve(limit, Traffic::Audio).await;
+                            let mut output = Vec::with_capacity(limit);
+                            while output.len() < limit {
                                 if pending.is_empty() {
                                     let Some(chunk) = upstream.chunk().await.map_err(|_| stream_error())? else { break; };
                                     pending = chunk;
                                 }
-                                let count = pending.len().min(BURST - output.len());
+                                let count = pending.len().min(limit - output.len());
                                 output.extend_from_slice(&pending.split_to(count));
                             }
                             Ok::<_, io::Error>((!output.is_empty()).then(|| Bytes::from(output)))
@@ -756,8 +766,11 @@ impl SmoothSource {
                         .metrics
                         .bytes
                         .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                    extent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                    Ok(Some((bytes, (upstream, pending, revoked, permit))))
+                    remaining = remaining.map(|value| value.saturating_sub(bytes.len() as u64));
+                    if let Some(extent) = extent {
+                        extent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                    }
+                    Ok(Some((bytes, (upstream, pending, revoked, permit, remaining))))
                 }
             },
         );
@@ -1044,6 +1057,104 @@ mod tests {
     }
 
     #[test]
+    fn cold_smoothing_uses_the_game_limit_only_when_enabled() {
+        tauri::async_runtime::block_on(async {
+            let length = 8 * BURST;
+            let (upstream, url, server) = fixture(length, false, 0).await;
+            let root = std::env::temp_dir()
+                .join(format!("qmg-media-game-mode-{}", uuid::Uuid::new_v4()));
+            let runtime = runtime(root.clone());
+            for (enabled, label) in [(false, "game_off"), (true, "game_64_kb_per_sec")] {
+                assert_eq!(runtime.cache.clear().used_bytes, 0);
+                runtime.cache.configure_game_mode(enabled, 64).unwrap();
+                // Previously this bitrate would select 500 KB/s instead.
+                let bridge = bridge(&url, Some(&runtime), 2_000_000);
+                let start = Instant::now();
+                let (bytes, first) = download(&bridge, None).await;
+                let elapsed = start.elapsed();
+                let (sent, quarter, second) = sample(label, &upstream, first);
+                println!("smooth_measure {label} total_ms={}", elapsed.as_millis());
+                assert_eq!(bytes, upstream.bytes);
+                assert_eq!(sent, length + 1);
+                assert!(runtime.cache.status().used_bytes >= length as u64);
+                if enabled {
+                    assert!(elapsed >= Duration::from_millis(1500));
+                    assert!(quarter <= 16_000 + BURST + BURST / 4);
+                    assert!(second <= 64_000 + BURST + BURST / 4);
+                } else {
+                    assert!(!runtime.budget.is_limited());
+                }
+            }
+            server.abort();
+            drop(runtime);
+            let _ = std::fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn game_limit_works_without_caching_or_preloading() {
+        tauri::async_runtime::block_on(async {
+            let (upstream, url, server) = fixture(4 * BURST, false, 0).await;
+            let root = std::env::temp_dir()
+                .join(format!("qmg-media-game-only-{}", uuid::Uuid::new_v4()));
+            let runtime = runtime(root.clone());
+            runtime.cache.configure(false, 64, None).unwrap();
+            assert!(!runtime.bridge_enabled());
+            let bridge = bridge(&url, Some(&runtime), 320_000);
+            let (direct, _) = download(&bridge, None).await;
+            assert_eq!(direct, upstream.bytes);
+            assert_eq!(*upstream.requests.lock().unwrap(), vec![None]);
+            runtime.cache.configure_game_mode(true, 64).unwrap();
+            assert!(runtime.bridge_enabled());
+            assert!(!bridge.preload().await);
+            assert_eq!(upstream.requests.lock().unwrap().len(), 1);
+            let start = Instant::now();
+            let (paced, _) = download(&bridge, None).await;
+            assert!(start.elapsed() >= Duration::from_millis(650));
+            assert_eq!(paced, upstream.bytes);
+            assert_eq!(runtime.cache.status().used_bytes, 0);
+            assert_eq!(bridge.buffered_until(0), Some(0));
+            server.abort();
+            drop(bridge);
+            drop(runtime);
+            let _ = std::fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn active_range_reads_pick_up_a_new_game_limit() {
+        tauri::async_runtime::block_on(async {
+            let (upstream, url, server) = fixture(6 * BURST, false, 0).await;
+            let root = std::env::temp_dir()
+                .join(format!("qmg-media-live-limit-{}", uuid::Uuid::new_v4()));
+            let runtime = runtime(root.clone());
+            runtime.cache.configure_game_mode(true, 16).unwrap();
+            let bridge = bridge(&url, Some(&runtime), 128_000);
+            let mut response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .get(bridge.local_url_for_checks())
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap();
+            let mut received = response.chunk().await.unwrap().unwrap().to_vec();
+            runtime.cache.configure_game_mode(true, 512).unwrap();
+            let rest = tokio::time::timeout(Duration::from_secs(2), response.bytes()).await
+                .expect("active stream should use the new rate for remaining blocks")
+                .unwrap();
+            received.extend_from_slice(&rest);
+            assert_eq!(received, upstream.bytes);
+            server.abort();
+            drop(bridge);
+            drop(runtime);
+            let _ = std::fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
     fn cold_preloaded_and_reopened_range_matrix() {
         tauri::async_runtime::block_on(async {
             for (label, rate, length, latency) in [
@@ -1060,12 +1171,14 @@ mod tests {
                 assert_eq!(bytes, upstream.bytes);
                 assert_eq!(sample(&format!("{label}_old"), &upstream, first).0, length);
                 let smooth = runtime(root.clone());
+                let budget = 64_000_u64.max(rate / 4) as usize;
+                let limit_kb_per_sec = (budget / 1_000) as u32;
+                smooth.cache.configure_game_mode(true, limit_kb_per_sec).unwrap();
                 let cold = bridge(&url, Some(&smooth), rate);
                 let (bytes, first) = download(&cold, None).await;
                 assert_eq!(bytes, upstream.bytes);
                 let (sent, quarter, second) = sample(&format!("{label}_cold"), &upstream, first);
                 assert_eq!(sent, length + 1);
-                let budget = MIN_RATE.max(rate / 4) as usize;
                 // Server send times include the local scheduler and provisioned RTT.
                 // Allow scheduling jitter where adjacent responses cross a window edge.
                 assert!(quarter <= budget / 4 + BURST + BURST / 4);
@@ -1106,6 +1219,7 @@ mod tests {
             let root = std::env::temp_dir()
                 .join(format!("qmg-media-fixture-{}", uuid::Uuid::new_v4()));
             let runtime = runtime(root.clone());
+            runtime.cache.configure_game_mode(true, 500).unwrap();
             let bridge = bridge(&url, Some(&runtime), BITS_PER_SECOND);
             let start = Instant::now();
             let (bytes, first_ms) = download(&bridge, None).await;
@@ -1188,6 +1302,7 @@ mod tests {
             let (bytes, first) = download(&old, Some("bytes=0-")).await;
             assert_eq!(bytes, upstream.bytes);
             sample("ignored_200_old", &upstream, first);
+            runtime.cache.configure_game_mode(true, 64).unwrap();
             let smooth = bridge(&url, Some(&runtime), 128_000);
             let start = Instant::now();
             let (bytes, first) = download(&smooth, Some("bytes=0-")).await;

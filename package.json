@@ -1,6 +1,6 @@
 {
   "name": "qqmusic-gui",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Murphy’s Music Lab — a local-first Windows music player.",
   "license": "GPL-3.0-or-later",
   "private": true,
@@ -16,7 +16,7 @@
     "typecheck": "pnpm build:rhine && tsc -b --pretty false",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --pretty false",
     "test": "pnpm build:rhine && vitest",
-    "test:run": "pnpm build:rhine && vitest run",
+    "test:run": "pnpm build:rhine && node scripts/run-vitest.mjs",
     "test:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-desktop-e2e.ps1",
     "test:e2e:catalog-live": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-live-catalog-e2e.ps1",
     "test:e2e:playlist-playback-live": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-live-playlist-playback-e2e.ps1",

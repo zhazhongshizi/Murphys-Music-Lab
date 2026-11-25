@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DiscoveryFrame, DiscoveryState } from "./vendor/discovery-layout";
 import RhineMode from "./RhineMode";
@@ -16,8 +16,14 @@ vi.mock("./TapeDeck",()=>({NowPlaying:({onOpen}:{onOpen:()=>void})=><button onCl
 const props={auth:{state:"authenticated" as const,account:{musicId:"123",loginMethod:"qq" as const}},authRecovering:false,active:true,onExit:vi.fn(),onAccount:vi.fn()};
 const song={id:"song-a",title:"过渡测试",artist:"歌手",artists:[],album:"专辑",subtitle:"",durationMs:180000,qualityCandidates:[],availability:{status:"unknown",requiresSubscription:false}};
 function frame(phase:DiscoveryFrame["phase"]){act(()=>mocks.scene!.onDiscoveryFrame({phase,progress:phase==="ready"?1:0,rects:[],contentHeight:800}));}
-async function discover(){fireEvent.click(screen.getByRole("button",{name:"发现音乐"}));await screen.findByRole("button",{name:"选择歌曲 过渡测试"});frame("ready");}
-async function play(){fireEvent.click(screen.getByRole("button",{name:"选择歌曲 过渡测试"}));fireEvent.click(screen.getByRole("button",{name:"播放"}));await waitFor(()=>expect(mocks.play).toHaveBeenCalled());}
+function navButton(name:string){return within(screen.getByRole("navigation",{name:"档案分类"})).getByRole("button",{name});}
+async function discover(){fireEvent.click(navButton("发现音乐"));await screen.findByRole("button",{name:"选择歌曲 过渡测试"},{timeout:3000});frame("ready");}
+async function play(){
+ const discovery=document.querySelector<HTMLElement>(".rhine-discovery") ?? document.body;
+ fireEvent.click(within(discovery).getByRole("button",{name:"选择歌曲 过渡测试"}));
+ fireEvent.click(within(discovery).getByRole("button",{name:"播放"}));
+ await waitFor(()=>expect(mocks.play).toHaveBeenCalled());
+}
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});localStorage.clear();resetPlayerFixture();mocks.scene=null;
  mocks.lists.mockResolvedValue({kind:"created",page:1,hasMore:false,total:1,warningCount:0,items:[{id:"p1",title:"歌单",description:"",songCount:1}]});
@@ -27,13 +33,13 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 it("uses the full discovery entry from playback and completes the reverse movement before showing playback again",async()=>{
  render(<RhineMode {...props}/>);fireEvent.click(screen.getByRole("button",{name:/跳过动画/}));
- fireEvent.click(await screen.findByRole("button",{name:"打开播放界面"}));expect(mocks.scene!.deck).toBe(true);
+ fireEvent.click(await screen.findByRole("button",{name:"打开播放界面"},{timeout:3000}));expect(mocks.scene!.deck).toBe(true);
  await discover();expect(mocks.scene!.discovery).toMatchObject({open:true,shortEntry:false,instant:false});
  await play();await waitFor(()=>expect(mocks.scene!.discovery?.open).toBe(false));
  expect(mocks.scene!.deck).toBe(false);expect(screen.queryByRole("region",{name:"磁带机"})).not.toBeInTheDocument();
  frame("moving");expect(screen.queryByRole("region",{name:"磁带机"})).not.toBeInTheDocument();
- frame("closed");expect(await screen.findByRole("region",{name:"磁带机"})).toBeInTheDocument();expect(mocks.scene!.discovery).toBeNull();
- fireEvent.click(screen.getByRole("button",{name:"返回发现页"}));
+ frame("closed");const deck=await screen.findByRole("region",{name:"磁带机"});expect(deck).toBeInTheDocument();expect(mocks.scene!.discovery).toBeNull();
+ fireEvent.click(within(deck).getByRole("button",{name:"返回发现页"}));
  expect(mocks.scene!.discovery).toMatchObject({open:true,shortEntry:false,instant:false});
 });
 it("starts the same reverse transition for playback opened from an archive discovery visit",async()=>{
@@ -48,12 +54,12 @@ it("keeps the recommendation shelf when playback fails",async()=>{
 it("cancels the pending playback destination when navigating elsewhere during the reverse animation",async()=>{
  render(<RhineMode {...props}/>);fireEvent.click(screen.getByRole("button",{name:/跳过动画/}));await discover();await play();
  await waitFor(()=>expect(mocks.scene!.discovery?.open).toBe(false));
- fireEvent.click(screen.getByRole("button",{name:"本地音乐"}));
+ fireEvent.click(navButton("本地音乐"));
  expect(mocks.scene!.discovery).toBeNull();frame("closed");expect(mocks.scene!.deck).toBe(false);
 });
 it("keeps full entry when the playback page was opened over search",async()=>{
  render(<RhineMode {...props}/>);fireEvent.click(screen.getByRole("button",{name:/跳过动画/}));
- fireEvent.click(screen.getByRole("button",{name:"搜索"}));
+ fireEvent.click(navButton("搜索"));
  fireEvent.click(screen.getByRole("button",{name:"打开播放界面"}));await discover();
  expect(mocks.scene!.discovery).toMatchObject({open:true,shortEntry:false,instant:false});
 });

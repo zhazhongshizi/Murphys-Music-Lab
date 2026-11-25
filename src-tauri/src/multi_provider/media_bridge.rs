@@ -231,7 +231,7 @@ impl MediaBridge {
     }
     pub(crate) async fn preload(&self) -> bool {
         match &self.source.smooth {
-            Some(smooth) if smooth.runtime.budget.enabled() => smooth.preload(&self.source).await,
+            Some(smooth) if smooth.runtime.cache.preload_enabled() => smooth.preload(&self.source).await,
             _ => false,
         }
     }
@@ -391,7 +391,7 @@ async fn serve(State(source): State<Arc<Source>>, request: Request<Body>) -> Res
         source.metrics.get.fetch_add(1, Ordering::Relaxed);
     }
     if let Some(smooth) = &source.smooth {
-        if smooth.runtime.budget.enabled() {
+        if smooth.runtime.bridge_enabled() {
             return smooth.serve(&source, method, request.headers().get(header::RANGE)).await;
         }
     }
@@ -472,6 +472,8 @@ async fn serve(State(source): State<Arc<Source>>, request: Request<Body>) -> Res
             out = out.header(header::CONTENT_LENGTH, "0");
         }
         Body::empty()
+    } else if let Some(smooth) = &source.smooth {
+        smooth.stream_body(&source, upstream, None, None)
     } else {
         let metrics = source.metrics.clone();
         let stream = upstream

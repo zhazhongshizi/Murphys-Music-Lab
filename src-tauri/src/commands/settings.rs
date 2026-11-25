@@ -63,6 +63,7 @@ pub(crate) fn settings_snapshot(
 pub(crate) enum MediaCacheRequest {
     Status,
     Configure { enabled: bool, limit_mib: u32, preload_enabled: Option<bool> },
+    ConfigureGameMode { enabled: bool, limit_kb_per_sec: u32 },
     Clear,
 }
 
@@ -75,6 +76,7 @@ pub(crate) async fn media_cache_control(
     let status = tauri::async_runtime::spawn_blocking(move || match request {
         MediaCacheRequest::Status => Ok(cache.status()),
         MediaCacheRequest::Configure { enabled, limit_mib, preload_enabled } => cache.configure(enabled, limit_mib, preload_enabled),
+        MediaCacheRequest::ConfigureGameMode { enabled, limit_kb_per_sec } => cache.configure_game_mode(enabled, limit_kb_per_sec),
         MediaCacheRequest::Clear => Ok(cache.clear()),
     }).await.map_err(|_| "media_cache_unavailable")?;
     status.map_err(|_| "media_cache_settings_failed")

@@ -12,6 +12,8 @@ import type { QueueSnapshot } from "../../contracts/queue";
 import { ArtistNavigationContext } from "../artist/ArtistNavigation";
 import { PlayerBar } from "./PlayerBar";
 import { playerActions, resetPlayerFixture } from "./playerStore";
+import "../../styles/app.css";
+import "../../remote/remote.css";
 
 vi.mock("../../backend/libraryAdapter", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../backend/libraryAdapter")>()),
@@ -270,11 +272,45 @@ describe("PlayerBar", () => {
     expect(container.querySelector(".player-bar__library .provider-library-trigger:not(.provider-library-trigger--icon)")).toBeNull();
   });
 
-  it("P1-07: 根据是否传入 onOpenStage 设置 footer.player-bar 的 data-compact 属性", () => {
+  it("P1-07: 根据显式 variant 设置 footer.player-bar 的 data-variant 属性，不依赖 onOpenStage 推断", () => {
     const { container, rerender } = render(<PlayerBar onOpenQueue={vi.fn()} queueOpen={false} />);
-    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-compact", "true");
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-variant", "dock");
 
-    rerender(<PlayerBar onOpenQueue={vi.fn()} onOpenStage={vi.fn()} queueOpen={false} />);
-    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-compact", "false");
+    rerender(<PlayerBar onOpenQueue={vi.fn()} queueOpen={false} variant="stage" />);
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-variant", "stage");
+
+    rerender(<PlayerBar onOpenQueue={vi.fn()} onOpenStage={vi.fn()} queueOpen={false} variant="dock" />);
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-variant", "dock");
+
+    rerender(<PlayerBar onOpenQueue={vi.fn()} queueOpen={false} variant="remote" />);
+    expect(container.querySelector("footer.player-bar")).toHaveAttribute("data-variant", "remote");
+  });
+
+  it("P1-08: Remote 外壳下未传 onOpenStage 时仍保持 remote 底栏，曲名与歌手可见而不被折叠为舞台胶囊", () => {
+    const { container, rerender } = render(
+      <div className="app-shell app-shell--normal remote-shell">
+        <div className="remote-player">
+          <PlayerBar onOpenQueue={vi.fn()} queueOpen={false} variant="remote" />
+        </div>
+      </div>,
+    );
+
+    const remoteBar = container.querySelector<HTMLElement>("footer.player-bar")!;
+    const remoteTitle = remoteBar.querySelector<HTMLElement>(".player-bar__title-row > strong")!;
+    const remoteArtist = remoteBar.querySelector<HTMLElement>(".player-bar__artist")!;
+    expect(remoteBar).toHaveAttribute("data-variant", "remote");
+    expect(remoteTitle).toBeVisible();
+    expect(remoteArtist).toBeVisible();
+
+    rerender(
+      <div className="app-shell app-shell--normal">
+        <PlayerBar onOpenQueue={vi.fn()} queueOpen={false} variant="stage" />
+      </div>,
+    );
+
+    const stageBar = container.querySelector<HTMLElement>("footer.player-bar")!;
+    expect(stageBar).toHaveAttribute("data-variant", "stage");
+    expect(stageBar.querySelector<HTMLElement>(".player-bar__title-row > strong")).not.toBeVisible();
+    expect(stageBar.querySelector<HTMLElement>(".player-bar__artist")).not.toBeVisible();
   });
 });

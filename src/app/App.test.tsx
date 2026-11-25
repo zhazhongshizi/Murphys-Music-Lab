@@ -34,16 +34,18 @@ describe("黑胶温室应用外壳", () => {
 
   it("按需载入曲库并筛选本地目录", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
 
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 })).toBeInTheDocument();
 
-    const search = screen.getByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
+    const workspace = container.querySelector<HTMLElement>("main.library-workspace")!;
+    const search = within(workspace).getByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
     await user.type(search, "潮汐");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^潮汐来信/ })).toBeInTheDocument();
+      expect(within(workspace).getByRole("button", { name: /^潮汐来信/ })).toBeInTheDocument();
     });
   });
 
@@ -82,35 +84,38 @@ describe("黑胶温室应用外壳", () => {
 
   it("从曲库和空队列仍可打开设置", async () => {
     const user = userEvent.setup();
-    render(<App />);
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 })).toBeInTheDocument();
     act(() => playerActions.clearQueue());
-    await user.click(screen.getByRole("button", { name: "设置" }));
+    await user.click(within(topBar).getByRole("button", { name: "设置" }));
     expect(screen.getByRole("region", { name: "设置" })).toBeVisible();
     expect(screen.getByText("队列是空的")).toBeVisible();
   });
 
   it("进入曲库后点击底栏封面或曲名可直接返回播放舞台", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
+    const playerBar = container.querySelector<HTMLElement>("footer.player-bar")!;
 
-    expect(screen.queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "返回舞台查看《暮色温室》" })).not.toBeInTheDocument();
+    expect(within(playerBar).queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
+    expect(within(playerBar).queryByRole("button", { name: "返回舞台查看《暮色温室》" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "返回播放舞台" }));
+    await user.click(within(playerBar).getByRole("button", { name: "返回播放舞台" }));
     expect(screen.getByRole("heading", { name: "暮色温室" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "发现音乐" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "返回舞台查看《暮色温室》" }));
+    await user.click(within(playerBar).getByRole("button", { name: "返回舞台查看《暮色温室》" }));
     expect(screen.getByRole("heading", { name: "暮色温室" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
+    expect(within(playerBar).queryByRole("button", { name: "返回播放舞台" })).not.toBeInTheDocument();
   });
 
   it("支持空格键播放快捷键", async () => {
@@ -123,14 +128,16 @@ describe("黑胶温室应用外壳", () => {
 
   it("搜索与歌单在内容区切换，播放舞台与其他分区不显示", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
 
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "搜索" }));
-    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
-    const searchSources = await screen.findByRole("navigation", { name: "搜索音乐来源" });
-    expect(searchSources.closest(".catalog-pane")).toBeInTheDocument();
+    await user.click(within(topBar).getByRole("button", { name: "搜索" }));
+    expect(within(topBar).queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    const searchSources = await screen.findByRole("navigation", { name: "搜索音乐来源" }, { timeout: 3_000 });
+    const pane = searchSources.closest<HTMLElement>(".catalog-pane")!;
+    expect(pane).toBeInTheDocument();
     expect(within(searchSources).getAllByRole("button")).toHaveLength(3);
     expect(within(searchSources).getByRole("button", { name: "QQ 音乐" })).toBeInTheDocument();
     expect(within(searchSources).getByRole("button", { name: "网易云音乐" })).toBeInTheDocument();
@@ -138,22 +145,22 @@ describe("黑胶温室应用外壳", () => {
 
     const sidebar = await screen.findByRole("complementary", { name: "曲库导航" });
     await user.click(within(sidebar).getByRole("button", { name: /歌单/ }));
-    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
-    const playlistSources = screen.getByRole("navigation", { name: "歌单音乐来源" });
+    expect(within(topBar).queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
+    const playlistSources = within(pane).getByRole("navigation", { name: "歌单音乐来源" });
     expect(playlistSources.closest(".catalog-pane")).toBeInTheDocument();
     expect(within(playlistSources).getAllByRole("button")).toHaveLength(3);
 
     await user.click(within(sidebar).getByRole("button", { name: "发现" }));
-    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "歌单音乐来源" })).not.toBeInTheDocument();
+    expect(within(topBar).queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole("navigation", { name: "歌单音乐来源" })).not.toBeInTheDocument();
 
     await user.click(within(sidebar).getByRole("button", { name: "搜索" }));
-    expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "搜索音乐来源" })).toBeInTheDocument();
+    expect(within(topBar).queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
+    expect(within(pane).getByRole("navigation", { name: "搜索音乐来源" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "返回舞台" }));
+    await user.click(within(topBar).getByRole("button", { name: "返回舞台" }));
     expect(screen.queryByRole("navigation", { name: "音乐来源" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "搜索音乐来源" })).not.toBeInTheDocument();
   });

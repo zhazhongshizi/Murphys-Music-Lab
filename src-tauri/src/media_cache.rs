@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 const MIB: u64 = 1024 * 1024;
 const MIN_MIB: u32 = 16;
 const MAX_MIB: u32 = 16384;
+const MIN_GAME_MODE_KB_PER_SEC: u32 = 16;
+const MAX_GAME_MODE_KB_PER_SEC: u32 = 16384;
 const FILE_OVERHEAD: u64 = 4096;
 const CONFIG: &str = "settings.json";
 const TOUCH_INTERVAL: Duration = Duration::from_secs(60);
@@ -24,10 +26,32 @@ struct Preferences {
     #[serde(default = "default_preload")]
     preload_enabled: bool,
     limit_mib: u32,
+    #[serde(default)]
+    game_mode_enabled: bool,
+    #[serde(default = "default_game_mode_limit")]
+    game_mode_limit_kb_per_sec: u32,
 }
 
 fn default_preload() -> bool {
     true
+}
+
+fn default_game_mode_limit() -> u32 {
+    64
+}
+
+impl Preferences {
+    fn game_rate(self) -> u64 {
+        if self.game_mode_enabled {
+            u64::from(self.game_mode_limit_kb_per_sec) * 1_000
+        } else {
+            0
+        }
+    }
+
+    fn valid_game_mode_limit(limit: u32) -> bool {
+        (MIN_GAME_MODE_KB_PER_SEC..=MAX_GAME_MODE_KB_PER_SEC).contains(&limit)
+    }
 }
 
 impl Default for Preferences {
@@ -36,6 +60,8 @@ impl Default for Preferences {
             enabled: true,
             preload_enabled: default_preload(),
             limit_mib: 1024,
+            game_mode_enabled: false,
+            game_mode_limit_kb_per_sec: default_game_mode_limit(),
         }
     }
 }
@@ -46,6 +72,8 @@ pub(crate) struct CacheStatus {
     enabled: bool,
     preload_enabled: bool,
     limit_mib: u32,
+    game_mode_enabled: bool,
+    game_mode_limit_kb_per_sec: u32,
     pub(crate) used_bytes: u64,
     available: bool,
 }
@@ -70,6 +98,18 @@ impl Index {
     fn fits(&self, bytes: u64) -> bool {
         bytes + 2 * FILE_OVERHEAD <= u64::from(self.preferences.limit_mib) * MIB
     }
+
+    fn status(&self) -> CacheStatus {
+        CacheStatus {
+            enabled: self.preferences.enabled,
+            preload_enabled: self.preferences.preload_enabled,
+            limit_mib: self.preferences.limit_mib,
+            game_mode_enabled: self.preferences.game_mode_enabled,
+            game_mode_limit_kb_per_sec: self.preferences.game_mode_limit_kb_per_sec,
+            used_bytes: self.used + self.pending_bytes,
+            available: self.available,
+        }
+    }
 }
 
 pub(crate) struct MediaCache {
@@ -87,11 +127,14 @@ pub(crate) struct MediaCache {
 
 impl MediaCache {
     pub fn open(root: PathBuf, budget: Arc<crate::media_budget::MediaBudget>) -> Self {
-        let preferences = read_small(&root.join(CONFIG))
+        let mut preferences = read_small(&root.join(CONFIG))
             .and_then(|data| serde_json::from_slice::<Preferences>(&data).ok())
             .filter(|p| (MIN_MIB..=MAX_MIB).contains(&p.limit_mib))
             .unwrap_or_default();
-        budget.set_enabled(preferences.enabled);
+        if !Preferences::valid_game_mode_limit(preferences.game_mode_limit_kb_per_sec) {
+            preferences.game_mode_limit_kb_per_sec = default_game_mode_limit();
+        }
+        budget.set_rate(preferences.game_rate());
         let salt_path = root.join("installation");
         let salt = fs::create_dir_all(&root).ok().and_then(|_| {
             if fs::symlink_metadata(&root).ok()?.file_type().is_symlink() {
@@ -176,18 +219,16 @@ impl MediaCache {
     }
 
     pub fn status(&self) -> CacheStatus {
-        let index = self.index.lock().unwrap();
-        CacheStatus {
-            enabled: self.budget.enabled(),
-            preload_enabled: index.preferences.preload_enabled,
-            limit_mib: index.preferences.limit_mib,
-            used_bytes: index.used + index.pending_bytes,
-            available: index.available,
-        }
+        self.index.lock().unwrap().status()
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.index.lock().unwrap().preferences.enabled
     }
 
     pub fn preload_enabled(&self) -> bool {
-        self.index.lock().unwrap().preferences.preload_enabled
+        let preferences = self.index.lock().unwrap().preferences;
+        preferences.enabled && preferences.preload_enabled
     }
 
     pub fn configure(&self, enabled: bool, limit_mib: u32, preload_enabled: Option<bool>) -> Result<CacheStatus, ()> {
@@ -198,16 +239,42 @@ impl MediaCache {
         let preferences = Preferences {
             enabled, limit_mib,
             preload_enabled: preload_enabled.unwrap_or(index.preferences.preload_enabled),
+            ..index.preferences
         };
-        let data = serde_json::to_vec(&preferences).map_err(|_| ())?;
         if index.available {
-            publish_durable(&self.root, &self.root.join(CONFIG), &data).map_err(|_| ())?;
+            self.persist(preferences)?;
+        }
+        if index.preferences.enabled && !enabled {
+            // Fence blocks begun under the previous configuration.
+            index.epoch = index.epoch.wrapping_add(1);
         }
         index.preferences = preferences;
-        self.budget.set_enabled(enabled);
         self.make_room(&mut index, 0, 0);
-        drop(index);
-        Ok(self.status())
+        Ok(index.status())
+    }
+
+    pub fn configure_game_mode(&self, enabled: bool, limit_kb_per_sec: u32) -> Result<CacheStatus, ()> {
+        if !Preferences::valid_game_mode_limit(limit_kb_per_sec) {
+            return Err(());
+        }
+        let mut index = self.index.lock().unwrap();
+        let preferences = Preferences {
+            game_mode_enabled: enabled,
+            game_mode_limit_kb_per_sec: limit_kb_per_sec,
+            ..index.preferences
+        };
+        self.persist(preferences)?;
+        index.preferences = preferences;
+        self.budget.set_rate(preferences.game_rate());
+        Ok(index.status())
+    }
+
+    fn persist(&self, preferences: Preferences) -> Result<(), ()> {
+        if !fs::symlink_metadata(&self.root).is_ok_and(|metadata| metadata.is_dir()) {
+            return Err(());
+        }
+        let data = serde_json::to_vec(&preferences).map_err(|_| ())?;
+        publish_durable(&self.root, &self.root.join(CONFIG), &data).map_err(|_| ())
     }
 
     pub fn clear(&self) -> CacheStatus {
@@ -253,7 +320,7 @@ impl MediaCache {
         let path = self.root.join(&name);
         let (epoch, initial_used) = {
             let index = self.index.lock().unwrap();
-            if !index.available || !self.budget.enabled() {
+            if !index.available || !index.preferences.enabled {
                 return None;
             }
             let entry = index.entries.get(&name)?;
@@ -277,7 +344,7 @@ impl MediaCache {
         let mut touch_used = None;
         let payload = {
             let mut index = self.index.lock().unwrap();
-            if !index.available || index.epoch != epoch || !self.budget.enabled() {
+            if !index.available || index.epoch != epoch || !index.preferences.enabled {
                 return None;
             }
             if let Some(data) = data {
@@ -324,7 +391,7 @@ impl MediaCache {
         let allocation = allocation((data.len() + 32) as u64);
         {
             let index = self.index.lock().unwrap();
-            if !self.can_write(&index, &name, epoch) {
+            if !Self::can_write(&index, &name, epoch, background) {
                 return;
             }
             if index.pending_bytes == 0 {
@@ -336,7 +403,7 @@ impl MediaCache {
                 let pending = self.block_files.lock().unwrap();
                 let index = self.index.lock().unwrap();
                 let replaced = pending.get(&name).map_or(0, |entry| entry.allocation);
-                if !self.can_write(&index, &name, epoch)
+                if !Self::can_write(&index, &name, epoch, background)
                     || !Self::can_admit(&index, allocation, replaced, background)
                 {
                     return;
@@ -363,7 +430,7 @@ impl MediaCache {
             let mut pending = self.block_files.lock().unwrap();
             let mut index = self.index.lock().unwrap();
             let replaced = pending.get(&name).map_or(0, |entry| entry.allocation);
-            if self.can_write(&index, &name, epoch)
+            if Self::can_write(&index, &name, epoch, background)
                 && Self::can_admit(&index, allocation, replaced, background)
                 && self.make_room(&mut index, allocation, replaced)
             {
@@ -385,8 +452,9 @@ impl MediaCache {
         }
     }
 
-    fn can_write(&self, index: &Index, name: &str, epoch: u64) -> bool {
-        index.available && index.epoch == epoch && self.budget.enabled()
+    fn can_write(index: &Index, name: &str, epoch: u64, background: bool) -> bool {
+        index.available && index.epoch == epoch && index.preferences.enabled
+            && (!background || index.preferences.preload_enabled)
             && !index.entries.contains_key(name)
     }
 
@@ -526,6 +594,55 @@ mod tests {
         assert!(!old.enabled);
         assert_eq!(old.limit_mib, 64);
         assert!(old.preload_enabled);
+        assert!(!old.game_mode_enabled);
+        assert_eq!(old.game_mode_limit_kb_per_sec, 64);
+    }
+
+    #[test]
+    fn game_mode_persists_independently_and_keeps_the_limit_when_off() {
+        let root = std::env::temp_dir().join(format!("qmg-game-settings-{}", uuid::Uuid::new_v4()));
+        let open = || MediaCache::open(root.clone(), Arc::new(Default::default()));
+        let cache = open();
+        cache.configure(false, 128, Some(false)).unwrap();
+        assert!(cache.configure_game_mode(true, 15).is_err());
+        assert!(!cache.budget.is_limited());
+        let configured = cache.configure_game_mode(true, 96).unwrap();
+        assert!(!configured.enabled);
+        assert!(!configured.preload_enabled);
+        assert_eq!(configured.limit_mib, 128);
+        assert!(configured.game_mode_enabled);
+        assert!(cache.budget.is_limited());
+        drop(cache);
+
+        let cache = open();
+        assert!(cache.budget.is_limited());
+        let enabled_cache = cache.configure(true, 256, None).unwrap();
+        assert!(enabled_cache.game_mode_enabled);
+        assert_eq!(enabled_cache.game_mode_limit_kb_per_sec, 96);
+        cache.configure_game_mode(false, 96).unwrap();
+        drop(cache);
+
+        let cache = open();
+        assert!(cache.enabled());
+        assert!(!cache.preload_enabled());
+        assert!(!cache.budget.is_limited());
+        assert_eq!(cache.status().game_mode_limit_kb_per_sec, 96);
+        drop(cache);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_game_mode_save_keeps_previous_status_and_budget() {
+        let root = std::env::temp_dir().join(format!("qmg-game-save-failed-{}", uuid::Uuid::new_v4()));
+        let cache = MediaCache::open(root.clone(), Arc::new(Default::default()));
+        fs::create_dir(root.join(CONFIG)).unwrap();
+        assert!(cache.configure_game_mode(true, 96).is_err());
+        let status = cache.status();
+        assert!(!status.game_mode_enabled);
+        assert_eq!(status.game_mode_limit_kb_per_sec, 64);
+        assert!(!cache.budget.is_limited());
+        drop(cache);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -549,7 +666,8 @@ mod tests {
         let reopened = open();
         assert!(!interrupted.exists());
         assert_eq!(reopened.status().limit_mib, 16);
-        assert!(reopened.budget.enabled());
+        assert!(reopened.enabled());
+        assert!(!reopened.budget.is_limited());
         assert!(!reopened.preload_enabled());
         assert_eq!(
             reopened.scope("qqmusic", "a", "recording", "128k"),

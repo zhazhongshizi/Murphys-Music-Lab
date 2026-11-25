@@ -204,16 +204,21 @@ impl PreloadJob {
         resolve: impl FnOnce(PlaybackTrace) -> Result<Option<Arc<MediaBridge>>, PlaybackError>
             + Send + 'static,
         cover: Option<(Arc<CoverService>, String)>,
+        allowed: impl Fn() -> bool + Send + Sync + 'static,
     ) -> Self {
         let retained = Arc::new(Mutex::new(None));
         let keep = retained.clone();
         let cancelled = Arc::new(AtomicBool::new(false));
         let cover_cancel = cancelled.clone();
+        let allowed = Arc::new(allowed);
         let task = tauri::async_runtime::spawn(async move {
             let trace = PlaybackTrace::new(true);
             let span = trace.begin("preload_job");
+            let audio_allowed = allowed.clone();
             let audio = async {
-                match tokio::task::spawn_blocking(move || resolve(trace)).await {
+                match tokio::task::spawn_blocking(move || {
+                    if audio_allowed() { resolve(trace) } else { Ok(None) }
+                }).await {
                     Ok(Ok(Some(bridge))) => {
                         *keep.lock().unwrap() = Some(bridge.clone());
                         if bridge.preload().await {
@@ -230,7 +235,7 @@ impl PreloadJob {
                 if let Some((cover, key)) = cover {
                     let cover_span = trace.begin("preload_cover");
                     let result = tokio::task::spawn_blocking(move || {
-                        cover.preload_while(&key, &|| !cover_cancel.load(Ordering::Acquire))
+                        cover.preload_while(&key, &|| !cover_cancel.load(Ordering::Acquire) && allowed())
                     })
                     .await;
                     cover_span.finish(if matches!(result, Ok(Ok(_))) {
@@ -536,12 +541,14 @@ impl PlaybackSession {
         let duration = track.duration_ms;
         let cover = self.preload_cover.clone().zip(track.cover_cache_key.clone());
         let playback = self.playback.clone();
+        let preload_policy = playback.clone();
         let job = PreloadJob::spawn(
             move |trace| {
                 let resolved = playback.resolve_traced(summary, quality, trace)?;
                 Ok(resolved.with_smtc_metadata(String::new(), duration).bridge())
             },
             cover,
+            move || preload_policy.preload_enabled(),
         );
         *candidate = Some(PreloadCandidate { key, job: Arc::new(job) });
     }
@@ -3275,7 +3282,7 @@ mod tests {
                 let cover = Arc::new(CoverService::with_parts(
                     root.join("covers"), Arc::new(FakeResolver), cover_transport.clone(),
                 ).unwrap());
-                let mut job = PreloadJob::spawn(move |_| Ok(Some(bridge)), Some((cover.clone(), "album01".into())));
+                let mut job = PreloadJob::spawn(move |_| Ok(Some(bridge)), Some((cover.clone(), "album01".into())), || true);
                 tokio::time::timeout(Duration::from_secs(5), &mut job.task).await.unwrap().unwrap();
                 assert_eq!(runtime.budget.totals.preload_probe.load(Ordering::Relaxed), u64::from(!ignores_range));
                 assert_eq!(runtime.budget.totals.preload.load(Ordering::Relaxed), 0);
@@ -3340,7 +3347,7 @@ mod tests {
                     calls.fetch_add(1, Ordering::Relaxed);
                     provider.cover_url(bvid, speculative).map_err(|_| CoverError::CoverUnavailable)
                 });
-                let mut job = PreloadJob::spawn(|_| Ok(None), Some((cover.clone(), cover_key.clone())));
+                let mut job = PreloadJob::spawn(|_| Ok(None), Some((cover.clone(), cover_key.clone())), || true);
                 tokio::time::timeout(Duration::from_secs(5), &mut job.task).await.unwrap().unwrap();
                 assert_eq!(invoked.load(Ordering::Relaxed), 1);
                 assert_eq!(service.ready_generation(), Ok(generation));

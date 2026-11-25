@@ -502,6 +502,7 @@ export function NormalMode({
         onOpenQueue={() => setQueueOpen(true)}
         onOpenStage={view !== "stage" || artistNavigation.artist ? () => { artistNavigation.closeArtist(false); setView("stage"); } : undefined}
         queueOpen={queueOpen}
+        variant={view === "stage" && !artistNavigation.artist ? "stage" : "dock"}
       />
       <QueueDrawer onClose={() => setQueueOpen(false)} open={queueOpen} />
     </ArtistNavigationContext.Provider>

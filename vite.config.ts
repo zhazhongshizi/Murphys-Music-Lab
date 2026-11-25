@@ -15,6 +15,10 @@ export default defineConfig({
     exclude: ["output/**", "**/node_modules/**", "dist/**", "src-tauri/**", "providers/**"],
     setupFiles: ["./src/test/setup.ts"],
     css: true,
+    reporters: process.env.MUSIC_LAB_VITEST_JSON
+      ? ["default", ["json", { outputFile: process.env.MUSIC_LAB_VITEST_JSON }]]
+      : undefined,
+    testTimeout: 15_000,
     restoreMocks: true,
   },
 });

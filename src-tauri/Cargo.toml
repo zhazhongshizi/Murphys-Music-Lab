@@ -1,6 +1,6 @@
 [package]
 name = "qqmusic-gui"
-version = "2.1.0"
+version = "2.1.1"
 description = "Murphy’s Music Lab — a local-first music player"
 authors = ["QQ Music GUI contributors"]
 edition = "2021"

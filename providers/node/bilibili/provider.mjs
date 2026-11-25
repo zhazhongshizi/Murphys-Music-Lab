@@ -229,7 +229,7 @@ export class BilibiliProvider {
       const pages = array(await this.transport.api('/x/player/pagelist', { bvid: b }, 'video'));
       if (!pages.length || pages.length > 10000) fail('media_unavailable');
       const tracks = pages.map((part, index) => ({ ref: { kind: 'videoPart', bvid: b, cid: id(part.cid) },
-        title: str(part.part), artist: str(d.owner?.name), creatorKind: 'uploader', album: str(d.title),
+        title: str(pages.length === 1 ? d.title : part.part), artist: str(d.owner?.name), creatorKind: 'uploader', album: str(d.title),
         durationMs: duration(part.duration), coverUrl: videoCover(d.pic), availability: 'unknown',
         video: { title: str(d.title), partTitle: str(part.part), partNumber: int(part.page ?? index + 1, 10000) } }));
       if (new Set(tracks.map(t => t.ref.cid)).size !== tracks.length || tracks.some((t, i) => t.video.partNumber !== i + 1)) fail('upstream_schema_changed');

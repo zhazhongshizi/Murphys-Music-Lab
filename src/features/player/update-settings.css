@@ -37,6 +37,16 @@
   border-left: 3px solid var(--lichen);
 }
 .update-release pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.8 system-ui,sans-serif; max-height: 280px; overflow-y: auto; }
+.media-cache-game-mode { min-inline-size: 0; }
+.media-cache-game-mode p { opacity: .82; }
+.media-cache-game-mode form,
+.media-cache-game-mode form label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.media-cache-game-mode input[type="number"] { width: 7rem; }
 .update-data { border-top: 1px solid #b2bfb4; padding-top: 16px; margin-top: 24px; }.update-data summary { cursor: pointer; }.update-data dl { font-size: 12px; }.update-data dt { margin-top: 12px; font-weight: 600; }.update-data dd { margin: 4px 0; overflow-wrap: anywhere; }
 .update-notice {
   position: fixed;

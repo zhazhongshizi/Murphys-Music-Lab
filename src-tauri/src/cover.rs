@@ -183,7 +183,6 @@ pub struct CoverService {
 impl CoverService {
     pub fn new(cache_root: PathBuf) -> Result<Self, CoverError> {
         let budget = Arc::new(MediaBudget::default());
-        budget.set_enabled(false);
         Self::with_budget(cache_root, budget)
     }
 
@@ -347,7 +346,7 @@ impl CoverService {
             let response = self.transport.fetch_while(target.expose_to_trusted_backend(), allowed)?;
             if (200..300).contains(&response.status) {
                 let payload = validate_image(response.content_type.as_deref(), response.body)?;
-                if self.write_cached(kind, key, &payload).is_ok() { self.prune_cache(); }
+                if allowed() && self.write_cached(kind, key, &payload).is_ok() { self.prune_cache(); }
                 return Ok(payload);
             }
             if (300..400).contains(&response.status) {

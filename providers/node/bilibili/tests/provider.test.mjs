@@ -14,6 +14,15 @@ const constants = JSON.parse(readFileSync(new URL('../../../../contracts/protoco
 const ajv = new Ajv({ strict: false }); ajv.addSchema(schema);
 async function restored(options) { const f = fixture(options); await f.provider.handle('auth.credential.restore', { credential: f.credential }); return f; }
 const fault = code => e => e.code === code && e.message === code;
+test('queue title uses the video title only for a single-part video, even when requesting one row', async () => {
+  for (const pages of [view.pages.slice(0, 1), view.pages]) {
+    const f = await restored({ hook: u => u.pathname === '/x/player/pagelist' ? response(pages) : undefined });
+    const result = await f.provider.handle('video.parts', { bvid: BVID, page: 1, pageSize: 1 });
+    assert.equal(result.total, pages.length);
+    assert.equal(result.items[0].title, pages.length === 1 ? view.title : pages[0].part);
+    assert.equal(result.items[0].video.partTitle, pages[0].part);
+  }
+});
 test('video summaries and all parts share the main video cover, normalized to HTTPS', async () => {
   const f = await restored();
   const cover = 'https://i0.hdslb.com/bfs/archive/synthetic-cover.jpg';

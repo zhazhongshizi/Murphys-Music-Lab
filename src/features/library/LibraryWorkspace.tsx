@@ -906,7 +906,7 @@ export default function LibraryWorkspace({
             <>
               <div className="catalog-inspector__play-actions">
                 <Tooltip content="下一首播放">
-                  <button aria-label="下一首播放选中曲目" className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
+                  <button aria-label={`下一首播放 ${selectedTrack.track.title}`} className="text-button play-next-button" onClick={() => void playNext(selectedTrack.track)} type="button"><Icon name="play-next" size={20} /></button>
                 </Tooltip>
                 <button className="text-button text-button--primary catalog-inspector__play" onClick={() => void updateNativeQueue(selectedTrack.track, true)} type="button"><Icon name="play" size={17} />{remote ? "在电脑播放" : "立即播放"}</button>
               </div>

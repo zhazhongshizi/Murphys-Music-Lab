@@ -76,13 +76,13 @@ describe("LocalMusicLibrary", () => {
     const tracks = Array.from({ length: 250 }, (_, i) => ({ ...TRACK, id: `local_${i.toString(16).padStart(64, "0")}_mp3`, title: `音乐 ${i}` }));
     getMock.mockResolvedValue(list(tracks));
     render(<LocalMusicLibrary />);
-    await screen.findByRole("button", { name: /音乐 0/ });
+    await screen.findByRole("button", { name: /^音乐 0/ });
     expect(screen.getAllByRole("row")).toHaveLength(101);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "下一页" }));
-    expect(screen.getByRole("button", { name: /音乐 100/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^音乐 100/ })).toBeInTheDocument();
     await user.type(screen.getByRole("searchbox", { name: "搜索本地歌曲" }), "音乐 249");
-    expect(screen.getByRole("button", { name: /音乐 249/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^音乐 249/ })).toBeInTheDocument();
     expect(screen.getAllByRole("row")).toHaveLength(2);
   });
 
@@ -108,7 +108,7 @@ describe("LocalMusicLibrary", () => {
   it("selects a track and reuses local queue actions for enqueue and playback", async () => {
     const user = userEvent.setup();
     render(<LocalMusicLibrary />);
-    await user.click(await screen.findByRole("button", { name: /本地夜航/ }));
+    await user.click(await screen.findByRole("button", { name: /^本地夜航/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中本地曲目" });
     expect(within(inspector).getByText("MP3")).toBeInTheDocument();
     await user.click(within(inspector).getByRole("button", { name: "加入本地队列" }));
@@ -167,7 +167,7 @@ describe("LocalMusicLibrary", () => {
     } as const;
     deleteMock.mockResolvedValue({ deletedId: TRACK.id, session, autoPlayStarted: false });
     render(<LocalMusicLibrary />);
-    await user.click(await screen.findByRole("button", { name: /本地夜航/ }));
+    await user.click(await screen.findByRole("button", { name: /^本地夜航/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中本地曲目" });
     const deleteButton = within(inspector).getByRole("button", { name: "删除歌曲" });
     await user.click(deleteButton);
@@ -198,7 +198,7 @@ describe("LocalMusicLibrary", () => {
     } as const;
     deleteMock.mockResolvedValue({ deletedId: TRACK.id, session, autoPlayStarted: false });
     render(<LocalMusicLibrary />);
-    await user.click(await screen.findByRole("button", { name: /本地夜航/ }));
+    await user.click(await screen.findByRole("button", { name: /^本地夜航/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中本地曲目" });
     await user.click(within(inspector).getByRole("button", { name: "删除歌曲" }));
     await user.click(within(inspector).getByRole("button", { name: "确认删除《本地夜航》" }));
@@ -224,7 +224,7 @@ describe("LocalMusicLibrary", () => {
     } as const;
     deleteMock.mockResolvedValue({ deletedId: TRACK.id, session, autoPlayStarted: false });
     render(<LocalMusicLibrary />);
-    await user.click(await screen.findByRole("button", { name: /本地夜航/ }));
+    await user.click(await screen.findByRole("button", { name: /^本地夜航/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中本地曲目" });
     await user.click(within(inspector).getByRole("button", { name: "删除歌曲" }));
     await user.click(within(inspector).getByRole("button", { name: "确认删除《本地夜航》" }));

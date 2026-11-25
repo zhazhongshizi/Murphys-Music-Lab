@@ -122,7 +122,7 @@ export function RemoteApp() {
         )}
         </ArtistNavigationContent>
       </div>
-      <div className="remote-player" inert={connection !== "online"}><PlayerBar queueOpen={queueOpen} onOpenQueue={() => setQueueOpen(true)} /></div>
+      <div className="remote-player" inert={connection !== "online"}><PlayerBar variant="remote" queueOpen={queueOpen} onOpenQueue={() => setQueueOpen(true)} /></div>
     </div>
     <QueueDrawer open={queueOpen && connection === "online"} onClose={() => setQueueOpen(false)} editable={false} />
   </ArtistNavigationContext.Provider>;

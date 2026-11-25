@@ -16,6 +16,8 @@ import { SongArtistLinks } from "../artist/SongArtistLinks";
 import { SavedQueues } from "../library/PersonalLibrary";
 import { hasPlaybackTransport } from "../../backend/playbackTransport";
 import { switchQueue } from "../../backend/personalAdapter";
+import { nativeProviderVideoParts, ProviderAdapterError } from "../../backend/providersAdapter";
+import type { Track } from "./fixtures";
 
 const selectQueue = (snapshot: PlayerSnapshot) => snapshot.queue;
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
@@ -73,6 +75,35 @@ export function QueueDrawer({ open, onClose, editable = true, presentation = "dr
   const currentPage = Math.min(rhinePage, pageCount);
   const pageOffset = (currentPage - 1) * QUEUE_PAGE_SIZE;
   const visibleQueue = useMemo(() => filteredQueue.slice(pageOffset, pageOffset + QUEUE_PAGE_SIZE), [filteredQueue, pageOffset]);
+  const checkedVideoIds = useRef(new Set<string>());
+  const confirmedMultipart = useRef(new WeakSet<Track>());
+  useEffect(() => {
+    if (!open) {
+      checkedVideoIds.current.clear();
+      return;
+    }
+    if (!nativeMode || !hasPlaybackTransport()) return;
+    let cancelled = false;
+    async function checkLegacyTitles() {
+      for (const { track } of visibleQueue) {
+        if (cancelled) return;
+        const video = track.video;
+        if (video?.partNumber !== 1 || track.title !== video.partTitle || track.title === video.title ||
+            confirmedMultipart.current.has(track) || checkedVideoIds.current.has(track.id)) continue;
+        checkedVideoIds.current.add(track.id);
+        try {
+          // The host reconciles the saved title only after checking the complete part count and CID.
+          const page = await nativeProviderVideoParts(track.id.split(":")[2]!, 1, 1);
+          if (page.hasMore && page.items[0]?.id === track.id) confirmedMultipart.current.add(track);
+        } catch (error) {
+          if (!(error instanceof ProviderAdapterError &&
+              (error.upstreamCode === "media_unavailable" || error.upstreamCode === "entitlement_denied"))) return;
+        }
+      }
+    }
+    void checkLegacyTitles();
+    return () => { cancelled = true; };
+  }, [open, nativeMode, visibleQueue]);
   const dragItemIds = useMemo(() => visibleQueue.map(({ track }) => track.id), [visibleQueue]);
   const drag = useQueueDragReorder({
     disabled: !editable || queue.length < 2 || !!searchQuery.trim(),

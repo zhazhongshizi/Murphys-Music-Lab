@@ -17,10 +17,15 @@ pub fn registration(root: &Path, node: &Path) -> Result<Registration, Error> {
 }
 pub struct BilibiliService {
     pub registry: Arc<ProviderRegistry>,
+    queue: Option<Arc<crate::queue::QueueService>>,
     covers: Mutex<BTreeMap<String, (u64, String)>>,
 }
 impl BilibiliService {
-    pub fn new(registry: Arc<ProviderRegistry>) -> Self { Self { registry, covers: Mutex::new(BTreeMap::new()) } }
+    pub fn new(registry: Arc<ProviderRegistry>) -> Self { Self { registry, queue: None, covers: Mutex::new(BTreeMap::new()) } }
+    pub fn with_queue(mut self, queue: Option<Arc<crate::queue::QueueService>>) -> Self {
+        self.queue = queue;
+        self
+    }
     pub fn ready_generation(&self) -> Result<u64, Error> { self.registry.ready_generation(OnlineProviderId::Bilibili) }
     /// Private metadata lookup for a cover cache miss. Never expose its URL over IPC.
     pub(crate) fn cover_url(&self, bvid: &str, speculative: bool) -> Result<String, Error> {
@@ -68,7 +73,17 @@ impl BilibiliService {
         let items: Result<Vec<_>, _> = v["items"].as_array().ok_or(Error::Schema)?.iter().map(|x| match method {
             "video.parts" => public_track(x), "library.containers" => public_container(x), _ => public_video(x),
         }).collect();
-        Ok(json!({"page":v["page"],"hasMore":v["hasMore"],"total":v["total"],"items":items?}))
+        let items = items?;
+        if method == "video.parts" && v["total"] == 1 && v["page"] == 1 && v["hasMore"] == false {
+            if let (Some(queue), [part]) = (&self.queue, items.as_slice()) {
+                if part["video"]["partNumber"] == 1 {
+                    // A failed cosmetic update can be retried when the queue is reopened.
+                    // It must not block browsing or enqueueing the verified part.
+                    let _ = queue.restore_single_part_title(part["id"].as_str().ok_or(Error::Schema)?);
+                }
+            }
+        }
+        Ok(json!({"page":v["page"],"hasMore":v["hasMore"],"total":v["total"],"items":items}))
     }
 }
 pub fn raw_part(id: &str) -> Result<(&str, &str), Error> {
@@ -141,6 +156,41 @@ pub(crate) mod tests {
     pub(crate) fn tracks(b: &BilibiliService) -> Vec<crate::queue::QueueTrack> {
         let page = b.read("video.parts", json!({"bvid":"BV17x411w7KC","page":1,"pageSize":20})).unwrap();
         page["items"].as_array().unwrap().iter().map(|t| queue_track_from_provider_track(t).unwrap()).collect()
+    }
+    #[test]
+    fn old_queue_titles_are_repaired_only_for_confirmed_single_parts_and_survive_restart() {
+        use crate::queue::QueueService;
+        let dir = std::env::temp_dir().join(format!("bilibili-queue-titles-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.sqlite3");
+        {
+            let queue = Arc::new(QueueService::open(&path).unwrap());
+            let bili = BilibiliService::new(service().registry.clone()).with_queue(Some(queue.clone()));
+            let multi = tracks(&bili).remove(0);
+            let mut single = multi.clone();
+            single.id = "bilibili:video:BV17x411w7KE:123".into();
+            single.cover_cache_key = Some("bili_BV17x411w7KE".into());
+            let mut other_cid = single.clone();
+            other_cid.id = "bilibili:video:BV17x411w7KE:999".into();
+            queue.replace(vec![multi.clone(), single.clone(), other_cid.clone()]).unwrap();
+            queue.select(2).unwrap();
+            let before = queue.snapshot();
+            let first_page = |bvid: &str| bili.read("video.parts", json!({"bvid":bvid,"page":1,"pageSize":1})).unwrap();
+            assert_eq!(first_page("BV17x411w7KC")["total"], 2);
+            assert_eq!(queue.snapshot(), before);
+            assert_eq!(first_page("BV17x411w7KE")["total"], 1);
+            let after = queue.snapshot();
+            single.title = single.video.as_ref().unwrap().title.clone();
+            assert_eq!(after.items, vec![multi, single, other_cid]);
+            assert_eq!(after.selected_index, before.selected_index);
+            assert_eq!(after.generation, before.generation + 1);
+            first_page("BV17x411w7KE");
+            assert_eq!(queue.snapshot(), after);
+            let restored = QueueService::open(&path).unwrap().snapshot();
+            assert_eq!(restored.items, after.items);
+            assert_eq!(restored.selected_index, after.selected_index);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn production_handshake_and_host_read_parts_are_strict_and_public() {

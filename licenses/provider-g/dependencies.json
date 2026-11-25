@@ -3,7 +3,7 @@
   "baselineCommit": "07f53de64f1150508f1ee270dd3d03311b9c2437",
   "scope": "Stage G Node runtime/providers (all npm runtime dependencies), changed Rust dependencies/features since baseline, frontend runtime closure (no new frontend dependency), and QQ Python runtime closure. Existing other Rust/OS/framework components remain governed by THIRD_PARTY_NOTICES.md and upstream terms; this is not a claim of a complete pre-existing Rust SBOM.",
   "inputs": {
-    "package.json": "92632a2c675f0b9899e3768f6e3e6e8004a81fe1e3108f6f479848811809904c",
+    "package.json": "5ab3d3867b0b6c447d5b371da429f37523b72bfc2bd20c68a2a150400a154ca7",
     "pnpm-lock.yaml": "947257f80e89526178987e17a8ca554b238b59a3cb35f784895cef8fdc8b6f0b",
     "provider/pyproject.toml": "938fd4e57dfdb55e9e63a06c487205226226e7f5e09a3351dfc72357ad06cfa2",
     "provider/requirements.lock": "7bbd4ed7d15c595161755bd187c4affa4597f2749699182e73e5e453368a07d4",
@@ -17,8 +17,8 @@
     "scripts/generate-provider-notices.sources.json": "1ff1652af2e30a31d029fe866dbecfc68e817c51c35cd973fe2c1fb25cd7acb8",
     "scripts/provider-notices-baseline/package.json": "8b51cb0fd43e51d53206d0e7d87e4f131d47d57d291adc9c6adaaf40c9e1f253",
     "scripts/provider-notices-baseline/src-tauri/Cargo.toml": "0540dc4aa407744569e344160d8c60c04cd95ac3c00a5579f40837c5533315e5",
-    "src-tauri/Cargo.lock": "bc91cf732314c9cbd21dd8b86493f217bd1f150df5ebf1a271e85dbca43d88bd",
-    "src-tauri/Cargo.toml": "ecfcc341e537f0f09f0f7219f54d417e3e9f58216cce950b14eda3cd079b2773",
+    "src-tauri/Cargo.lock": "9a032369e66e6e4398c494ccbfb249f387a03e14d37a5752903a5d303bf106f7",
+    "src-tauri/Cargo.toml": "f119ce2e62fc966324ba48127ff93d6ee9b57cc8a895beef183a2b432d87c1b7",
     "vendor/rhine/LICENSE": "9129c293e2a6f989d6e648fffc551a3ec914419295e67942b991f7f0f4576163",
     "vendor/rhine/README.md": "e918dff677ea921d812fe54e11bd7f9274c2f52f2e0be4998f8133b523846c55"
   },

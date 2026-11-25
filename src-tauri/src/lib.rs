@@ -359,7 +359,7 @@ impl AppState {
             let b = b.is_some_and(&mut register);
             if n { state.netease = Some(Arc::new(multi_provider::netease::NeteaseService::new(state.registry.clone()).with_covers(state.cover.clone()))); }
             if b {
-                let service = Arc::new(multi_provider::bilibili::BilibiliService::new(state.registry.clone()));
+                let service = Arc::new(multi_provider::bilibili::BilibiliService::new(state.registry.clone()).with_queue(state.queue.clone()));
                 if let Some(cover) = &state.cover {
                     let service = service.clone();
                     cover.set_bilibili_lookup(move |bvid, speculative| {

@@ -213,7 +213,10 @@ impl PlaybackController {
         }))
     }
     pub(crate) fn smooth_enabled(&self) -> bool {
-        self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.budget.enabled())
+        self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.cache.enabled())
+    }
+    fn media_bridge_enabled(&self) -> bool {
+        self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.bridge_enabled())
     }
     pub(crate) fn preload_enabled(&self) -> bool {
         self.smooth.as_ref().is_some_and(|(runtime, _)| runtime.cache.preload_enabled())
@@ -419,7 +422,7 @@ impl PlaybackController {
         .map_err(|_| PlaybackError::UnsafeMediaUrl);
         resolved.url.zeroize();
         let trusted = trusted?;
-        let bridged = if let Some(generation) = generation.filter(|_| self.smooth_enabled()) {
+        let bridged = if let Some(generation) = generation.filter(|_| self.media_bridge_enabled()) {
             let (_, registry) = self.smooth.as_ref().unwrap();
             let bitrate = match resolved.quality.as_str() { "128k" => Some(128_000), "320k" => Some(320_000), _ => None };
             let smooth = self.smooth_source(OnlineProviderId::Qqmusic, generation, &track.id,

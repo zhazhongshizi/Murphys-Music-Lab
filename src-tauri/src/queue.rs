@@ -234,6 +234,20 @@ impl QueueService {
             .save_playback_volume(volume)
             .map_err(map_persistence_error)
     }
+
+    /// A complete upstream part list confirmed this exact BV/CID is the only part.
+    pub(crate) fn restore_single_part_title(&self, id: &str) -> Result<(), QueueError> {
+        let mut state = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(track) = state.items.iter_mut().find(|track| track.id == id) else { return Ok(()) };
+        let Some(video) = &track.video else { return Ok(()) };
+        if video.part_number != 1 || track.title != video.part_title || track.title == video.title {
+            return Ok(());
+        }
+        self.persistence.update_queue_title(id, &track.title, &video.title).map_err(map_persistence_error)?;
+        track.title.clone_from(&video.title);
+        state.generation = state.generation.saturating_add(1);
+        Ok(())
+    }
     pub fn snapshot(&self) -> QueueSnapshot {
         #[cfg(test)]
         self.full_snapshot_reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

@@ -98,14 +98,19 @@
     radial-gradient(ellipse at 80% 65%, color-mix(in srgb, var(--cover-vibrant) var(--cover-glow-side-mix), transparent), transparent 65%);
 }
 .app-shell.app-shell--normal .player-bar {
-  margin: 0 24px 18px;
-  border-radius: 28px;
-  padding: 11px 24px 12px;
-  grid-template-columns: minmax(180px, 1fr) minmax(320px, 1.45fr) minmax(180px, 1fr);
+  margin: 0 24px 20px;
+  border-radius: 30px;
+  padding: 12px 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 1.4fr) minmax(0, 1fr);
   column-gap: 16px;
+}
+/* Only the desktop bar morphs when switching between stage and library. */
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar:is([data-variant="stage"], [data-variant="dock"]) {
+  border-radius: 28px;
   transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1), padding 220ms ease, background 350ms ease, border-color 350ms ease;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="true"] {
+/* Desktop NormalMode morphs between centered stage capsule ("stage") and full-width library bar ("dock"); Remote ("remote") keeps base + remote.css layout. */
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] {
   width: min(700px, calc(100% - 48px));
   justify-self: center;
   margin: 0 auto 18px;
@@ -113,22 +118,22 @@
   grid-template-columns: auto minmax(280px, 1fr) auto;
   column-gap: 14px;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="true"]:not(:has(.player-bar__like-wrap)) {
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"]:not(:has(.player-bar__like-wrap)) {
   grid-template-columns: minmax(280px, 1fr) auto;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="true"]:not(:has(.player-bar__like-wrap)) .player-bar__track {
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"]:not(:has(.player-bar__like-wrap)) .player-bar__track {
   display: none;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__track,
-.app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__title-row {
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__track,
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__title-row {
   gap: 0;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__track > :not(.player-bar__track-meta),
-.app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__title-row > :not(.player-bar__like-wrap),
-.app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__artist {
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__track > :not(.player-bar__track-meta),
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__title-row > :not(.player-bar__like-wrap),
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__artist {
   display: none;
 }
-.app-shell.app-shell--normal .player-bar[data-compact="false"] {
+.app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="dock"] {
   width: calc(100% - 48px);
   justify-self: stretch;
   margin: 0 24px 18px;
@@ -136,7 +141,6 @@
   grid-template-columns: minmax(180px, 1fr) minmax(320px, 1.45fr) minmax(180px, 1fr);
   column-gap: 16px;
 }
-.app-shell.app-shell--normal .player-bar::before { display: none; content: none; }
 .app-shell.app-shell--normal .player-bar__timeline { background: transparent; }
 .app-shell.app-shell--normal .player-bar__track strong { font-weight: 600; }
 .app-shell.app-shell--normal .player-bar__play { background: var(--paper); color: #253040; border-color: transparent; width: 46px; height: 46px; box-shadow: 0 4px 16px rgb(0 0 0 / 12%); }
@@ -170,19 +174,19 @@
   .app-shell.app-shell--normal .stage__cover-column { width: min(100%, 340px); }
   .app-shell.app-shell--normal .stage__spine { height: 32px; }
   .app-shell.app-shell--normal .lyrics-scroll { min-height: 260px; }
-  .app-shell.app-shell--normal .player-bar,
-  .app-shell.app-shell--normal .player-bar[data-compact="false"] { width: calc(100% - 24px); grid-template-columns: minmax(100px, 1fr) minmax(250px, 1.5fr) auto; margin: 0 12px 12px; padding-inline: 16px; }
-  .app-shell.app-shell--normal .player-bar[data-compact="true"] { width: min(700px, calc(100% - 24px)); margin: 0 auto 12px; padding-inline: 16px; grid-template-columns: auto minmax(220px, 1fr) auto; }
-  .app-shell.app-shell--normal .player-bar[data-compact="true"]:not(:has(.player-bar__like-wrap)) { grid-template-columns: minmax(220px, 1fr) auto; }
+  .app-shell.app-shell--normal .player-bar { grid-template-columns: minmax(100px, 1fr) minmax(250px, 1.5fr) auto; margin: 0 12px 12px; padding-inline: 16px; }
+  .app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="dock"] { width: calc(100% - 24px); grid-template-columns: minmax(100px, 1fr) minmax(250px, 1.5fr) auto; margin: 0 12px 12px; padding-inline: 16px; }
+  .app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] { width: min(700px, calc(100% - 24px)); margin: 0 auto 12px; padding-inline: 16px; grid-template-columns: auto minmax(220px, 1fr) auto; }
+  .app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"]:not(:has(.player-bar__like-wrap)) { grid-template-columns: minmax(220px, 1fr) auto; }
 }
 @media (max-width: 600px) {
   .app-shell.app-shell--normal .top-bar { margin-inline: 4px; padding-inline: 8px; }
   .app-shell.app-shell--normal .top-bar__brand { display: none; }
   .app-shell.app-shell--normal .top-bar { grid-template-columns: auto 1fr; }
-  .app-shell.app-shell--normal .player-bar,
-  .app-shell.app-shell--normal .player-bar:is([data-compact="true"], [data-compact="false"]) { width: calc(100% - 24px); margin: 0 12px 12px; grid-template-columns: 1fr auto; }
+  .app-shell.app-shell--normal .player-bar { grid-template-columns: 1fr auto; }
+  .app-shell.app-shell--normal:not(.remote-shell) .player-bar:is([data-variant="stage"], [data-variant="dock"]) { width: calc(100% - 24px); margin: 0 12px 12px; grid-template-columns: 1fr auto; }
   .app-shell.app-shell--normal .player-bar__track,
-  .app-shell.app-shell--normal .player-bar[data-compact="true"] .player-bar__track { display: none; }
+  .app-shell.app-shell--normal:not(.remote-shell) .player-bar[data-variant="stage"] .player-bar__track { display: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .app-shell.app-shell--normal { --glass-fill: #252d39; }
@@ -596,10 +600,8 @@ body:has(.app-shell.app-shell--normal[data-cover-tone="light"]) > .playlist-pick
   contain: layout style paint;
 }
 .app-shell.app-shell--normal .stage__glow,
-.app-shell.app-shell--normal .player-bar::before,
 .app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .stage__glow--field,
-.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .stage__glow--artwork-core,
-.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .player-bar::before {
+.app-shell.app-shell--normal[data-glow-motion="playing"]:is([data-glow-intensity="standard"], [data-glow-intensity="enhanced"]) .stage__glow--artwork-core {
   animation: none;
   will-change: auto;
 }

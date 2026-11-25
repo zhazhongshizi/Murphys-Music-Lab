@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { switchQueue } from "../../backend/personalAdapter";
+import * as playbackTransport from "../../backend/playbackTransport";
+import * as providers from "../../backend/providersAdapter";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
 import type { QueueSnapshot } from "../../contracts/queue";
 import { QueueDrawer } from "./QueueDrawer";
@@ -106,6 +108,37 @@ function prepareRhineDragGeometry(container: HTMLElement) {
 }
 
 describe("播放队列抽屉", () => {
+  it("打开旧队列时仅核对标题有歧义的 P1，离线保留原名、下次打开可再核对", async () => {
+    const { queue, player } = largeQueue(3);
+    const items = queue.items.map((track, index) => ({
+      ...track, id: `bilibili:video:BV17x411w7KC:${123 + index}`,
+      title: index === 1 ? "视频原题" : track.title,
+      video: { title: "视频原题", partTitle: track.title, partNumber: index === 2 ? 2 : 1 },
+    }));
+    await act(() => playerActions.hydrateNative({ ...queue, items }, player));
+    vi.spyOn(playbackTransport, "hasPlaybackTransport").mockReturnValue(true);
+    const read = vi.spyOn(providers, "nativeProviderVideoParts").mockRejectedValue(
+      new providers.ProviderAdapterError("QMG-PROVIDER-001", "network_unavailable"),
+    );
+    const props = { editable: false, onClose: vi.fn() };
+    const { rerender } = render(<QueueDrawer {...props} open={false} />);
+    expect(read).not.toHaveBeenCalled();
+    rerender(<QueueDrawer {...props} open />);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    expect(read).toHaveBeenCalledWith("BV17x411w7KC", 1, 1);
+    expect(screen.getByText(items[0]!.title, { exact: true })).toBeVisible();
+    read.mockResolvedValue({
+      page: 1, total: 2, hasMore: true, items: [{
+        ...items[0]!, providerId: "bilibili", creatorKind: "uploader", availability: "unknown",
+      }],
+    });
+    rerender(<QueueDrawer {...props} open={false} />);
+    rerender(<QueueDrawer {...props} open />);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    rerender(<QueueDrawer {...props} open={false} />);
+    rerender(<QueueDrawer {...props} open />);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
   it("普通界面队列每页最多三十行并定位当前曲目所在页", async () => {
     const user = userEvent.setup();
     await hydrateLargeQueue(65, 64);

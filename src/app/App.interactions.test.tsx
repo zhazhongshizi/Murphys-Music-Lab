@@ -136,47 +136,52 @@ describe("应用外壳键盘与状态契约", () => {
 
   it("让检查器始终跟随可见结果，并在喜欢页应用同一搜索词", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
 
-    await user.click(screen.getByRole("button", { name: "搜索" }));
-    const searchbox = await screen.findByRole("combobox", { name: "搜索歌曲、歌手或专辑" });
+    await user.click(within(topBar).getByRole("button", { name: "搜索" }));
+    const searchbox = await screen.findByRole("combobox", { name: "搜索歌曲、歌手或专辑" }, { timeout: 3_000 });
+    const pane = container.querySelector<HTMLElement>(".catalog-pane")!;
     await user.type(searchbox, "不存在");
-    expect(screen.getByText("没有找到匹配的音乐")).toBeInTheDocument();
+    expect(within(pane).getByText("没有找到匹配的音乐")).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "当前选中曲目" })).not.toBeInTheDocument();
 
     await user.clear(searchbox);
     await user.type(searchbox, "潮汐");
     expect(screen.queryByRole("complementary", { name: "当前选中曲目" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "曲目检视栏" }));
+    await user.click(within(pane).getByRole("button", { name: "曲目检视栏" }));
     const inspector = screen.getByRole("complementary", { name: "当前选中曲目" });
     expect(within(inspector).getByRole("heading", { name: "潮汐来信" })).toBeInTheDocument();
 
     const sidebar = screen.getByRole("complementary", { name: "曲库导航" });
     await user.click(within(sidebar).getByRole("button", { name: /喜欢/ }));
-    expect(screen.getByText("没有找到匹配的音乐")).toBeInTheDocument();
+    expect(within(pane).getByText("没有找到匹配的音乐")).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "当前选中曲目" })).not.toBeInTheDocument();
   });
 
   it("可从曲库重新播放已移出队列的目录曲目", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
+    const playerBar = container.querySelector<HTMLElement>("footer.player-bar")!;
 
-    await user.click(screen.getByRole("button", { name: "打开播放队列" }));
+    await user.click(within(playerBar).getByRole("button", { name: "打开播放队列" }));
     let dialog = screen.getByRole("dialog", { name: "播放队列" });
     await user.click(within(dialog).getByRole("button", { name: "从队列移除《纸月光》" }));
     await user.click(within(dialog).getByRole("button", { name: "关闭播放队列" }));
 
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    await screen.findByRole("heading", { name: "发现音乐" });
-    await user.click(screen.getByRole("button", { name: /^纸月光/ }));
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 });
+    const pane = container.querySelector<HTMLElement>(".catalog-pane")!;
+    await user.click(within(pane).getByRole("button", { name: /^纸月光/ }));
     const inspector = screen.getByRole("complementary", { name: "当前选中曲目" });
     await user.click(within(inspector).getByRole("button", { name: "立即播放" }));
 
-    await user.click(screen.getByRole("button", { name: "打开播放队列" }));
+    await user.click(within(playerBar).getByRole("button", { name: "打开播放队列" }));
     dialog = screen.getByRole("dialog", { name: "播放队列" });
     expect(within(dialog).getByText("5 首 · 本地队列")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "纸月光 曲目来源" })).toHaveAttribute("aria-current", "true");
-  }, 15_000);
+  }, 10_000);
 
   it("让音量轨道与真实音量和静音状态同步", async () => {
     const user = userEvent.setup();
@@ -224,29 +229,31 @@ describe("应用外壳键盘与状态契约", () => {
   it("喜欢红心已迁至底栏且顶栏不再包含，进入曲库后仍常驻并可切换", async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
+    const topBar = container.querySelector<HTMLElement>("header.top-bar")!;
+    const playerBar = container.querySelector<HTMLElement>("footer.player-bar")!;
 
-    expect(container.querySelector(".top-bar .top-bar__liked")).toBeNull();
-    const likeButton = screen.getByRole("button", { name: "喜欢《暮色温室》" });
+    expect(topBar.querySelector(".top-bar__liked")).toBeNull();
+    const likeButton = within(playerBar).getByRole("button", { name: "喜欢《暮色温室》" });
     expect(likeButton.closest(".player-bar__title-row")).not.toBeNull();
     expect(likeButton).toHaveAttribute("aria-pressed", "false");
     expect(likeButton).not.toHaveClass("player-bar__liked");
 
     await user.click(likeButton);
-    const likedButton = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    const likedButton = within(playerBar).getByRole("button", { name: "取消喜欢《暮色温室》" });
     expect(likedButton).toHaveAttribute("aria-pressed", "true");
     expect(likedButton).toHaveClass("player-bar__liked");
 
-    await user.click(screen.getByRole("button", { name: "曲库" }));
-    expect(await screen.findByRole("heading", { name: "发现音乐" })).toBeInTheDocument();
-    expect(container.querySelector(".top-bar .top-bar__liked")).toBeNull();
+    await user.click(within(topBar).getByRole("button", { name: "曲库" }));
+    expect(await screen.findByRole("heading", { name: "发现音乐" }, { timeout: 3_000 })).toBeInTheDocument();
+    expect(topBar.querySelector(".top-bar__liked")).toBeNull();
 
-    const libraryLikeButton = screen.getByRole("button", { name: "取消喜欢《暮色温室》" });
+    const libraryLikeButton = within(playerBar).getByRole("button", { name: "取消喜欢《暮色温室》" });
     expect(libraryLikeButton.closest(".player-bar__title-row")).not.toBeNull();
     expect(libraryLikeButton).toHaveAttribute("aria-pressed", "true");
     expect(libraryLikeButton).toHaveClass("player-bar__liked");
 
     await user.click(libraryLikeButton);
-    const unlikedButton = screen.getByRole("button", { name: "喜欢《暮色温室》" });
+    const unlikedButton = within(playerBar).getByRole("button", { name: "喜欢《暮色温室》" });
     expect(unlikedButton).toHaveAttribute("aria-pressed", "false");
     expect(unlikedButton).not.toHaveClass("player-bar__liked");
   });

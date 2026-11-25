@@ -1,7 +1,12 @@
-import { fixture, response } from './fixture.mjs';
+import { fixture, response, view } from './fixture.mjs';
 import { runProvider } from '../main.mjs';
 const coverFault = process.argv[3];
 const f = fixture({ hook: url => {
+  const bvid = url.searchParams.get('bvid');
+  if (bvid === 'BV17x411w7KE') {
+    if (url.pathname === '/x/web-interface/view') return response({ ...view, bvid });
+    if (url.pathname === '/x/player/pagelist') return response(view.pages.slice(0, 1));
+  }
   if (url.pathname !== '/x/web-interface/view' || url.searchParams.get('bvid') !== 'BV17x411w7KD') return;
   if (coverFault === 'rate_limited') return response(null, { status: 429 });
   if (coverFault === 'verification_required') return response(null, { code: -352 });
