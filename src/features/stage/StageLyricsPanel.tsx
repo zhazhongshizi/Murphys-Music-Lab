@@ -43,7 +43,11 @@ export function StageLyricsPanel({ children, hasLyrics = true, settings }: { chi
   const [manuallyOpen, setOpen] = useState(false);
   const outro = useOutroPreview();
   const lyricsPending = usePlayerSelector((s) => s.nativeMode && s.lyricsReady === false);
-  const pinned = !hasLyrics && !lyricsPending;
+  const bilibiliLyricsError = usePlayerSelector((s) => {
+    const track = getCurrentTrack(s);
+    return Boolean(s.nativeMode && track?.id.startsWith("bilibili:") && s.lyricsStatus === "error");
+  });
+  const pinned = !hasLyrics && !lyricsPending && !bilibiliLyricsError;
   const open = manuallyOpen || pinned || outro.active;
   const current = usePlayerSelector(getCurrentTrack);
   useEffect(() => { if (outro.active) setOpen(false); }, [outro.active]);
@@ -70,7 +74,7 @@ export function StageLyricsPanel({ children, hasLyrics = true, settings }: { chi
       className="stage-lyrics-panel" data-queue-open={open} aria-label="歌词与播放队列"
       onKeyDown={(event) => {
         resetIdleTimer();
-        if (!showingSettings && event.key === "Escape" && open && hasLyrics) {
+        if (!showingSettings && event.key === "Escape" && open && !pinned) {
           event.stopPropagation();
           outro.dismiss();
           setOpen(false);

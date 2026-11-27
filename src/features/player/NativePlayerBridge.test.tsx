@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ListeningStage } from "../stage/ListeningStage";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
+import { parseLyricTimeline } from "../../backend/lyricsAdapter";
+import { invalidateProviderSession } from "../../backend/providerSessions";
 import { NativePlayerBridge } from "./NativePlayerBridge";
 import { PlayerBar } from "./PlayerBar";
 import { QueueDrawer } from "./QueueDrawer";
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   queueMove: vi.fn(),
   queueRemove: vi.fn(),
   queueNext: vi.fn(),
+  queuePreviewNext: vi.fn().mockResolvedValue(null),
   queuePrevious: vi.fn(),
   setMode: vi.fn(),
   lyrics: vi.fn(),
@@ -59,12 +62,15 @@ vi.mock("../../backend/nativeQueueAdapter", () => ({
   nativeQueueMove: mocks.queueMove,
   nativeQueueRemove: mocks.queueRemove,
   nativeQueueNext: mocks.queueNext,
-  nativeQueuePreviewNext: vi.fn().mockResolvedValue(null),
+  nativeQueuePreviewNext: mocks.queuePreviewNext,
   nativeQueuePrevious: mocks.queuePrevious,
   nativeSetPlaybackMode: mocks.setMode,
 }));
 
-vi.mock("../../backend/lyricsAdapter", () => ({ getTimedLyrics: mocks.lyrics }));
+vi.mock("../../backend/lyricsAdapter", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../backend/lyricsAdapter")>(),
+  getTimedLyrics: mocks.lyrics,
+}));
 
 const QUEUE = {
   generation: 4,
@@ -177,6 +183,7 @@ describe("native player bridge", () => {
     mocks.queueMove.mockReset();
     mocks.queueRemove.mockReset();
     mocks.queueNext.mockReset();
+    mocks.queuePreviewNext.mockReset().mockResolvedValue(null);
     mocks.queuePrevious.mockReset();
     mocks.setMode.mockReset().mockImplementation((mode: string) =>
       Promise.resolve({ mode, queue: QUEUE, player: PLAYER, requestedQuality: "320k" }),
@@ -766,5 +773,293 @@ describe("native player bridge", () => {
 
     playerActions.seekBy(1_000);
     await waitFor(() => expect(mocks.seek).toHaveBeenCalledWith(9_000));
+  });
+
+  it("applies Bilibili subtitle source and endMs, discards delayed P1 responses on P1->P2 switch, and keeps errors non-blocking & retryable", async () => {
+    const p1 = {
+      id: "bilibili:video:BV1he4y1K7nu:929778564",
+      title: "P1",
+      artist: "UP",
+      album: "",
+      durationMs: 316_000,
+    };
+    const p2 = {
+      id: "bilibili:video:BV1he4y1K7nu:929770857",
+      title: "P2",
+      artist: "UP",
+      album: "",
+      durationMs: 264_000,
+    };
+    const biliQueue = { generation: 10, selectedIndex: 0, items: [p1, p2] };
+    const p1Delayed = deferred<{
+      generation: number;
+      trackId: string;
+      source: "bilibiliSubtitle";
+      lines: { atMs: number; endMs: number; original: string }[];
+    }>();
+
+    mocks.sessionSnapshot.mockResolvedValue({
+      mode: "sequence",
+      queue: biliQueue,
+      player: { ...PLAYER, generation: 11, currentTrack: p1, positionMs: 1_000, durationMs: 316_000 },
+      requestedQuality: "320k",
+    });
+    mocks.lyrics.mockImplementation((trackId: string, generation: number) => {
+      if (trackId === p1.id && generation === 11) return p1Delayed.promise;
+      if (trackId === p2.id && generation === 12) {
+        return Promise.resolve({
+          generation: 12,
+          trackId: p2.id,
+          source: "bilibiliAiSubtitle",
+          lines: [{ atMs: 2_030, endMs: 5_910, original: "第二 P 字幕" }],
+        });
+      }
+      return Promise.resolve({ generation, trackId, lines: [] });
+    });
+
+    render(<><NativePlayerBridge /><ListeningStage /></>);
+    await waitFor(() => expect(mocks.lyrics).toHaveBeenCalledWith(p1.id, 11));
+
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { ...biliQueue, selectedIndex: 1 },
+        player: { ...PLAYER, generation: 12, currentTrack: p2, positionMs: 2_500, durationMs: 264_000 },
+        requestedQuality: "320k",
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("第二 P 字幕")).toBeInTheDocument());
+    expect(screen.getByText("正在播放 · 歌词 · B站 AI 字幕")).toBeInTheDocument();
+
+    // Delayed P1 response must be discarded and not overwrite P2.
+    await act(async () => {
+      p1Delayed.resolve({
+        generation: 11,
+        trackId: p1.id,
+        source: "bilibiliSubtitle",
+        lines: [{ atMs: 0, endMs: 5_000, original: "迟到的 P1 字幕" }],
+      });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("迟到的 P1 字幕")).not.toBeInTheDocument();
+    expect(getCurrentTrack()?.id).toBe(p2.id);
+    expect(getCurrentTrack()?.lyricSource).toBe("bilibiliAiSubtitle");
+
+    // Empty timeline clears lyricSource cleanly.
+    mocks.lyrics.mockResolvedValueOnce({
+      generation: 13,
+      trackId: p2.id,
+      lines: [],
+    });
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { ...biliQueue, selectedIndex: 1 },
+        player: { ...PLAYER, generation: 13, currentTrack: p2, positionMs: 0, durationMs: 264_000 },
+        requestedQuality: "320k",
+      });
+    });
+    await waitFor(() => expect(getCurrentTrack()?.lyrics).toHaveLength(0));
+    expect(getCurrentTrack()?.lyricSource).toBeUndefined();
+
+    // Provider error (e.g. login required / timeout) does not block playback and stays retryable.
+    mocks.lyrics.mockRejectedValueOnce(new Error("QMG-LYRICS-001"));
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { ...biliQueue, selectedIndex: 0 },
+        player: { ...PLAYER, generation: 14, currentTrack: p1, positionMs: 1_000, durationMs: 316_000 },
+        requestedQuality: "320k",
+      });
+    });
+    await waitFor(() => expect(mocks.lyrics).toHaveBeenCalledWith(p1.id, 14));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(getCurrentTrack()?.lyrics).toHaveLength(0);
+
+    // Retry on a new generation succeeds without poisoned cache.
+    mocks.lyrics.mockResolvedValueOnce({
+      generation: 15,
+      trackId: p1.id,
+      source: "bilibiliSubtitle",
+      lines: [{ atMs: 500, endMs: 3_000, original: "重试成功字幕" }],
+    });
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { ...biliQueue, selectedIndex: 0 },
+        player: { ...PLAYER, generation: 15, currentTrack: p1, positionMs: 1_000, durationMs: 316_000 },
+        requestedQuality: "320k",
+      });
+    });
+    expect(await screen.findByText("重试成功字幕")).toBeInTheDocument();
+    expect(screen.getByText("正在播放 · 歌词 · B站字幕")).toBeInTheDocument();
+  });
+
+  it("distinguishes Bilibili subtitle fetch errors from confirmed empty and retries without caching on Bilibili session change", async () => {
+    const biliTrack = {
+      id: "bilibili:video:BV17x411w7KC:125",
+      title: "需要登录字幕的视频",
+      artist: "UP 主",
+      album: "",
+      durationMs: 180_000,
+    };
+    const biliQueue = { generation: 20, selectedIndex: 0, items: [biliTrack] };
+    function StatusProbe() {
+      const state = usePlayerSnapshot();
+      return <output data-testid="lyrics-status">{state.lyricsStatus ?? "none"}</output>;
+    }
+
+    mocks.sessionSnapshot.mockResolvedValue({
+      mode: "sequence",
+      queue: biliQueue,
+      player: { ...PLAYER, generation: 21, currentTrack: biliTrack, positionMs: 1_000, durationMs: 180_000 },
+      requestedQuality: "320k",
+    });
+    mocks.lyrics.mockRejectedValueOnce(new Error("QMG-LYRICS-001"));
+
+    const view = render(<><NativePlayerBridge /><ListeningStage /><StatusProbe /></>);
+    await waitFor(() => expect(mocks.lyrics).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("lyrics-status")).toHaveTextContent("error"));
+
+    // Error state is visible, non-blocking, and never treated as confirmed empty.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("字幕加载失败")).toBeVisible();
+    expect(screen.getByRole("region", { name: "同步歌词" })).toHaveAttribute("data-lyrics-status", "error");
+    expect(getCurrentTrack()?.lyrics).toHaveLength(0);
+    expect(getCurrentTrack()?.lyricSource).toBeUndefined();
+
+    // Unmounting and remounting with the same track/generation does not reuse the rejected promise.
+    mocks.lyrics.mockRejectedValueOnce(new Error("QMG-LYRICS-002"));
+    view.rerender(<><ListeningStage /><StatusProbe /></>);
+    view.rerender(<><NativePlayerBridge /><ListeningStage /><StatusProbe /></>);
+    await waitFor(() => expect(mocks.lyrics).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("lyrics-status")).toHaveTextContent("error"));
+
+    // Signing in / reconnecting Bilibili invalidates the Bilibili session and retries automatically.
+    mocks.lyrics.mockResolvedValueOnce({
+      generation: 21,
+      trackId: biliTrack.id,
+      source: "bilibiliSubtitle",
+      lines: [{ atMs: 1_000, endMs: 4_000, original: "登录后获取的字幕" }],
+    });
+    act(() => {
+      invalidateProviderSession("bilibili");
+    });
+    await waitFor(() => expect(mocks.lyrics).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText("登录后获取的字幕")).toBeInTheDocument();
+    expect(screen.getByTestId("lyrics-status")).toHaveTextContent("ready");
+    expect(screen.getByRole("region", { name: "同步歌词" })).toHaveAttribute("data-lyrics-status", "ready");
+
+    // Confirmed empty subtitle response transitions to "empty" (distinct from "error").
+    mocks.lyrics.mockResolvedValueOnce({
+      generation: 22,
+      trackId: biliTrack.id,
+      lines: [],
+    });
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: biliQueue,
+        player: { ...PLAYER, generation: 22, currentTrack: biliTrack, positionMs: 0, durationMs: 180_000 },
+        requestedQuality: "320k",
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId("lyrics-status")).toHaveTextContent("empty"));
+    expect(screen.getByText("暂无歌词")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "同步歌词", hidden: true })).toHaveAttribute("data-lyrics-status", "empty");
+  });
+
+  it("propagates parsed timelineEndMs, preserves lyricSource & lyricTimelineEndMs across queue metadata refreshes, drives outro, and clears on empty/error", async () => {
+    const biliTrack = {
+      id: "bilibili:video:BV17x411w7KC:127",
+      title: "50分钟长视频",
+      artist: "UP 主",
+      album: "",
+      durationMs: 3_030_000,
+    };
+    const nextTrack = {
+      id: "bilibili:video:BV17x411w7KC:128",
+      title: "下一 P",
+      artist: "UP 主",
+      album: "",
+      durationMs: 120_000,
+    };
+    const rawTruncated = {
+      generation: 30,
+      trackId: biliTrack.id,
+      source: "bilibiliSubtitle",
+      timelineEndMs: 3_000_000,
+      lines: [
+        { atMs: 0, endMs: 1_000, original: "开场字幕" },
+        { atMs: 2_361_000, endMs: 2_362_000, original: "截断末句字幕" },
+      ],
+    };
+
+    mocks.sessionSnapshot.mockResolvedValue({
+      mode: "sequence",
+      queue: { generation: 30, selectedIndex: 0, items: [biliTrack, nextTrack] },
+      player: { ...PLAYER, generation: 30, currentTrack: biliTrack, positionMs: 2_365_000, durationMs: 3_030_000 },
+      requestedQuality: "320k",
+    });
+    mocks.queuePreviewNext.mockResolvedValue(nextTrack.id);
+    mocks.lyrics.mockResolvedValueOnce(parseLyricTimeline(rawTruncated));
+
+    render(<><NativePlayerBridge /><ListeningStage /></>);
+    await waitFor(() => expect(getCurrentTrack()?.lyricTimelineEndMs).toBe(3_000_000));
+    expect(getCurrentTrack()?.lyricSource).toBe("bilibiliSubtitle");
+    expect(screen.queryByRole("heading", { name: "即将播放" })).not.toBeInTheDocument();
+
+    // Queue metadata refresh rebuilds Track from previous and MUST preserve both lyricSource and lyricTimelineEndMs.
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: {
+          generation: 31,
+          selectedIndex: 0,
+          items: [{ ...biliTrack, title: "50分钟长视频（更新标题）" }, nextTrack],
+        },
+        player: { ...PLAYER, generation: 30, currentTrack: { ...biliTrack, title: "50分钟长视频（更新标题）" }, positionMs: 3_002_999, durationMs: 3_030_000 },
+        requestedQuality: "320k",
+      });
+    });
+    expect(getCurrentTrack()?.title).toBe("50分钟长视频（更新标题）");
+    expect(getCurrentTrack()?.lyricSource).toBe("bilibiliSubtitle");
+    expect(getCurrentTrack()?.lyricTimelineEndMs).toBe(3_000_000);
+    expect(screen.queryByRole("heading", { name: "即将播放" })).not.toBeInTheDocument();
+
+    // Reaches timelineEndMs + 3000 -> outro triggers; reverse seek exits cleanly.
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { generation: 31, selectedIndex: 0, items: [{ ...biliTrack, title: "50分钟长视频（更新标题）" }, nextTrack] },
+        player: { ...PLAYER, generation: 30, currentTrack: { ...biliTrack, title: "50分钟长视频（更新标题）" }, positionMs: 3_003_000, durationMs: 3_030_000 },
+        requestedQuality: "320k",
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "即将播放" })).toBeInTheDocument();
+
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { generation: 31, selectedIndex: 0, items: [{ ...biliTrack, title: "50分钟长视频（更新标题）" }, nextTrack] },
+        player: { ...PLAYER, generation: 30, currentTrack: { ...biliTrack, title: "50分钟长视频（更新标题）" }, positionMs: 3_002_000, durationMs: 3_030_000 },
+        requestedQuality: "320k",
+      });
+    });
+    expect(screen.queryByRole("heading", { name: "即将播放" })).not.toBeInTheDocument();
+
+    // Error clears lyricTimelineEndMs cleanly.
+    mocks.lyrics.mockRejectedValueOnce(new Error("QMG-LYRICS-001"));
+    await act(async () => {
+      await playerActions.hydrateNativeSession({
+        mode: "sequence",
+        queue: { generation: 31, selectedIndex: 0, items: [biliTrack, nextTrack] },
+        player: { ...PLAYER, generation: 31, currentTrack: biliTrack, positionMs: 1_000, durationMs: 3_030_000 },
+        requestedQuality: "320k",
+      });
+    });
+    await waitFor(() => expect(getCurrentTrack()?.lyricTimelineEndMs).toBeUndefined());
+    expect(getCurrentTrack()?.lyricSource).toBeUndefined();
   });
 });

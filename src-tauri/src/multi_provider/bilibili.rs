@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path, sync::{Arc, Mutex}};
 
-pub const METHODS: &[&str] = &["system.handshake", "system.ping", "auth.qr.start", "auth.qr.poll", "auth.qr.cancel", "auth.credential.restore", "auth.credential.check", "auth.logout", "search.videos", "video.resolve", "video.parts", "library.containers", "library.videos", "playback.resolve", "library.container", "library.verify", "library.addItems", "library.removeItems"];
+pub const METHODS: &[&str] = &["system.handshake", "system.ping", "auth.qr.start", "auth.qr.poll", "auth.qr.cancel", "auth.credential.restore", "auth.credential.check", "auth.logout", "search.videos", "video.resolve", "video.parts", "library.containers", "library.videos", "playback.resolve", "library.container", "library.verify", "library.addItems", "library.removeItems", "subtitles.get"];
 pub fn registration(root: &Path, node: &Path) -> Result<Registration, Error> {
     let bytes = std::fs::read(node).map_err(|_| Error::Unavailable)?;
     if format!("{:x}", Sha256::digest(bytes)) != "1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9" { return Err(Error::Unavailable); }
@@ -27,6 +27,33 @@ impl BilibiliService {
         self
     }
     pub fn ready_generation(&self) -> Result<u64, Error> { self.registry.ready_generation(OnlineProviderId::Bilibili) }
+    pub(crate) fn session_generation(&self) -> u64 {
+        self.registry.generation(OnlineProviderId::Bilibili).unwrap_or(0)
+    }
+    pub(crate) fn subtitles(&self, bvid: &str, cid: &str) -> Result<Value, Error> {
+        identity::TrackRef::bilibili(bvid, cid).map_err(|_| Error::Context)?;
+        let (generation, _) = self.registry.remote_ready(OnlineProviderId::Bilibili)?;
+        let params = json!({
+            "track": {
+                "kind": "videoPart",
+                "bvid": bvid,
+                "cid": cid,
+            }
+        });
+        let mut response = self.registry.request_speculative(
+            OnlineProviderId::Bilibili,
+            generation,
+            "subtitles.get",
+            params,
+        )?;
+        if response["ok"] != true {
+            return Err(Error::Upstream(
+                serde_json::from_value(response["error"]["code"].clone())
+                    .map_err(|_| Error::Schema)?,
+            ));
+        }
+        Ok(response["result"].take())
+    }
     /// Private metadata lookup for a cover cache miss. Never expose its URL over IPC.
     pub(crate) fn cover_url(&self, bvid: &str, speculative: bool) -> Result<String, Error> {
         identity::TrackRef::bilibili(bvid, "1").map_err(|_| Error::Context)?;
@@ -223,13 +250,158 @@ pub(crate) mod tests {
         assert!(b.read("video.parts", json!({"bvid":"BV17x411w7KC"})).is_err());
     }
     #[test]
-    fn bilibili_lyrics_are_normal_empty_and_never_request_other_platforms() {
+    fn bilibili_subtitles_return_manual_ai_empty_and_never_request_other_platforms() {
+        use crate::lyrics::{LyricError, LyricService, LyricSource};
         struct Reject;
         impl crate::provider::ProviderRequestPort for Reject {
-            fn request(&self, _: crate::provider::ProviderRequest) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> { panic!("Bilibili must not request QQ lyrics") }
+            fn request(&self, _: crate::provider::ProviderRequest) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> {
+                panic!("Bilibili must not request QQ or NetEase lyrics")
+            }
         }
-        let lyrics = crate::lyrics::LyricService::new(Arc::new(Reject));
-        assert!(lyrics.lines("bilibili:video:BV17x411w7KC:124").unwrap().is_empty());
+        let unwired = LyricService::new(Arc::new(Reject));
+        assert_eq!(
+            unwired.timeline("bilibili:video:BV17x411w7KC:123", 1),
+            Err(LyricError::ProviderUnavailable)
+        );
+
+        let bili = service();
+        let lyrics = LyricService::new(Arc::new(Reject)).with_bilibili(bili.clone());
+        let first_gen = bili.session_generation();
+        assert!(first_gen > 0);
+
+        let manual = lyrics
+            .timeline("bilibili:video:BV17x411w7KC:123", 1)
+            .expect("manual subtitle timeline");
+        assert_eq!(manual.source, Some(LyricSource::BilibiliSubtitle));
+        assert_eq!(manual.timeline_end_ms, None);
+        assert_eq!(manual.lines.len(), 4);
+        assert_eq!(manual.lines[0].at_ms, 500);
+        assert_eq!(manual.lines[0].end_ms, Some(2_250));
+        assert_eq!(manual.lines[0].original, "第一句上 第一句下");
+        assert_eq!(manual.lines[1].at_ms, 3_000);
+        assert_eq!(manual.lines[1].end_ms, Some(6_000));
+        assert_eq!(manual.lines[2].at_ms, 6_000);
+        assert_eq!(manual.lines[2].end_ms, Some(7_500));
+
+        let ai = lyrics
+            .timeline("bilibili:video:BV17x411w7KC:124", 2)
+            .expect("ai subtitle timeline");
+        assert_eq!(ai.source, Some(LyricSource::BilibiliAiSubtitle));
+        assert_eq!(ai.timeline_end_ms, None);
+        assert_eq!(ai.lines.len(), 2);
+        assert_eq!(ai.lines[0].at_ms, 1_200);
+        assert_eq!(ai.lines[0].end_ms, Some(3_400));
+        assert_eq!(ai.lines[1].at_ms, 5_000);
+        assert_eq!(ai.lines[1].end_ms, Some(7_250));
+
+        let empty = lyrics
+            .timeline("bilibili:video:BV17x411w7KE:123", 3)
+            .expect("confirmed empty subtitle timeline");
+        assert_eq!(empty.source, None);
+        assert_eq!(empty.timeline_end_ms, None);
+        assert!(empty.lines.is_empty());
+
+        bili.registry.sign_out(OnlineProviderId::Bilibili).unwrap();
+        assert!(bili.session_generation() > first_gen);
+        assert_eq!(
+            lyrics.timeline("bilibili:video:BV17x411w7KC:123", 4),
+            Err(LyricError::AuthenticationRequired)
+        );
+    }
+    #[test]
+    fn subtitles_authentication_required_does_not_fail_or_stop_provider() {
+        use super::super::lifecycle::PublicStatus;
+        use crate::lyrics::{LyricError, LyricService, LyricSource};
+        struct Reject;
+        impl crate::provider::ProviderRequestPort for Reject {
+            fn request(&self, _: crate::provider::ProviderRequest) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> {
+                panic!("Bilibili must not request QQ or NetEase lyrics")
+            }
+        }
+        let bili = service();
+        let lyrics = LyricService::new(Arc::new(Reject)).with_bilibili(bili.clone());
+        let before_gen = bili.ready_generation().unwrap();
+
+        assert_eq!(
+            lyrics.timeline("bilibili:video:BV17x411w7KC:125", 1),
+            Err(LyricError::AuthenticationRequired)
+        );
+        assert!(matches!(
+            bili.registry.snapshot(OnlineProviderId::Bilibili).unwrap().status,
+            PublicStatus::Ready { .. }
+        ));
+        assert_eq!(bili.ready_generation().unwrap(), before_gen);
+
+        assert!(bili
+            .read("video.parts", json!({"bvid":"BV17x411w7KC","page":1,"pageSize":20}))
+            .is_ok());
+        assert!(bili
+            .read("library.containers", json!({"kind":"created","page":1,"pageSize":20}))
+            .is_ok());
+        let manual = lyrics
+            .timeline("bilibili:video:BV17x411w7KC:123", 2)
+            .expect("manual subtitle timeline after subtitle auth_required");
+        assert_eq!(manual.source, Some(LyricSource::BilibiliSubtitle));
+        assert_eq!(manual.lines.len(), 4);
+
+        // Subtitle error must not be cached as empty subtitles.
+        assert_eq!(
+            lyrics.timeline("bilibili:video:BV17x411w7KC:125", 3),
+            Err(LyricError::AuthenticationRequired)
+        );
+        assert_eq!(bili.ready_generation().unwrap(), before_gen);
+    }
+    #[test]
+    fn malformed_empty_cue_array_does_not_poison_cache_and_retries_cleanly() {
+        use super::super::lifecycle::PublicStatus;
+        use crate::lyrics::{LyricError, LyricService, LyricSource};
+        struct Reject;
+        impl crate::provider::ProviderRequestPort for Reject {
+            fn request(&self, _: crate::provider::ProviderRequest) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> {
+                panic!("Bilibili must not request QQ or NetEase lyrics")
+            }
+        }
+        let bili = service();
+        let lyrics = LyricService::new(Arc::new(Reject)).with_bilibili(bili.clone());
+        let gen_before = bili.session_generation();
+        let ready_before = bili.ready_generation().unwrap();
+
+        assert_eq!(
+            lyrics.timeline("bilibili:video:BV17x411w7KC:126", 1),
+            Err(LyricError::UpstreamSchemaChanged)
+        );
+        assert_eq!(bili.session_generation(), gen_before);
+        assert_eq!(bili.ready_generation().unwrap(), ready_before);
+        assert!(matches!(
+            bili.registry.snapshot(OnlineProviderId::Bilibili).unwrap().status,
+            PublicStatus::Ready { .. }
+        ));
+
+        let timeline = lyrics
+            .timeline("bilibili:video:BV17x411w7KC:126", 2)
+            .expect("second call must re-query provider and succeed");
+        assert_eq!(timeline.source, Some(LyricSource::BilibiliSubtitle));
+        assert!(!timeline.lines.is_empty());
+        assert_eq!(timeline.timeline_end_ms, None);
+    }
+    #[test]
+    fn truncated_fifty_minute_subtitles_propagate_timeline_end_ms() {
+        use crate::lyrics::{LyricService, LyricSource};
+        struct Reject;
+        impl crate::provider::ProviderRequestPort for Reject {
+            fn request(&self, _: crate::provider::ProviderRequest) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> {
+                panic!("Bilibili must not request QQ or NetEase lyrics")
+            }
+        }
+        let bili = service();
+        let lyrics = LyricService::new(Arc::new(Reject)).with_bilibili(bili);
+        let timeline = lyrics
+            .timeline("bilibili:video:BV17x411w7KC:127", 3)
+            .expect("50-minute truncated subtitle timeline");
+        assert_eq!(timeline.source, Some(LyricSource::BilibiliSubtitle));
+        assert!(timeline.lines.len() < 3000);
+        assert!(timeline.lines.last().unwrap().end_ms < Some(3_000_000));
+        assert_eq!(timeline.timeline_end_ms, Some(3_000_000));
     }
     #[test]
     fn confirmed_negative_check_retires_only_bilibili_account_generation() {

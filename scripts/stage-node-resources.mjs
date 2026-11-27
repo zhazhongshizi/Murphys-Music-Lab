@@ -46,7 +46,7 @@ if (mode === '--stage') {
   for (const name of ['protocol-v2.schema.json', 'protocol-v2.constants.json']) copy(`contracts/${name}`);
   const production = {
     netease: ['main.mjs', 'provider.mjs', 'transport.mjs', 'qr.ts', 'upstream-loader.mjs', 'patch-qr-check.mjs', 'upstream-lock.json', 'upstream', 'package.json', 'package-lock.json', 'README.md', 'WRITES.md'],
-    bilibili: ['main.mjs', 'provider.mjs', 'transport.mjs', 'audio.mjs', 'fault.mjs', 'links.mjs', 'package.json', 'package-lock.json', 'README.md'],
+    bilibili: ['main.mjs', 'provider.mjs', 'transport.mjs', 'audio.mjs', 'fault.mjs', 'links.mjs', 'subtitles.mjs', 'package.json', 'package-lock.json', 'README.md'],
   };
   for (const [id, entries] of Object.entries(production)) {
     for (const entry of entries) copy(`providers/node/${id}/${entry}`);

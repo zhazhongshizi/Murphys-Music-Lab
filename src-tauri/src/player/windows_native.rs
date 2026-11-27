@@ -1712,21 +1712,40 @@ fn update_smtc_music_properties(
 }
 
 fn lyric_index_at(position_ms: u64, lines: &[SmtcLyricLine]) -> Option<usize> {
-    lines
+    let index = lines
         .partition_point(|line| line.at_ms() <= position_ms)
-        .checked_sub(1)
+        .checked_sub(1)?;
+    if lines[index]
+        .end_ms()
+        .is_some_and(|end| position_ms >= end)
+    {
+        return None;
+    }
+    Some(index)
 }
 
 fn dynamic_lyrics_target(
     position_ms: u64,
     timeline: &SmtcLyricTimeline,
 ) -> (Option<usize>, Option<u64>) {
-    let lyric_index = lyric_index_at(position_ms, timeline.lines());
+    let lines = timeline.lines();
+    let lyric_index = lyric_index_at(position_ms, lines);
     let next_boundary_ms = match lyric_index {
-        Some(index) => timeline.lines().get(index + 1),
-        None => timeline.lines().first(),
-    }
-    .map(SmtcLyricLine::at_ms);
+        Some(index) => {
+            let end_ms = lines[index].end_ms();
+            let next_start_ms = lines.get(index + 1).map(SmtcLyricLine::at_ms);
+            match (end_ms, next_start_ms) {
+                (Some(end), Some(next)) => Some(end.min(next)),
+                (Some(end), None) => Some(end),
+                (None, Some(next)) => Some(next),
+                (None, None) => None,
+            }
+        }
+        None => {
+            let next_index = lines.partition_point(|line| line.at_ms() <= position_ms);
+            lines.get(next_index).map(SmtcLyricLine::at_ms)
+        }
+    };
     (lyric_index, next_boundary_ms)
 }
 
@@ -2381,6 +2400,132 @@ mod tests {
             (Some(1), Some(4_000))
         );
         assert_eq!(dynamic_lyrics_target(9_000, &timeline), (Some(2), None));
+    }
+
+    #[test]
+    fn dynamic_lyrics_target_and_smtc_writer_handle_end_ms_interludes_and_reverse_seeks() {
+        let timeline = SmtcLyricTimeline::new(vec![
+            SmtcLyricLine::with_end_ms(500, Some(2_000), "First".to_owned()).expect("first"),
+            SmtcLyricLine::with_end_ms(5_000, Some(7_000), "Second".to_owned()).expect("second"),
+        ])
+        .expect("timeline");
+
+        assert_eq!(lyric_index_at(499, timeline.lines()), None);
+        assert_eq!(lyric_index_at(500, timeline.lines()), Some(0));
+        assert_eq!(lyric_index_at(1_999, timeline.lines()), Some(0));
+        assert_eq!(lyric_index_at(2_000, timeline.lines()), None);
+        assert_eq!(lyric_index_at(4_999, timeline.lines()), None);
+        assert_eq!(lyric_index_at(5_000, timeline.lines()), Some(1));
+        assert_eq!(lyric_index_at(7_000, timeline.lines()), None);
+
+        assert_eq!(dynamic_lyrics_target(0, &timeline), (None, Some(500)));
+        assert_eq!(dynamic_lyrics_target(500, &timeline), (Some(0), Some(2_000)));
+        assert_eq!(
+            dynamic_lyrics_target(2_000, &timeline),
+            (None, Some(5_000))
+        );
+        assert_eq!(
+            dynamic_lyrics_target(3_500, &timeline),
+            (None, Some(5_000))
+        );
+        assert_eq!(
+            dynamic_lyrics_target(5_000, &timeline),
+            (Some(1), Some(7_000))
+        );
+        assert_eq!(dynamic_lyrics_target(7_000, &timeline), (None, None));
+        assert_eq!(
+            dynamic_lyrics_target(1_200, &timeline),
+            (Some(0), Some(2_000))
+        );
+
+        let track = crate::player::TrackSummary {
+            source: None,
+            id: "bilibili:video:BV17x411w7KC:123".to_owned(),
+            title: "Video".to_owned(),
+            artist: "Uploader".to_owned(),
+        };
+        let metadata = SmtcMetadata::from_queue_track("Video".to_owned(), 30_000);
+        let mut state = DynamicLyricsDisplayState::default();
+        state.reset_for_track(7, &track, &metadata);
+        state.set_timeline(1, timeline);
+
+        let mut published = Vec::new();
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 1_000, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(true)
+        );
+        // Entering the interlude gap restores normal SMTC metadata.
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 2_000, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(true)
+        );
+        // Staying in the gap is a no-op.
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 3_500, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(false)
+        );
+        // Entering the second line publishes it, and exiting after its end_ms restores normal.
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 5_000, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(true)
+        );
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 7_000, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(true)
+        );
+        // Reverse seek back into line 0 restores lyric display.
+        assert_eq!(
+            update_dynamic_smtc_text_with(&mut state, 7, 1_200, |title, artist, album| {
+                published.push((title.to_owned(), artist.to_owned(), album.to_owned()));
+                Ok(())
+            }),
+            Ok(true)
+        );
+        assert_eq!(
+            published,
+            vec![
+                (
+                    "First".to_owned(),
+                    "Video · Uploader".to_owned(),
+                    "Bilibili · Video".to_owned()
+                ),
+                (
+                    "Video".to_owned(),
+                    "Uploader".to_owned(),
+                    "Bilibili · Video".to_owned()
+                ),
+                (
+                    "Second".to_owned(),
+                    "Video · Uploader".to_owned(),
+                    "Bilibili · Video".to_owned()
+                ),
+                (
+                    "Video".to_owned(),
+                    "Uploader".to_owned(),
+                    "Bilibili · Video".to_owned()
+                ),
+                (
+                    "First".to_owned(),
+                    "Video · Uploader".to_owned(),
+                    "Bilibili · Video".to_owned()
+                ),
+            ]
+        );
     }
 
     #[test]

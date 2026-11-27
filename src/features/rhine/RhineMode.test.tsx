@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invalidatePlaylistSongs } from "../library/readPlaylistSongs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import RhineMode from "./RhineMode";
@@ -390,6 +390,82 @@ it("切换分类后丢弃旧列表的延迟响应", async () => {
   await screen.findByRole("button", { name: /抽取档案/ });
   finish({ items: [{ ...playlist, title: "旧响应" }] });
   await waitFor(() => expect(screen.queryByText("旧响应")).not.toBeInTheDocument());
+});
+it("莱茵歌词页在间奏空档保持已过行并展示 B站字幕来源标签", async () => {
+  const biliTrack = { id: "bilibili:video:BV1zQ4y127rF:389067834", title: "莱茵测试视频", artist: "UP", album: "", durationMs: 30_000 };
+  const sessionAt = (positionMs: number) => ({
+    requestedQuality: "320k" as const,
+    mode: "sequence" as const,
+    queue: { generation: 1, selectedIndex: 0, items: [biliTrack] },
+    player: {
+      state: "playing" as const,
+      generation: 1,
+      currentTrack: biliTrack,
+      positionMs,
+      durationMs: 30_000,
+      volume: 0.5,
+      muted: false,
+      failure: null,
+    },
+  });
+  playerActions.applyAuthoritativeSession(sessionAt(5_000));
+  playerActions.applyTimedLyrics(
+    biliTrack.id,
+    1,
+    [
+      { atMs: 1_000, endMs: 2_000, original: "莱茵第一句" },
+      { atMs: 8_000, endMs: 10_000, original: "莱茵第二句" },
+    ],
+    "bilibiliAiSubtitle",
+  );
+  render(<RhineMode {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /进入磁带机/ }));
+  expect(screen.queryByRole("button", { name: "展开完整歌词" })).not.toBeInTheDocument();
+  act(() => playerActions.applyAuthoritativeSession(sessionAt(1_500)));
+  fireEvent.click(screen.getByRole("button", { name: "展开完整歌词" }));
+  expect(screen.getByText("正在播放 · 歌词 · B站 AI 字幕")).toBeInTheDocument();
+  act(() => playerActions.applyAuthoritativeSession(sessionAt(5_000)));
+  const first = screen.getByRole("option", { name: /莱茵第一句/ });
+  const second = screen.getByRole("option", { name: /莱茵第二句/ });
+  expect(first).toHaveClass("lyrics-scroll__line--past");
+  expect(first).not.toHaveClass("lyrics-scroll__line--active");
+  expect(second).toHaveClass("lyrics-scroll__line--upcoming");
+});
+it("莱茵模式区分 B站字幕加载失败与确认无字幕", async () => {
+  const biliTrack = { id: "bilibili:video:BV17x411w7KC:125", title: "莱茵失败字幕", artist: "UP", album: "", durationMs: 30_000 };
+  const session = {
+    requestedQuality: "320k" as const,
+    mode: "sequence" as const,
+    queue: { generation: 1, selectedIndex: 0, items: [biliTrack] },
+    player: {
+      state: "playing" as const,
+      generation: 1,
+      currentTrack: biliTrack,
+      positionMs: 1_000,
+      durationMs: 30_000,
+      volume: 0.5,
+      muted: false,
+      failure: null,
+    },
+  };
+  playerActions.applyAuthoritativeSession(session);
+  playerActions.failTimedLyrics(biliTrack.id, 1);
+
+  render(<RhineMode {...props} />);
+  fireEvent.click(await screen.findByRole("button", { name: /进入磁带机/ }));
+
+  const deckLyric = screen.getByRole("button", { name: "展开完整歌词" });
+  expect(deckLyric).toHaveAttribute("data-lyrics-status", "error");
+  expect(deckLyric).toHaveTextContent("字幕加载失败");
+
+  fireEvent.click(deckLyric);
+  const region = screen.getByRole("region", { name: "同步歌词" });
+  expect(region).toHaveAttribute("data-lyrics-status", "error");
+  expect(within(region).getByText("字幕加载失败")).toBeInTheDocument();
+
+  act(() => playerActions.applyTimedLyrics(biliTrack.id, 1, []));
+  expect(screen.getByRole("region", { name: "同步歌词" })).toHaveAttribute("data-lyrics-status", "empty");
+  expect(screen.getByText("暂无歌词")).toBeInTheDocument();
 });
 // Opening lifecycle is covered separately; these tests exercise the music UI.
 vi.mock("./RhineBoot", async () => {

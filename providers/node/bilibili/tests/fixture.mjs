@@ -14,15 +14,119 @@ export function response(data, { code = 0, status = 200, cookies = [] } = {}) {
 export function fixture({ now = () => Date.now(), hook } = {}) {
   const calls = [], states = [86101, 86090, 0];
   let invalid = false;
+  let cid126Calls = 0;
   const fetcher = async (value, options) => {
-    const u = new URL(value); calls.push({ path: u.pathname, params: Object.fromEntries(u.searchParams), headers: options.headers });
+    const u = new URL(value); calls.push({ host: u.hostname, path: u.pathname, params: Object.fromEntries(u.searchParams), headers: options.headers });
     const overridden = await hook?.(u, options); if (overridden) return overridden;
+    if (u.hostname === 'aisubtitle.hdslb.com') {
+      if (u.pathname === '/bfs/subtitle/manual-zh-123.json') {
+        return new Response(JSON.stringify({
+          body: [
+            { from: 0.5, to: 2.25, content: '第一句上\n第一句下' },
+            { from: 3.0, to: 6.5, content: '第二句重叠前' },
+            { from: 6.0, to: 7.5, content: '第三句接续' },
+            { from: 18.0, to: 20.0, content: '间奏后第四句' },
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (u.pathname === '/bfs/subtitle/ai-zh-123.json') {
+        return new Response(JSON.stringify({
+          body: [{ from: 0.2, to: 1.8, content: '不应选中的第一 P AI 字幕' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (u.pathname === '/bfs/subtitle/ai-zh-124.json') {
+        return new Response(JSON.stringify({
+          body: [
+            { from: 1.2, to: 3.4, content: '第二 P AI 字幕首句' },
+            { from: 5.0, to: 7.25, content: '第二 P AI 字幕末句' },
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (u.pathname === '/bfs/subtitle/manual-zh-126.json') {
+        return new Response(JSON.stringify({
+          body: [
+            { from: 0.5, to: 2.0, content: '恢复后第一句' },
+            { from: 3.0, to: 5.0, content: '恢复后第二句' },
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (u.pathname === '/bfs/subtitle/manual-zh-127.json') {
+        const body = Array.from({ length: 3000 }, (_, i) => ({
+          from: i,
+          to: i + 1,
+          content: `cue-${String(i).padStart(4, '0')}-${'a'.repeat(351)}`,
+        }));
+        return new Response(JSON.stringify({ body }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('not found', { status: 404 });
+    }
     switch (u.pathname) {
       case '/x/passport-login/web/qrcode/generate': return response({ url: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=SYNTHETIC_TEST_ONLY', qrcode_key: 'SYNTHETIC_TEST_ONLY' });
       case '/x/passport-login/web/qrcode/poll': return response({ code: states.shift() ?? 0 }, { cookies: ['SESSDATA=SYNTHETIC_TEST_ONLY; Domain=.bilibili.com; Path=/; Secure; HttpOnly', 'DedeUserID=42; Domain=.bilibili.com; Path=/; Secure'] });
       case '/x/web-interface/nav': return invalid ? response(null, { code: -101 }) : response(nav);
       case '/x/web-interface/view': return response(view);
       case '/x/player/pagelist': return response(view.pages);
+      case '/x/player/wbi/v2': {
+        const bvid = u.searchParams.get('bvid');
+        const cid = u.searchParams.get('cid');
+        if (bvid === 'BV17x411w7KE') {
+          return response({ bvid, cid: Number(cid), need_login_subtitle: false, subtitle: { subtitles: [] } });
+        }
+        if (cid === '125') {
+          return response({ bvid, cid: Number(cid), need_login_subtitle: true, subtitle: { subtitles: [] } });
+        }
+        if (cid === '126') {
+          cid126Calls += 1;
+          if (cid126Calls === 1) {
+            return response({ bvid, cid: Number(cid), need_login_subtitle: false, subtitle: { subtitles: [{}] } });
+          }
+          return response({
+            bvid,
+            cid: Number(cid),
+            need_login_subtitle: false,
+            subtitle: {
+              subtitles: [
+                { id: 1261, lan: 'zh-CN', lan_doc: '中文（中国）', type: 0, ai_type: 0, ai_status: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/manual-zh-126.json' },
+              ],
+            },
+          });
+        }
+        if (cid === '127') {
+          return response({
+            bvid,
+            cid: Number(cid),
+            need_login_subtitle: false,
+            subtitle: {
+              subtitles: [
+                { id: 1271, lan: 'zh-CN', lan_doc: '中文（中国）', type: 0, ai_type: 0, ai_status: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/manual-zh-127.json' },
+              ],
+            },
+          });
+        }
+        if (cid === '124') {
+          return response({
+            bvid,
+            cid: Number(cid),
+            need_login_subtitle: false,
+            subtitle: {
+              subtitles: [
+                { id: 201, lan: 'ai-zh', lan_doc: '中文（自动生成）', type: 1, ai_type: 1, ai_status: 2, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/ai-zh-124.json' },
+              ],
+            },
+          });
+        }
+        return response({
+          bvid,
+          cid: Number(cid),
+          need_login_subtitle: false,
+          subtitle: {
+            subtitles: [
+              { id: 101, lan: 'ai-zh', lan_doc: '中文（自动生成）', type: 1, ai_type: 1, ai_status: 2, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/ai-zh-123.json' },
+              { id: 102, lan: 'zh-CN', lan_doc: '中文（中国）', type: 0, ai_type: 0, ai_status: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/manual-zh-123.json' },
+            ],
+          },
+        });
+      }
       case '/x/player/wbi/playurl': return response({ dash: { audio: [
         { codecs: 'mp4a.40.2', mimeType: 'audio/mp4', bandwidth: 64000, baseUrl: 'https://upos.bilivideo.com/synthetic-64' },
         { codecs: 'mp4a.40.2', mimeType: 'audio/mp4', bandwidth: 192000, baseUrl: 'https://upos.bilivideo.com/synthetic-192', backupUrl: ['https://upos-backup.bilivideo.cn/synthetic-192'], SegmentBase: { Initialization: '0-907', indexRange: '908-1047' } },

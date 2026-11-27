@@ -55,7 +55,7 @@
         "favorite.addVideos",
         "favorite.removeVideos"
       ],
-      "lyrics": false,
+      "lyrics": true,
       "qualities": [
         "auto",
         "aac"
@@ -286,6 +286,15 @@
       "result": "lyrics",
       "providers": [
         "netease"
+      ],
+      "access": "ready",
+      "semantics": "readOnly"
+    },
+    "subtitles.get": {
+      "params": "subtitles_getParams",
+      "result": "subtitles",
+      "providers": [
+        "bilibili"
       ],
       "access": "ready",
       "semantics": "readOnly"

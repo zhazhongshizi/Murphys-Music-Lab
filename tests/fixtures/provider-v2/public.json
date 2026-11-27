@@ -18,7 +18,7 @@
           "favorite.addVideos",
           "favorite.removeVideos"
         ],
-        "lyrics": false,
+        "lyrics": true,
         "qualities": [
           "auto",
           "aac"

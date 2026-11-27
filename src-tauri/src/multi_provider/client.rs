@@ -170,7 +170,12 @@ impl Registration {
             }
         }
         if !profile["qualities"].as_array().unwrap().is_empty() && !has("playback.resolve")
-            || profile["lyrics"] == true && !has("lyrics.get")
+            || profile["lyrics"] == true
+                && !has(if self.provider == OnlineProviderId::Netease {
+                    "lyrics.get"
+                } else {
+                    "subtitles.get"
+                })
         {
             return Err(Error::Handshake);
         }

@@ -865,6 +865,66 @@
       ],
       "additionalProperties": false
     },
+    "subtitleLine": {
+      "type": "object",
+      "properties": {
+        "atMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        },
+        "endMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "atMs",
+        "endMs",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "subtitles": {
+      "type": "object",
+      "properties": {
+        "track": {
+          "$ref": "#/$defs/rawTrack"
+        },
+        "source": {
+          "enum": [
+            "none",
+            "manual",
+            "ai",
+            "unknown"
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/subtitleLine"
+          },
+          "maxItems": 5000
+        },
+        "timelineEndMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
+      },
+      "required": [
+        "track",
+        "source",
+        "lines"
+      ],
+      "additionalProperties": false
+    },
     "warning": {
       "type": "object",
       "properties": {
@@ -1112,6 +1172,7 @@
               "library.addItems",
               "library.removeItems",
               "lyrics.get",
+              "subtitles.get",
               "playback.resolve",
               "library.container",
               "library.verify",
@@ -1654,6 +1715,37 @@
       },
       "required": [
         "songId"
+      ],
+      "additionalProperties": false
+    },
+    "subtitles_getParams": {
+      "type": "object",
+      "properties": {
+        "track": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "videoPart"
+            },
+            "bvid": {
+              "type": "string",
+              "pattern": "^BV[1-9A-HJ-NP-Za-km-z]{10}(?![\\s\\S])"
+            },
+            "cid": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])"
+            }
+          },
+          "required": [
+            "kind",
+            "bvid",
+            "cid"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "track"
       ],
       "additionalProperties": false
     },
@@ -2256,31 +2348,56 @@
           ],
           "additionalProperties": false
         },
-        {
-          "type": "object",
-          "properties": {
-            "v": {
-              "const": 2
+            {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "const": 2
+                },
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+                },
+                "method": {
+                  "const": "lyrics.get"
+                },
+                "params": {
+                  "$ref": "#/$defs/lyrics_getParams"
+                }
+              },
+              "required": [
+                "v",
+                "id",
+                "method",
+                "params"
+              ],
+              "additionalProperties": false
             },
-            "id": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "const": 2
+                },
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+                },
+                "method": {
+                  "const": "subtitles.get"
+                },
+                "params": {
+                  "$ref": "#/$defs/subtitles_getParams"
+                }
+              },
+              "required": [
+                "v",
+                "id",
+                "method",
+                "params"
+              ],
+              "additionalProperties": false
             },
-            "method": {
-              "const": "lyrics.get"
-            },
-            "params": {
-              "$ref": "#/$defs/lyrics_getParams"
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
-        },
         {
           "type": "object",
           "properties": {
@@ -2448,6 +2565,9 @@
             },
             {
               "$ref": "#/$defs/lyrics"
+            },
+            {
+              "$ref": "#/$defs/subtitles"
             },
             {
               "$ref": "#/$defs/resolution"

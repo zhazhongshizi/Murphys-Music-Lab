@@ -28,12 +28,12 @@ describe("multi-provider canonical identity", () => {
   it("keeps private method maps type aligned and public capabilities usable", () => {
     // Checked by tsc: schema catalogue additions must also update the private type map.
     const names: Method[] = Object.keys(constants.methods) as (keyof typeof constants.methods)[];
-    expect(new Set(names).size).toBe(28);
+    expect(new Set(names).size).toBe(29);
     expect(names).toEqual(expect.arrayContaining(["library.container", "library.likes", "library.verify"]));
     const request: Request = { v: 2, id: "fixture", method: "playback.resolve", params: { track: { kind: "song", songId: "123" }, preferredQuality: "auto" } };
     const response: Response<"library.addItems"> = { v: 2, id: request.id, ok: true, result: { status: "verificationPending", affectedCount: null }, warnings: [] };
     expect(response.result.status).toBe("verificationPending");
-    const capabilities: ProviderCapabilities = { loginMethods: ["qr"], searchKinds: ["videos"], libraryKinds: ["created", "favorite"], writeActions: ["favorite.addVideos", "favorite.removeVideos"], lyrics: false, qualities: ["auto", "aac"] };
+    const capabilities: ProviderCapabilities = { loginMethods: ["qr"], searchKinds: ["videos"], libraryKinds: ["created", "favorite"], writeActions: ["favorite.addVideos", "favorite.removeVideos"], lyrics: true, qualities: ["auto", "aac"] };
     expect(capabilities).toEqual(constants.capabilities.bilibili);
   });
 });

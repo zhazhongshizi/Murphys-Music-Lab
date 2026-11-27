@@ -13,6 +13,7 @@ const MAX_TRACK_ID_BYTES: usize = 128;
 const MAX_RAW_LYRIC_BYTES: usize = 512_000;
 const MAX_TIMED_LINES: usize = 5_000;
 const MAX_LINE_BYTES: usize = 512;
+const MAX_BILIBILI_SUBTITLE_MS: u64 = 86_400_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LyricError {
@@ -25,10 +26,19 @@ pub enum LyricError {
     UpstreamSchemaChanged,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LyricSource {
+    BilibiliSubtitle,
+    BilibiliAiSubtitle,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LyricLine {
     pub at_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_ms: Option<u64>,
     pub original: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub translation: Option<String>,
@@ -41,6 +51,10 @@ pub struct LyricLine {
 pub struct LyricTimeline {
     pub generation: u64,
     pub track_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<LyricSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeline_end_ms: Option<u64>,
     pub lines: Vec<LyricLine>,
 }
 
@@ -49,6 +63,7 @@ pub struct LyricService {
     shared: Mutex<LyricState>,
     mv_offset: Mutex<Option<(String, u64, i64)>>,
     netease: Option<Arc<crate::multi_provider::netease::NeteaseService>>,
+    bilibili: Option<Arc<crate::multi_provider::bilibili::BilibiliService>>,
 }
 
 struct LyricState {
@@ -56,13 +71,20 @@ struct LyricState {
     in_flight: HashMap<String, Arc<LyricFlight>>,
 }
 
-struct CachedLyrics {
-    track_id: String,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedLyrics {
+    source: Option<LyricSource>,
+    timeline_end_ms: Option<u64>,
     lines: Arc<Vec<LyricLine>>,
 }
 
+struct CachedLyrics {
+    cache_key: String,
+    resolved: ResolvedLyrics,
+}
+
 struct LyricFlight {
-    result: Mutex<Option<Result<Arc<Vec<LyricLine>>, LyricError>>>,
+    result: Mutex<Option<Result<ResolvedLyrics, LyricError>>>,
     wake: Condvar,
     waiters: std::sync::atomic::AtomicUsize,
 }
@@ -73,6 +95,7 @@ impl LyricService {
             provider,
             mv_offset: Mutex::new(None),
             netease: None,
+            bilibili: None,
             shared: Mutex::new(LyricState {
                 cached: None,
                 in_flight: HashMap::new(),
@@ -80,17 +103,29 @@ impl LyricService {
         }
     }
     pub fn with_netease(mut self,service:Arc<crate::multi_provider::netease::NeteaseService>)->Self {self.netease=Some(service);self}
+    pub fn with_bilibili(
+        mut self,
+        service: Arc<crate::multi_provider::bilibili::BilibiliService>,
+    ) -> Self {
+        self.bilibili = Some(service);
+        self
+    }
 
     pub fn timeline(&self, track_id: &str, generation: u64) -> Result<LyricTimeline, LyricError> {
-        let lines = self.lines(track_id)?;
-        let offset = self
-            .mv_offset
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .filter(|(id, gen, _)| id == track_id && *gen == generation)
-            .map_or(0, |(_, _, value)| *value);
-        let mut lines = lines.as_ref().clone();
+        let resolved = self.resolve(track_id)?;
+        let is_bilibili = crate::multi_provider::identity::track_provider(track_id)
+            == Ok(crate::multi_provider::ProviderId::Bilibili);
+        let offset = if is_bilibili {
+            0
+        } else {
+            self.mv_offset
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .filter(|(id, gen, _)| id == track_id && *gen == generation)
+                .map_or(0, |(_, _, value)| *value)
+        };
+        let mut lines = resolved.lines.as_ref().clone();
         if offset != 0 {
             for line in &mut lines {
                 line.at_ms = line.at_ms.saturating_add_signed(offset);
@@ -105,6 +140,8 @@ impl LyricService {
         Ok(LyricTimeline {
             generation,
             track_id: track_id.to_owned(),
+            source: resolved.source,
+            timeline_end_ms: resolved.timeline_end_ms,
             lines,
         })
     }
@@ -116,13 +153,55 @@ impl LyricService {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((id, generation, offset));
     }
 
-    pub(crate) fn lines(&self, track_id: &str) -> Result<Arc<Vec<LyricLine>>, LyricError> {
+    fn resolve(&self, track_id: &str) -> Result<ResolvedLyrics, LyricError> {
         validate_track_id(track_id)?;
-        if crate::multi_provider::identity::track_provider(track_id) == Ok(crate::multi_provider::ProviderId::Bilibili) { return Ok(Arc::new(Vec::new())); }
+        if crate::multi_provider::identity::track_provider(track_id)
+            == Ok(crate::multi_provider::ProviderId::Bilibili)
+        {
+            let (bvid, cid) = crate::multi_provider::bilibili::raw_part(track_id)
+                .map_err(|_| LyricError::InvalidRequest)?;
+            let bilibili = self
+                .bilibili
+                .as_ref()
+                .ok_or(LyricError::ProviderUnavailable)?;
+            let session_generation = bilibili.session_generation();
+            let cache_key = format!("bilibili:{bvid}:{cid}:{session_generation}");
+            return self.resolve_cached(
+                &cache_key,
+                || bilibili.session_generation() == session_generation,
+                || load_bilibili_subtitles(bilibili, bvid, cid),
+            );
+        }
         if track_id.starts_with("netease:") {
             // Account-scoped reads; do not serve the legacy QQ cache after logout.
-            return self.load_lines(track_id).map(Arc::new);
+            return self.load_lines(track_id).map(|lines| ResolvedLyrics {
+                source: None,
+                timeline_end_ms: None,
+                lines: Arc::new(lines),
+            });
         }
+        self.resolve_cached(
+            track_id,
+            || true,
+            || {
+                self.load_lines(track_id).map(|lines| ResolvedLyrics {
+                    source: None,
+                    timeline_end_ms: None,
+                    lines: Arc::new(lines),
+                })
+            },
+        )
+    }
+
+    fn resolve_cached<F>(
+        &self,
+        cache_key: &str,
+        should_cache: impl FnOnce() -> bool,
+        loader: F,
+    ) -> Result<ResolvedLyrics, LyricError>
+    where
+        F: FnOnce() -> Result<ResolvedLyrics, LyricError>,
+    {
         let (flight, owner) = {
             let mut shared = self
                 .shared
@@ -131,11 +210,11 @@ impl LyricService {
             if let Some(cached) = shared
                 .cached
                 .as_ref()
-                .filter(|cached| cached.track_id == track_id)
+                .filter(|cached| cached.cache_key == cache_key)
             {
-                return Ok(cached.lines.clone());
+                return Ok(cached.resolved.clone());
             }
-            if let Some(flight) = shared.in_flight.get(track_id) {
+            if let Some(flight) = shared.in_flight.get(cache_key) {
                 (flight.clone(), false)
             } else {
                 let flight = Arc::new(LyricFlight {
@@ -143,13 +222,15 @@ impl LyricService {
                     wake: Condvar::new(),
                     waiters: std::sync::atomic::AtomicUsize::new(0),
                 });
-                shared.in_flight.insert(track_id.to_owned(), flight.clone());
+                shared
+                    .in_flight
+                    .insert(cache_key.to_owned(), flight.clone());
                 (flight, true)
             }
         };
 
         if owner {
-            let result = self.load_lines(track_id).map(Arc::new);
+            let result = loader();
             {
                 let mut flight_result = flight
                     .result
@@ -159,17 +240,20 @@ impl LyricService {
             }
             flight.wake.notify_all();
 
+            let cache_valid = result.is_ok() && should_cache();
             let mut shared = self
                 .shared
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Ok(lines) = &result {
-                shared.cached = Some(CachedLyrics {
-                    track_id: track_id.to_owned(),
-                    lines: lines.clone(),
-                });
+            if cache_valid {
+                if let Ok(resolved) = &result {
+                    shared.cached = Some(CachedLyrics {
+                        cache_key: cache_key.to_owned(),
+                        resolved: resolved.clone(),
+                    });
+                }
             }
-            shared.in_flight.remove(track_id);
+            shared.in_flight.remove(cache_key);
             result
         } else {
             flight
@@ -243,12 +327,181 @@ impl LyricService {
             .into_iter()
             .map(|(at_ms, original)| LyricLine {
                 at_ms,
+                end_ms: None,
                 original,
                 translation: translations.get(&at_ms).cloned(),
                 romanization: romanizations.get(&at_ms).cloned(),
             })
             .collect();
         Ok(lines)
+    }
+}
+
+fn load_bilibili_subtitles(
+    bilibili: &crate::multi_provider::bilibili::BilibiliService,
+    bvid: &str,
+    cid: &str,
+) -> Result<ResolvedLyrics, LyricError> {
+    let value = bilibili
+        .subtitles(bvid, cid)
+        .map_err(map_bilibili_error)?;
+    parse_bilibili_subtitles(bvid, cid, value)
+}
+
+fn parse_bilibili_subtitles(
+    bvid: &str,
+    cid: &str,
+    value: Value,
+) -> Result<ResolvedLyrics, LyricError> {
+    let Some(obj) = value.as_object() else {
+        return Err(LyricError::UpstreamSchemaChanged);
+    };
+    if !matches!(obj.len(), 3 | 4) || (obj.len() == 4 && !obj.contains_key("timelineEndMs")) {
+        return Err(LyricError::UpstreamSchemaChanged);
+    }
+    let Some(track) = obj.get("track").and_then(Value::as_object) else {
+        return Err(LyricError::UpstreamSchemaChanged);
+    };
+    if track.len() != 3
+        || track.get("kind").and_then(Value::as_str) != Some("videoPart")
+        || track.get("bvid").and_then(Value::as_str) != Some(bvid)
+        || track.get("cid").and_then(Value::as_str) != Some(cid)
+    {
+        return Err(LyricError::UpstreamSchemaChanged);
+    }
+    let Some(raw_source) = obj.get("source").and_then(Value::as_str) else {
+        return Err(LyricError::UpstreamSchemaChanged);
+    };
+    let Some(raw_lines) = obj.get("lines").and_then(Value::as_array) else {
+        return Err(LyricError::UpstreamSchemaChanged);
+    };
+    if raw_lines.len() > MAX_TIMED_LINES {
+        return Err(LyricError::UpstreamSchemaChanged);
+    }
+    let source = match raw_source {
+        "none" => {
+            if !raw_lines.is_empty() {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+            None
+        }
+        "manual" | "unknown" => {
+            if raw_lines.is_empty() {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+            Some(LyricSource::BilibiliSubtitle)
+        }
+        "ai" => {
+            if raw_lines.is_empty() {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+            Some(LyricSource::BilibiliAiSubtitle)
+        }
+        _ => return Err(LyricError::UpstreamSchemaChanged),
+    };
+
+    let mut lines = Vec::with_capacity(raw_lines.len());
+    let mut prev_at_ms: Option<u64> = None;
+    let mut prev_end_ms: Option<u64> = None;
+    for item in raw_lines {
+        let Some(item_obj) = item.as_object() else {
+            return Err(LyricError::UpstreamSchemaChanged);
+        };
+        if item_obj.len() != 3 {
+            return Err(LyricError::UpstreamSchemaChanged);
+        }
+        let Some(at_ms) = item_obj.get("atMs").and_then(Value::as_u64) else {
+            return Err(LyricError::UpstreamSchemaChanged);
+        };
+        let Some(end_ms) = item_obj.get("endMs").and_then(Value::as_u64) else {
+            return Err(LyricError::UpstreamSchemaChanged);
+        };
+        if end_ms <= at_ms || end_ms > MAX_BILIBILI_SUBTITLE_MS {
+            return Err(LyricError::UpstreamSchemaChanged);
+        }
+        if let (Some(prev_at), Some(prev_end)) = (prev_at_ms, prev_end_ms) {
+            if at_ms <= prev_at || prev_end > at_ms {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+        }
+        let Some(text) = item_obj.get("text").and_then(Value::as_str) else {
+            return Err(LyricError::UpstreamSchemaChanged);
+        };
+        if text.is_empty()
+            || text.trim().is_empty()
+            || text.len() > MAX_LINE_BYTES
+            || text.contains(['\r', '\n', '\0'])
+        {
+            return Err(LyricError::UpstreamSchemaChanged);
+        }
+        prev_at_ms = Some(at_ms);
+        prev_end_ms = Some(end_ms);
+        lines.push(LyricLine {
+            at_ms,
+            end_ms: Some(end_ms),
+            original: text.to_owned(),
+            translation: None,
+            romanization: None,
+        });
+    }
+
+    let timeline_end_ms = match obj.get("timelineEndMs") {
+        None => None,
+        Some(raw_timeline_end_ms) => {
+            if raw_lines.is_empty() {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+            let Some(last_end_ms) = prev_end_ms else {
+                return Err(LyricError::UpstreamSchemaChanged);
+            };
+            let Some(end_ms) = raw_timeline_end_ms.as_u64() else {
+                return Err(LyricError::UpstreamSchemaChanged);
+            };
+            if end_ms > MAX_BILIBILI_SUBTITLE_MS || end_ms < last_end_ms {
+                return Err(LyricError::UpstreamSchemaChanged);
+            }
+            Some(end_ms)
+        }
+    };
+
+    Ok(ResolvedLyrics {
+        source,
+        timeline_end_ms,
+        lines: Arc::new(lines),
+    })
+}
+
+fn map_bilibili_error(error: crate::multi_provider::protocol::Error) -> LyricError {
+    use crate::multi_provider::{protocol::Error, ErrorCode};
+    match error {
+        Error::Context => LyricError::InvalidRequest,
+        Error::Timeout => LyricError::UpstreamUnavailable,
+        Error::Schema | Error::Frame => LyricError::UpstreamSchemaChanged,
+        Error::Cooldown => LyricError::NetworkUnavailable,
+        Error::Upstream(code) => match code {
+            ErrorCode::AuthenticationRequired | ErrorCode::CredentialInvalid => {
+                LyricError::AuthenticationRequired
+            }
+            ErrorCode::NetworkUnavailable | ErrorCode::RateLimited => {
+                LyricError::NetworkUnavailable
+            }
+            ErrorCode::UpstreamSchemaChanged => LyricError::UpstreamSchemaChanged,
+            ErrorCode::InvalidParams => LyricError::InvalidRequest,
+            ErrorCode::ProviderUnavailable
+            | ErrorCode::VerificationRequired
+            | ErrorCode::EntitlementDenied
+            | ErrorCode::MediaUnavailable
+            | ErrorCode::UnsupportedMedia
+            | ErrorCode::UnsupportedCapability
+            | ErrorCode::PreviewOnly
+            | ErrorCode::OutcomeUnknown
+            | ErrorCode::VerificationFailed
+            | ErrorCode::Cancelled
+            | ErrorCode::InternalError => LyricError::UpstreamUnavailable,
+        },
+        Error::Handshake | Error::Unavailable | Error::Cancelled | Error::Stale | Error::Storage => {
+            LyricError::ProviderUnavailable
+        }
     }
 }
 
@@ -791,5 +1044,393 @@ mod tests {
             .timeline("song-mid-1", 1),
             Err(LyricError::Unavailable)
         );
+    }
+
+    #[test]
+    fn bilibili_subtitle_parsing_validates_sources_intervals_utf8_bytes_and_schema() {
+        let manual = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "123",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"},
+                "source": "manual",
+                "lines": [
+                    {"atMs": 500, "endMs": 2000, "text": "第一句"},
+                    {"atMs": 2000, "endMs": 4500, "text": "第二句"}
+                ]
+            }),
+        )
+        .expect("manual subtitles");
+        assert_eq!(manual.source, Some(LyricSource::BilibiliSubtitle));
+        assert_eq!(manual.lines.len(), 2);
+        assert_eq!(manual.lines[0].end_ms, Some(2000));
+
+        let unknown = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "123",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"},
+                "source": "unknown",
+                "lines": [{"atMs": 0, "endMs": 1000, "text": "未知来源"}]
+            }),
+        )
+        .expect("unknown source maps to generic BilibiliSubtitle");
+        assert_eq!(unknown.source, Some(LyricSource::BilibiliSubtitle));
+
+        let ai = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "124",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "124"},
+                "source": "ai",
+                "lines": [{"atMs": 100, "endMs": 900, "text": "AI 字幕"}]
+            }),
+        )
+        .expect("ai subtitles");
+        assert_eq!(ai.source, Some(LyricSource::BilibiliAiSubtitle));
+
+        let empty = parse_bilibili_subtitles(
+            "BV17x411w7KE",
+            "123",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KE", "cid": "123"},
+                "source": "none",
+                "lines": []
+            }),
+        )
+        .expect("none with empty lines");
+        assert_eq!(empty.source, None);
+        assert!(empty.lines.is_empty());
+
+        let too_many_lines: Vec<_> = (0..=MAX_TIMED_LINES)
+            .map(|i| json!({"atMs": i * 2 + 1, "endMs": i * 2 + 2, "text": "line"}))
+            .collect();
+        let over_512_utf8_bytes = "汉".repeat(171); // 171 * 3 = 513 bytes
+        assert!(over_512_utf8_bytes.len() > MAX_LINE_BYTES);
+
+        for invalid in [
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "none", "lines": [{"atMs": 0, "endMs": 100, "text": "x"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": []}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "ai", "lines": []}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "unknown", "lines": []}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "bogus", "lines": [{"atMs": 0, "endMs": 100, "text": "x"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "124"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": "x"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 100, "endMs": 100, "text": "x"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 86_400_001, "text": "x"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 100, "endMs": 300, "text": "a"}, {"atMs": 250, "endMs": 400, "text": "b"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 100, "endMs": 200, "text": "a"}, {"atMs": 100, "endMs": 300, "text": "b"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": "   "}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": over_512_utf8_bytes}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": "a\nb"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": "a\rb"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": [{"atMs": 0, "endMs": 100, "text": "a\0b"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}, "source": "manual", "lines": too_many_lines}),
+        ] {
+            assert_eq!(
+                parse_bilibili_subtitles("BV17x411w7KC", "123", invalid.clone()),
+                Err(LyricError::UpstreamSchemaChanged),
+                "expected UpstreamSchemaChanged for {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn bilibili_error_mapping_covers_auth_network_timeout_and_schema() {
+        use crate::multi_provider::{protocol::Error, ErrorCode};
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::AuthenticationRequired)),
+            LyricError::AuthenticationRequired
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::CredentialInvalid)),
+            LyricError::AuthenticationRequired
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::NetworkUnavailable)),
+            LyricError::NetworkUnavailable
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::RateLimited)),
+            LyricError::NetworkUnavailable
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::VerificationRequired)),
+            LyricError::UpstreamUnavailable
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Timeout),
+            LyricError::UpstreamUnavailable
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Upstream(ErrorCode::UpstreamSchemaChanged)),
+            LyricError::UpstreamSchemaChanged
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Schema),
+            LyricError::UpstreamSchemaChanged
+        );
+        assert_eq!(
+            map_bilibili_error(Error::Unavailable),
+            LyricError::ProviderUnavailable
+        );
+    }
+
+    #[test]
+    fn bilibili_cache_and_single_flight_key_by_bvid_cid_and_session_generation_without_caching_errors() {
+        let svc = Arc::new(service(json!({})));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (started, started_rx) = mpsc::channel();
+        let release = Arc::new(AtomicBool::new(false));
+
+        let svc_a = svc.clone();
+        let calls_a = calls.clone();
+        let release_a = release.clone();
+        let t1 = thread::spawn(move || {
+            svc_a.resolve_cached("bilibili:BV17x411w7KC:123:1", || true, || {
+                calls_a.fetch_add(1, Ordering::SeqCst);
+                started.send(()).unwrap();
+                while !release_a.load(Ordering::Acquire) {
+                    thread::yield_now();
+                }
+                Ok(ResolvedLyrics {
+                    source: Some(LyricSource::BilibiliSubtitle),
+                    timeline_end_ms: None,
+                    lines: Arc::new(vec![LyricLine {
+                        at_ms: 100,
+                        end_ms: Some(900),
+                        original: "line".into(),
+                        translation: None,
+                        romanization: None,
+                    }]),
+                })
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let svc_b = svc.clone();
+        let calls_b = calls.clone();
+        let t2 = thread::spawn(move || {
+            svc_b.resolve_cached("bilibili:BV17x411w7KC:123:1", || true, || {
+                calls_b.fetch_add(1, Ordering::SeqCst);
+                unreachable!("concurrent identical key must share single-flight")
+            })
+        });
+        wait_for_waiter(&svc, "bilibili:BV17x411w7KC:123:1");
+        release.store(true, Ordering::Release);
+
+        assert_eq!(t1.join().unwrap().unwrap().lines.len(), 1);
+        assert_eq!(t2.join().unwrap().unwrap().lines.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Cache hit on same (bvid, cid, session_generation).
+        let cached = svc
+            .resolve_cached("bilibili:BV17x411w7KC:123:1", || true, || unreachable!("cached"))
+            .unwrap();
+        assert_eq!(cached.source, Some(LyricSource::BilibiliSubtitle));
+
+        // Errors are never cached and do not evict or poison subsequent attempts.
+        let err = svc.resolve_cached("bilibili:BV17x411w7KC:124:1", || true, || {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(LyricError::UpstreamUnavailable)
+        });
+        assert_eq!(err.err(), Some(LyricError::UpstreamUnavailable));
+        let retry = svc
+            .resolve_cached("bilibili:BV17x411w7KC:124:1", || true, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(ResolvedLyrics {
+                    source: None,
+                    timeline_end_ms: None,
+                    lines: Arc::new(Vec::new()),
+                })
+            })
+            .unwrap();
+        assert_eq!(retry.source, None);
+        assert!(retry.lines.is_empty());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+
+        // Session generation change invalidates the cached empty result.
+        let new_session = svc
+            .resolve_cached("bilibili:BV17x411w7KC:124:2", || true, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(ResolvedLyrics {
+                    source: Some(LyricSource::BilibiliAiSubtitle),
+                    timeline_end_ms: None,
+                    lines: Arc::new(vec![LyricLine {
+                        at_ms: 500,
+                        end_ms: Some(1500),
+                        original: "restored".into(),
+                        translation: None,
+                        romanization: None,
+                    }]),
+                })
+            })
+            .unwrap();
+        assert_eq!(new_session.source, Some(LyricSource::BilibiliAiSubtitle));
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn bilibili_timeline_serializes_end_ms_source_and_empty_lines_cleanly() {
+        let positive = LyricTimeline {
+            generation: 5,
+            track_id: "bilibili:video:BV17x411w7KC:123".into(),
+            source: Some(LyricSource::BilibiliAiSubtitle),
+            timeline_end_ms: None,
+            lines: vec![LyricLine {
+                at_ms: 1200,
+                end_ms: Some(3400),
+                original: "AI 字幕".into(),
+                translation: None,
+                romanization: None,
+            }],
+        };
+        let encoded = serde_json::to_value(&positive).expect("serialize timeline");
+        assert_eq!(
+            encoded,
+            json!({
+                "generation": 5,
+                "trackId": "bilibili:video:BV17x411w7KC:123",
+                "source": "bilibiliAiSubtitle",
+                "lines": [{
+                    "atMs": 1200,
+                    "endMs": 3400,
+                    "original": "AI 字幕"
+                }]
+            })
+        );
+        assert!(encoded.get("timelineEndMs").is_none());
+
+        let truncated = LyricTimeline {
+            generation: 7,
+            track_id: "bilibili:video:BV17x411w7KC:127".into(),
+            source: Some(LyricSource::BilibiliSubtitle),
+            timeline_end_ms: Some(3_000_000),
+            lines: vec![LyricLine {
+                at_ms: 1200,
+                end_ms: Some(3400),
+                original: "截断字幕".into(),
+                translation: None,
+                romanization: None,
+            }],
+        };
+        let truncated_encoded = serde_json::to_value(&truncated).expect("serialize truncated");
+        assert_eq!(
+            truncated_encoded,
+            json!({
+                "generation": 7,
+                "trackId": "bilibili:video:BV17x411w7KC:127",
+                "source": "bilibiliSubtitle",
+                "timelineEndMs": 3_000_000,
+                "lines": [{
+                    "atMs": 1200,
+                    "endMs": 3400,
+                    "original": "截断字幕"
+                }]
+            })
+        );
+
+        let qq_timeline = service(json!({
+            "trackId": "song-mid-1",
+            "lyric": "[00:01.00]QQ 歌词",
+            "translation": "",
+            "romanization": ""
+        }))
+        .timeline("song-mid-1", 8)
+        .expect("qq timeline");
+        assert_eq!(qq_timeline.timeline_end_ms, None);
+        assert!(serde_json::to_value(&qq_timeline)
+            .expect("serialize qq")
+            .get("timelineEndMs")
+            .is_none());
+
+        let empty = LyricTimeline {
+            generation: 6,
+            track_id: "bilibili:video:BV17x411w7KE:123".into(),
+            source: None,
+            timeline_end_ms: None,
+            lines: Vec::new(),
+        };
+        let empty_encoded = serde_json::to_value(&empty).expect("serialize empty");
+        assert_eq!(
+            empty_encoded,
+            json!({
+                "generation": 6,
+                "trackId": "bilibili:video:BV17x411w7KE:123",
+                "lines": []
+            })
+        );
+    }
+
+    #[test]
+    fn bilibili_subtitle_parsing_validates_timeline_end_ms_bounds_and_unknown_keys() {
+        let truncated = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "127",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"},
+                "source": "manual",
+                "timelineEndMs": 3_000_000,
+                "lines": [
+                    {"atMs": 500, "endMs": 2000, "text": "第一句"},
+                    {"atMs": 2000, "endMs": 4500, "text": "最后一句"}
+                ]
+            }),
+        )
+        .expect("valid truncated timelineEndMs");
+        assert_eq!(truncated.source, Some(LyricSource::BilibiliSubtitle));
+        assert_eq!(truncated.timeline_end_ms, Some(3_000_000));
+
+        let exact_end = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "127",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"},
+                "source": "manual",
+                "timelineEndMs": 4500,
+                "lines": [
+                    {"atMs": 500, "endMs": 2000, "text": "第一句"},
+                    {"atMs": 2000, "endMs": 4500, "text": "最后一句"}
+                ]
+            }),
+        )
+        .expect("timelineEndMs equal to last.endMs");
+        assert_eq!(exact_end.timeline_end_ms, Some(4500));
+
+        let max_end = parse_bilibili_subtitles(
+            "BV17x411w7KC",
+            "127",
+            json!({
+                "track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"},
+                "source": "ai",
+                "timelineEndMs": 86_400_000,
+                "lines": [
+                    {"atMs": 500, "endMs": 2000, "text": "第一句"}
+                ]
+            }),
+        )
+        .expect("timelineEndMs at MAX_BILIBILI_SUBTITLE_MS");
+        assert_eq!(max_end.timeline_end_ms, Some(86_400_000));
+
+        for invalid in [
+            // timelineEndMs on empty lines
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "none", "timelineEndMs": 1000, "lines": []}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": 1000, "lines": []}),
+            // timelineEndMs < last.endMs
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": 4499, "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+            // timelineEndMs > 86_400_000
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": 86_400_001, "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+            // non-u64 timelineEndMs
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": null, "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": "4500", "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+            // unknown extra keys (with or without timelineEndMs)
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "extra": 1, "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+            json!({"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "127"}, "source": "manual", "timelineEndMs": 5000, "extra": 1, "lines": [{"atMs": 2000, "endMs": 4500, "text": "最后一句"}]}),
+        ] {
+            assert_eq!(
+                parse_bilibili_subtitles("BV17x411w7KC", "127", invalid.clone()),
+                Err(LyricError::UpstreamSchemaChanged),
+                "expected UpstreamSchemaChanged for {invalid}"
+            );
+        }
     }
 }

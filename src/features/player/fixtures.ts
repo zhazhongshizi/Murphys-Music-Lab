@@ -1,5 +1,8 @@
+import type { LyricSource } from "../../contracts/lyrics";
+
 export interface LyricLine {
   atMs: number;
+  readonly endMs?: number;
   original: string;
   translation?: string;
   romanized?: string;
@@ -19,6 +22,8 @@ export interface Track {
   accent: string;
   artworkVariant: "fern" | "moon" | "tide" | "train" | "mist";
   coverCacheKey?: string;
+  readonly lyricSource?: LyricSource;
+  readonly lyricTimelineEndMs?: number;
   lyrics: readonly LyricLine[];
 }
 

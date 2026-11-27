@@ -38,18 +38,20 @@ import {
 import { getLikedSongs, setSongsLiked } from "../../backend/libraryAdapter";
 import type { PlayerSnapshot as NativePlayerSnapshot } from "../../contracts/appSnapshot";
 import { nativeTrack, actualQuality, expectedQuality, qualityFromExpected } from "./nativeTrack";
-import type { TimedLyricLine } from "../../contracts/lyrics";
+import type { LyricSource, TimedLyricLine } from "../../contracts/lyrics";
 import type { PlaybackSessionSnapshot, PlaybackSkipNotice, QueueSnapshot } from "../../contracts/queue";
 import { isPlaybackQuality, type PlaybackQuality } from "../../contracts/settings";
 import { FIXTURE_TRACKS, type Track } from "./fixtures";
 
 export type PlaybackMode = "sequence" | "repeat-all" | "repeat-one" | "shuffle";
+export type LyricsStatus = "pending" | "ready" | "empty" | "error";
 type NativeFailureCode = NonNullable<NativePlayerSnapshot["failure"]>["code"];
 
 export interface PlayerSnapshot {
   readonly nativeMode: boolean;
   readonly nativeLoaded: boolean;
   readonly lyricsReady?: boolean;
+  readonly lyricsStatus?: LyricsStatus;
   readonly lyricOffsetMs?: number;
   readonly generation: number;
   readonly queue: readonly Track[];
@@ -99,6 +101,7 @@ const NATIVE_FAILURE_REASONS: Record<NativeFailureCode, PlaybackFailureReason> =
 const initialSnapshot: PlayerSnapshot = {
   nativeMode: false,
   nativeLoaded: false,
+  lyricsStatus: "ready",
   generation: 0,
   queue: FIXTURE_TRACKS,
   currentIndex: 0,
@@ -243,10 +246,14 @@ function applyNative(
     playbackRetry = null;
   }
   lastNativeQueue = queue;
+  const sameNativeTrack = snapshot.nativeMode
+    && snapshot.generation === player.generation
+    && currentTrackFrom(snapshot)?.id === updatedCurrent?.id;
   emit({
     nativeMode: true,
     lyricOffsetMs: lyricOffsetMs ?? (snapshot.generation === player.generation ? snapshot.lyricOffsetMs ?? 0 : 0),
-    lyricsReady: snapshot.nativeMode && snapshot.generation === player.generation && currentTrackFrom(snapshot)?.id === updatedCurrent?.id ? snapshot.lyricsReady : false,
+    lyricsReady: sameNativeTrack ? snapshot.lyricsReady : false,
+    lyricsStatus: sameNativeTrack ? (snapshot.lyricsStatus ?? "pending") : "pending",
     nativeLoaded: player.currentTrack !== null,
     generation: player.generation,
     queue: nextQueue,
@@ -296,13 +303,15 @@ function applyControl(
   } else if (domain === "seek") {
     if (player.currentTrack?.id !== currentTrackFrom(snapshot)?.id) return;
     const loadedSource = !snapshot.nativeLoaded || player.generation > snapshot.generation;
+    const sameGeneration = player.generation === snapshot.generation;
     emit({
       ...snapshot,
       positionMs: player.positionMs,
       generation: player.generation,
       nativeLoaded: player.currentTrack !== null,
       isPlaying: loadedSource ? player.state === "playing" || player.state === "loading" : snapshot.isPlaying,
-      lyricsReady: player.generation === snapshot.generation && snapshot.lyricsReady,
+      lyricsReady: sameGeneration && snapshot.lyricsReady,
+      lyricsStatus: sameGeneration ? (snapshot.lyricsStatus ?? "pending") : "pending",
     });
   } else {
     emit({ ...snapshot, volume: player.volume, muted: player.muted });
@@ -881,18 +890,54 @@ export const playerActions = {
     applyNative(session.queue, session.player, session.actualQuality ?? undefined, session.mode, session.requestedQuality, session.lyricOffsetMs ?? 0, controlVersions(), session.skipNotice ?? null, session.actualBitrate);
     clearPlaybackError();
   },
-  applyTimedLyrics(trackId: string, generation: number, lyrics: readonly TimedLyricLine[]) {
-    if (!snapshot.nativeMode || snapshot.generation !== generation) return;
+  applyTimedLyrics(
+    trackId: string,
+    generation: number,
+    lyrics: readonly TimedLyricLine[],
+    source?: LyricSource,
+    timelineEndMs?: number,
+  ) {
+    if (!snapshot.nativeMode || snapshot.generation !== generation || currentTrackFrom(snapshot)?.id !== trackId) return;
     const normalizedLyrics = lyrics.map((line) => ({
       atMs: line.atMs,
+      ...(line.endMs !== undefined ? { endMs: line.endMs } : {}),
       original: line.original,
       ...(line.translation ? { translation: line.translation } : {}),
       ...(line.romanization ? { romanized: line.romanization } : {}),
     }));
-    const queue = snapshot.queue.map((track) =>
-      track.id === trackId ? { ...track, lyrics: normalizedLyrics } : track,
-    );
-    emit({ ...snapshot, queue, lyricsReady: true });
+    const nextSource = normalizedLyrics.length > 0 ? source : undefined;
+    const nextTimelineEndMs = normalizedLyrics.length > 0 ? timelineEndMs : undefined;
+    const queue = snapshot.queue.map((track) => {
+      if (track.id !== trackId) return track;
+      const { lyricSource: _previousSource, lyricTimelineEndMs: _previousTimelineEndMs, ...rest } = track;
+      return {
+        ...rest,
+        lyrics: normalizedLyrics,
+        ...(nextSource !== undefined ? { lyricSource: nextSource } : {}),
+        ...(nextTimelineEndMs !== undefined ? { lyricTimelineEndMs: nextTimelineEndMs } : {}),
+      };
+    });
+    emit({
+      ...snapshot,
+      queue,
+      lyricsReady: true,
+      lyricsStatus: normalizedLyrics.length > 0 ? "ready" : "empty",
+    });
+  },
+  failTimedLyrics(trackId: string, generation: number) {
+    if (!snapshot.nativeMode || snapshot.generation !== generation || currentTrackFrom(snapshot)?.id !== trackId) return;
+    const queue = snapshot.queue.map((track) => {
+      if (track.id !== trackId) return track;
+      if (track.lyrics.length === 0 && track.lyricSource === undefined && track.lyricTimelineEndMs === undefined) return track;
+      const { lyricSource: _previousSource, lyricTimelineEndMs: _previousTimelineEndMs, ...rest } = track;
+      return { ...rest, lyrics: [] };
+    });
+    emit({
+      ...snapshot,
+      queue,
+      lyricsReady: true,
+      lyricsStatus: "error",
+    });
   },
   async setMvLyricOffset(offsetMs: number) {
     const track = currentTrackFrom(snapshot);

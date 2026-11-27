@@ -434,4 +434,89 @@ describe("React Terminal Mini Mode", () => {
     expect(setVolume).toHaveBeenLastCalledWith(1);
     expect(seekBy).not.toHaveBeenCalled();
   });
+
+  it("Terminal Mini 在间奏空档显示等待歌词与真正下一句，并在歌词面板保留 is-past 与来源标签", () => {
+    const biliTrack = { id: "bilibili:video:BV1zQ4y127rF:389067834", title: "Mini 字幕曲", artist: "UP", album: "", durationMs: 30_000 };
+    const sessionAt = (positionMs: number) => ({
+      requestedQuality: "320k" as const,
+      mode: "sequence" as const,
+      queue: { generation: 1, selectedIndex: 0, items: [biliTrack] },
+      player: {
+        state: "playing" as const,
+        generation: 1,
+        currentTrack: biliTrack,
+        positionMs,
+        durationMs: 30_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+    act(() => {
+      playerActions.applyAuthoritativeSession(sessionAt(5_000));
+      playerActions.applyTimedLyrics(
+        biliTrack.id,
+        1,
+        [
+          { atMs: 1_000, endMs: 2_000, original: "第一句已过" },
+          { atMs: 8_000, endMs: 10_000, original: "第二句待播" },
+        ],
+        "bilibiliSubtitle",
+      );
+    });
+    render(<TerminalMiniMode onExit={() => undefined} />);
+    const preview = document.querySelector(".terminal-lyric-preview")!;
+    expect(preview.querySelector("p")).toHaveTextContent("等待歌词");
+    expect(preview.querySelector("span")).toHaveTextContent("第二句待播");
+
+    fireEvent.keyDown(window, { key: "l" });
+    expect(screen.getByText("Mini 字幕曲 · B站字幕")).toBeInTheDocument();
+    expect(screen.getByText("第一句已过").closest("p")).toHaveClass("is-past");
+    expect(screen.getByText("第二句待播").closest("p")).not.toHaveClass("is-past");
+  });
+
+  it("Terminal Mini 区分 B站字幕加载失败与确认无字幕，非B站保持 NO LYRICS AVAILABLE", () => {
+    const biliTrack = { id: "bilibili:video:BV17x411w7KC:125", title: "Mini 异常字幕", artist: "UP", album: "", durationMs: 30_000 };
+    const qqTrack = { id: "0039MnYb0qxYhV", title: "QQ 无歌词", artist: "歌手", album: "", durationMs: 30_000 };
+    const setTrack = (track: typeof biliTrack, generation: number) => {
+      playerActions.applyAuthoritativeSession({
+        requestedQuality: "320k",
+        mode: "sequence",
+        queue: { generation, selectedIndex: 0, items: [track] },
+        player: {
+          state: "playing",
+          generation,
+          currentTrack: track,
+          positionMs: 1_000,
+          durationMs: 30_000,
+          volume: 0.7,
+          muted: false,
+          failure: null,
+        },
+      });
+    };
+
+    act(() => {
+      setTrack(biliTrack, 1);
+      playerActions.failTimedLyrics(biliTrack.id, 1);
+    });
+    render(<TerminalMiniMode onExit={() => undefined} />);
+
+    expect(screen.getByText("字幕加载失败")).toHaveAttribute("data-lyrics-status", "error");
+    fireEvent.keyDown(window, { key: "l" });
+    const lyricsRegion = screen.getByRole("region", { name: "歌词" });
+    expect(lyricsRegion).toHaveAttribute("data-lyrics-status", "error");
+    expect(screen.getByText("字幕加载失败")).toHaveAttribute("data-lyrics-status", "error");
+
+    act(() => playerActions.applyTimedLyrics(biliTrack.id, 1, []));
+    expect(screen.getByRole("region", { name: "歌词" })).toHaveAttribute("data-lyrics-status", "empty");
+    expect(screen.getByText("暂无歌词")).toHaveAttribute("data-lyrics-status", "empty");
+
+    act(() => {
+      setTrack(qqTrack, 2);
+      playerActions.failTimedLyrics(qqTrack.id, 2);
+    });
+    expect(screen.getByRole("region", { name: "歌词" })).toHaveAttribute("data-lyrics-status", "error");
+    expect(screen.getByText("NO LYRICS AVAILABLE")).toHaveAttribute("data-lyrics-status", "error");
+  });
 });

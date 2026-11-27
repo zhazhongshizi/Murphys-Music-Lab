@@ -10,11 +10,17 @@ import {
 } from "react";
 
 import type { LyricLine } from "../player/fixtures";
+import type { LyricsStatus } from "../player/playerStore";
 import "./scrolling-lyrics.css";
 
 interface ScrollingLyricsProps {
   readonly lyrics: readonly LyricLine[];
   readonly activeIndex: number;
+  readonly pastCount?: number;
+  readonly positionMs?: number;
+  readonly sourceLabel?: string;
+  readonly lyricsStatus?: LyricsStatus;
+  readonly emptyMessage?: string;
   readonly onSeek?: (atMs: number) => void;
 }
 
@@ -33,7 +39,16 @@ function clampIndex(index: number, length: number): number {
   return Math.max(0, Math.min(index, length - 1));
 }
 
-export function ScrollingLyrics({ lyrics, activeIndex, onSeek }: ScrollingLyricsProps) {
+export function ScrollingLyrics({
+  lyrics,
+  activeIndex,
+  pastCount,
+  positionMs,
+  sourceLabel,
+  lyricsStatus,
+  emptyMessage,
+  onSeek,
+}: ScrollingLyricsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const manualScrollTimer = useRef<number | null>(null);
@@ -123,8 +138,12 @@ export function ScrollingLyrics({ lyrics, activeIndex, onSeek }: ScrollingLyrics
   }, [userScrolling, lyrics]);
 
   useEffect(() => {
+    if (activeIndex < 0) {
+      lastActiveIndex.current = -1;
+      return;
+    }
     if (userScrolling || keyboardActive) return;
-    const active = activeIndex >= 0 ? lineRefs.current[activeIndex] : null;
+    const active = lineRefs.current[activeIndex];
     const container = containerRef.current;
     if (!active || !container) return;
     if (activeIndex === lastActiveIndex.current) return;
@@ -274,19 +293,26 @@ export function ScrollingLyrics({ lyrics, activeIndex, onSeek }: ScrollingLyrics
   }, [seekable]);
 
   if (lyrics.length === 0) {
+    const emptyStatus = lyricsStatus === "error"
+      ? "error"
+      : lyricsStatus === "pending"
+        ? "pending"
+        : "empty";
     return (
-      <section aria-label="同步歌词" className="lyrics-scroll">
+      <section aria-label="同步歌词" className="lyrics-scroll" data-lyrics-status={emptyStatus}>
         <p className="lyrics-scroll__eyebrow">正在播放 · 歌词</p>
         <div className="lyrics-scroll__empty">
-          <p className="lyrics-scroll__line lyrics-scroll__line--active">暂无歌词</p>
+          <p className="lyrics-scroll__line lyrics-scroll__line--active">{emptyMessage ?? "暂无歌词"}</p>
         </div>
       </section>
     );
   }
 
+  const eyebrowLabel = sourceLabel ? `正在播放 · 歌词 · ${sourceLabel}` : "正在播放 · 歌词";
+
   return (
-    <section aria-label="同步歌词" className="lyrics-scroll">
-      <p className="lyrics-scroll__eyebrow">正在播放 · 歌词</p>
+    <section aria-label="同步歌词" className="lyrics-scroll" data-lyrics-status={lyricsStatus ?? "ready"}>
+      <p className="lyrics-scroll__eyebrow">{eyebrowLabel}</p>
       <div
         ref={containerRef}
         className="lyrics-scroll__container"
@@ -306,7 +332,13 @@ export function ScrollingLyrics({ lyrics, activeIndex, onSeek }: ScrollingLyrics
 
         {lyrics.map((line, index) => {
           const isActive = index === activeIndex;
-          const isPast = index < activeIndex;
+          const isPast = !isActive && (
+            pastCount !== undefined
+              ? index < pastCount
+              : positionMs !== undefined
+                ? line.atMs <= positionMs
+                : activeIndex >= 0 && index < activeIndex
+          );
           const isKeyboardFocused = seekable && keyboardActive && index === effectiveFocusedIndex;
           const lineId = seekable ? `${listId}-line-${index}` : undefined;
           const cls = [

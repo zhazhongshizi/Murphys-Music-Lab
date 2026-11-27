@@ -19,9 +19,10 @@ import {
   usePlayerSelector,
   type PlaybackMode,
   type PlayerSnapshot,
+  type LyricsStatus,
 } from "../player/playerStore";
 import type { Track } from "../player/fixtures";
-import { lyricIndexAt } from "../stage/ListeningStage";
+import { activeLyricIndexAt, formatLyricSourceLabel, nextLyricIndexAt, pastLyricCountAt } from "../stage/lyricSelection";
 import {
   deriveTerminalUpNext,
   type TerminalUpNext,
@@ -42,6 +43,7 @@ const selectMode = (snapshot: PlayerSnapshot) => snapshot.mode;
 const selectLikedIds = (snapshot: PlayerSnapshot) => snapshot.likedIds;
 const selectPlaybackError = (snapshot: PlayerSnapshot) => snapshot.playbackError;
 const selectPosition = (snapshot: PlayerSnapshot) => snapshot.positionMs;
+const selectLyricsStatus = (snapshot: PlayerSnapshot) => snapshot.lyricsStatus;
 
 const MODE_LABELS: Record<PlaybackMode, string> = {
   sequence: "SEQUENCE",
@@ -352,16 +354,34 @@ function TerminalVolume({ volume, muted }: TerminalVolumeProps) {
 
 interface TerminalLyricPreviewProps {
   track: Track | null;
+  lyricsStatus?: LyricsStatus;
 }
 
-function TerminalLyricPreview({ track }: TerminalLyricPreviewProps) {
+function TerminalLyricPreview({ track, lyricsStatus }: TerminalLyricPreviewProps) {
   const positionMs = usePlayerSelector(selectPosition);
   if (!track || track.lyrics.length === 0) {
-    return <p className="terminal-lyric-preview terminal-lyric-preview--empty">NO LYRICS AVAILABLE</p>;
+    const isBilibili = Boolean(track?.id.startsWith("bilibili:"));
+    const statusAttr = lyricsStatus === "error"
+      ? "error"
+      : lyricsStatus === "pending"
+        ? "pending"
+        : "empty";
+    const emptyText = isBilibili
+      ? (lyricsStatus === "error" ? "字幕加载失败" : "暂无歌词")
+      : "NO LYRICS AVAILABLE";
+    return (
+      <p
+        className="terminal-lyric-preview terminal-lyric-preview--empty"
+        data-lyrics-status={statusAttr}
+      >
+        {emptyText}
+      </p>
+    );
   }
-  const activeIndex = lyricIndexAt(positionMs, track.lyrics);
-  const current = track.lyrics[activeIndex];
-  const next = track.lyrics[activeIndex + 1];
+  const activeIndex = activeLyricIndexAt(positionMs, track.lyrics);
+  const nextIndex = nextLyricIndexAt(positionMs, track.lyrics);
+  const current = activeIndex >= 0 ? track.lyrics[activeIndex] : undefined;
+  const next = nextIndex >= 0 ? track.lyrics[nextIndex] : undefined;
   return (
     <div className="terminal-lyric-preview">
       <p>{current?.original ?? "等待歌词"}</p>
@@ -372,11 +392,22 @@ function TerminalLyricPreview({ track }: TerminalLyricPreviewProps) {
 
 interface TerminalLyricsPanelProps {
   track: Track | null;
+  lyricsStatus?: LyricsStatus;
 }
 
-function TerminalLyricsPanel({ track }: TerminalLyricsPanelProps) {
+function TerminalLyricsPanel({ track, lyricsStatus }: TerminalLyricsPanelProps) {
   const positionMs = usePlayerSelector(selectPosition);
-  const activeIndex = track && track.lyrics.length > 0 ? lyricIndexAt(positionMs, track.lyrics) : -1;
+  const lyrics = track?.lyrics ?? [];
+  const activeIndex = lyrics.length > 0 ? activeLyricIndexAt(positionMs, lyrics) : -1;
+  const pastCount = lyrics.length > 0 ? pastLyricCountAt(positionMs, lyrics) : 0;
+  const sourceLabel = lyrics.length > 0 ? formatLyricSourceLabel(track?.lyricSource) : undefined;
+  const isBilibili = Boolean(track?.id.startsWith("bilibili:"));
+  const resolvedStatus = lyrics.length > 0
+    ? (lyricsStatus ?? "ready")
+    : (lyricsStatus === "error" ? "error" : lyricsStatus === "pending" ? "pending" : "empty");
+  const emptyText = isBilibili
+    ? (lyricsStatus === "error" ? "字幕加载失败" : "暂无歌词")
+    : "NO LYRICS AVAILABLE";
   const containerRef = useRef<HTMLElement>(null);
   const activeRef = useRef<HTMLParagraphElement>(null);
   const manualScrollTimer = useRef<number | null>(null);
@@ -385,7 +416,11 @@ function TerminalLyricsPanel({ track }: TerminalLyricsPanelProps) {
   const [userScrolling, setUserScrolling] = useState(false);
 
   useEffect(() => {
-    if (userScrolling || activeIndex < 0) return;
+    if (activeIndex < 0) {
+      lastActiveIndex.current = -1;
+      return;
+    }
+    if (userScrolling) return;
     if (!activeRef.current || !containerRef.current) return;
     if (activeIndex === lastActiveIndex.current) return;
     lastActiveIndex.current = activeIndex;
@@ -427,19 +462,20 @@ function TerminalLyricsPanel({ track }: TerminalLyricsPanelProps) {
     <section
       aria-label="歌词"
       className="terminal-panel terminal-panel--lyrics"
+      data-lyrics-status={resolvedStatus}
       onScroll={handleScroll}
       ref={containerRef}
     >
       <div className="terminal-panel__heading">
         <span>LYRICS</span>
-        <small>{track?.title ?? "NO TRACK"}</small>
+        <small>{track?.title ?? "NO TRACK"}{sourceLabel ? ` · ${sourceLabel}` : ""}</small>
       </div>
       {track?.lyrics.length ? (
         <div className="terminal-lyrics-list">
           {track.lyrics.map((line, index) => (
             <p
               aria-current={index === activeIndex ? "true" : undefined}
-              className={index === activeIndex ? "is-active" : index < activeIndex ? "is-past" : ""}
+              className={index === activeIndex ? "is-active" : index < pastCount ? "is-past" : ""}
               key={`${line.atMs}-${index}`}
               ref={index === activeIndex ? activeRef : undefined}
             >
@@ -449,7 +485,7 @@ function TerminalLyricsPanel({ track }: TerminalLyricsPanelProps) {
           ))}
         </div>
       ) : (
-        <p className="terminal-panel__empty">NO LYRICS AVAILABLE</p>
+        <p className="terminal-panel__empty" data-lyrics-status={resolvedStatus}>{emptyText}</p>
       )}
     </section>
   );
@@ -493,6 +529,7 @@ function TerminalQueuePanel({ currentTrack, queue }: TerminalQueuePanelProps) {
 
 interface TerminalNowPlayingProps {
   currentTrack: Track | null;
+  lyricsStatus?: LyricsStatus;
   isPlaying: boolean;
   mode: PlaybackMode;
   volume: number;
@@ -505,6 +542,7 @@ interface TerminalNowPlayingProps {
 
 function TerminalNowPlaying({
   currentTrack,
+  lyricsStatus,
   isPlaying,
   mode,
   volume,
@@ -531,7 +569,7 @@ function TerminalNowPlaying({
           <small>{currentTrack?.album ?? "VINYL GREENHOUSE"}</small>
         </section>
 
-        <TerminalLyricPreview track={currentTrack} />
+        <TerminalLyricPreview track={currentTrack} lyricsStatus={lyricsStatus} />
 
         <TerminalProgress durationMs={currentTrack?.durationMs ?? null} />
 
@@ -584,6 +622,7 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
   const mode = usePlayerSelector(selectMode);
   const likedIds = usePlayerSelector(selectLikedIds);
   const playbackError = usePlayerSelector(selectPlaybackError);
+  const lyricsStatus = usePlayerSelector(selectLyricsStatus);
   const [panel, setPanel] = useState<TerminalPanel>("now-playing");
   const liked = currentTrack ? likedIds.includes(currentTrack.id) : false;
   const upNext = deriveTerminalUpNext(currentTrack, queue, mode, 5);
@@ -667,6 +706,7 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
       {panel === "now-playing" ? (
         <TerminalNowPlaying
           currentTrack={currentTrack}
+          lyricsStatus={lyricsStatus}
           isPlaying={isPlaying}
           liked={liked}
           mode={mode}
@@ -678,7 +718,7 @@ export function TerminalMiniMode({ onExit }: TerminalMiniModeProps) {
         />
       ) : panel === "lyrics" ? (
         <main className="terminal-mini__body terminal-mini__body--panel" id="main-content">
-          <TerminalLyricsPanel track={currentTrack} />
+          <TerminalLyricsPanel track={currentTrack} lyricsStatus={lyricsStatus} />
           <TerminalProgress durationMs={currentTrack?.durationMs ?? null} />
           <nav aria-label="终端面板控制" className="terminal-controls terminal-controls--panel">
             <TerminalKeyButton label="NOW PLAYING" onClick={() => setPanel("now-playing")} shortcut="ESC" />

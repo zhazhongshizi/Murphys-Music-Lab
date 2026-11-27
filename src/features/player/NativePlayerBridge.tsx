@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribeProviderSessions } from "../../backend/providerSessions";
 import { hasPlaybackTransport, playbackConnectionRevision, subscribePlaybackConnection } from "../../backend/playbackTransport";
 import type { WindowRenderability } from "../../backend/windowAdapter";
@@ -36,8 +36,14 @@ function refreshNativeSnapshot() {
   return refreshRequest;
 }
 
-function readLyrics(trackId: string, generation: number, offset: number) {
-  const key = `${trackId}:${generation}:${offset}`;
+function readLyrics(
+  trackId: string,
+  generation: number,
+  offset: number,
+  connectionRevision: number,
+  sessionRevision: number,
+) {
+  const key = `${trackId}:${generation}:${offset}:${connectionRevision}:${sessionRevision}`;
   const existing = lyricRequests.get(key);
   if (existing) return existing;
   lyricRequests.clear();
@@ -58,10 +64,14 @@ export function NativePlayerBridge({
   const lifecycleRef = useRef({ renderable, focused });
   lifecycleRef.current = { renderable, focused };
   const syncPollingRef = useRef<(() => void) | null>(null);
+  const [sessionRevisions, setSessionRevisions] = useState({ bilibili: 0, netease: 0 });
 
   useEffect(() => {
     return subscribeProviderSessions((id) => {
       if (id === "netease") playerActions.invalidateProviderLikes();
+      if (id === "bilibili" || id === "netease") {
+        setSessionRevisions((prev) => ({ ...prev, [id]: prev[id] + 1 }));
+      }
     });
   }, []);
 
@@ -83,6 +93,11 @@ export function NativePlayerBridge({
   const generation = usePlayerSelector(selectGeneration);
   const lyricOffset = usePlayerSelector(s => s.lyricOffsetMs ?? 0);
   const trackId = usePlayerSelector((snapshot) => getCurrentTrack(snapshot)?.id ?? null);
+  const providerSessionRevision = trackId?.startsWith("bilibili:")
+    ? sessionRevisions.bilibili
+    : trackId?.startsWith("netease:")
+      ? sessionRevisions.netease
+      : 0;
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -139,18 +154,24 @@ export function NativePlayerBridge({
       return;
     }
     let active = true;
-    void readLyrics(trackId, generation, lyricOffset).then(
+    void readLyrics(trackId, generation, lyricOffset, connectionRevision, providerSessionRevision).then(
       (timeline) => {
         if (active) {
-          playerActions.applyTimedLyrics(timeline.trackId, timeline.generation, timeline.lines);
+          playerActions.applyTimedLyrics(
+            timeline.trackId,
+            timeline.generation,
+            timeline.lines,
+            timeline.source,
+            timeline.timelineEndMs,
+          );
         }
       },
-      () => { if (active) playerActions.applyTimedLyrics(trackId, generation, []); },
+      () => { if (active) playerActions.failTimedLyrics(trackId, generation); },
     );
     return () => {
       active = false;
     };
-  }, [generation, nativeLoaded, nativeMode, trackId, connectionRevision, lyricOffset]);
+  }, [generation, nativeLoaded, nativeMode, trackId, connectionRevision, lyricOffset, providerSessionRevision]);
 
   return null;
 }

@@ -12,18 +12,18 @@
 
 ## 方法、数据与安全边界
 
-握手：`bilibili-provider` / `0.1.0` / protocol 2，实际 18 个方法：
+握手：`bilibili-provider` / `0.1.0` / protocol 2，实际 19 个方法：
 
 ```text
 system.handshake system.ping
 auth.qr.start auth.qr.poll auth.qr.cancel
 auth.credential.restore auth.credential.check auth.logout
 search.videos video.resolve video.parts
-library.containers library.videos playback.resolve
+library.containers library.videos subtitles.get playback.resolve
 library.container library.verify library.addItems library.removeItems
 ```
 
-`writeActions=[favorite.addVideos,favorite.removeVideos]`、`lyrics=false`、`qualities=[auto,aac]`。只读方法按账号 epoch 与写入修订串行调度、同参数在途合并；真实 NDJSON 管道并发帧测试覆盖，不后台翻页。风控/限流阻止本实例继续自动请求；网络失败不判凭据失效。日志只输出固定错误码，无响应体/Cookie/二维码材料。
+`writeActions=[favorite.addVideos,favorite.removeVideos]`、`lyrics=true`、`qualities=[auto,aac]`。只读方法按账号 epoch 与写入修订串行调度、同参数在途合并；真实 NDJSON 管道并发帧测试覆盖，不后台翻页。风控/限流阻止本实例继续自动请求；网络失败不判凭据失效。日志只输出固定错误码，无响应体/Cookie/二维码材料。
 
 Cookie 由 tough-cookie 处理每条 `Headers.getSetCookie()`，支持 Expires 逗号、Domain/hostOnly/Path/Secure、覆盖与失效，拒绝错误域和公共后缀。只持久化恢复所需 Cookie；不保存二维码 key/refresh_token、不续签。凭据经独立 `<app-data>/provider-state/bilibili/credentials.v1.dpapi` 保存，64 KiB envelope 上限。恢复/检查通过 nav 确认账号，失效要求重扫码；网络/风控保留已保存材料。
 
@@ -31,7 +31,7 @@ Cookie 由 tough-cookie 处理每条 `Headers.getSetCookie()`，支持 Expires �
 
 输入只接受 BV、AV、标准视频 URL 和 b23.tv。AV 通过 view 取得规范 BV；标准链接只本地解析；短链每跳验证精确主机/协议/路径/端口，最多 3 跳，拒绝登录页/任意 URL/环路。b23.tv DNS 全部地址排除私网/回环/链路本地，连接固定已验证地址且保留 TLS 主机校验；遵循现有 TUN fake-IP 使用场景。短链请求无账号 Cookie。
 
-视频摘要不是 TrackRef，不能直接入队。`video.parts` 生成 `bilibili:video:<bvid>:<cid>` 和完整 `video={title,partTitle,partNumber}`；保留 UP 与原始标题，分 P 顺序、CID 唯一性校验。无歌词返回正常空行，不查询其他平台。schema 12 保存分 P 身份与展示信息，见 [宿主契约](../../../contracts/provider-v2.md)。视频总时长可超过一天，单 P 仍按 24h 契约。
+视频摘要不是 TrackRef，不能直接入队。`video.parts` 生成 `bilibili:video:<bvid>:<cid>` 和完整 `video={title,partTitle,partNumber}`；保留 UP 与原始标题，分 P 顺序、CID 唯一性校验。`subtitles.get` 通过已签名的 `/x/player/wbi/v2` 获取分 P 字幕列表，当轨道为空且 `need_login_subtitle=true` 时返回 `authentication_required`，确认无轨则返回 `source="none"` 与空行；选轨优先明确人工轨与中文并按上游稳定顺序回退，仅从不转发 Cookie、禁止重定向的白名单 `https://aisubtitle.hdslb.com` 拉取有界 JSON 正文（原始地址留在 Provider），并规范化为整数毫秒、严格递增且最多 5000 行的结构化字幕，不查询其他平台。schema 12 保存分 P 身份与展示信息，见 [宿主契约](../../../contracts/provider-v2.md)。视频总时长可超过一天，单 P 仍按 24h 契约。
 
 音轨只选 `audio/mp4`、`mp4a.40.2` 的最高合法 AAC。主/备用来自同一个 DASH audio 项；私有 `backupUrls` 为显式严格协议扩展。Rust 仅允许 `.bilivideo.com`、`.bilivideo.cn` 和 `upos-hz-mirrorakam.akamaized.net`（沿用第二步公开样例/参考 allowlist，未扩大 PCDN）；逐个校验 DNS/端口/请求头，拒绝重定向，CDN 不带 Cookie。首次 GET 成功即固定候选，之后失败走同播放意图一次重解析预算；不跨流续接字节。AAC 与实际 bps 在公开播放快照中保存，URL/headers 不进入队列、历史或 renderer。
 

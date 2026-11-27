@@ -70,6 +70,7 @@ export interface RequestParams {
   "library.addItems": WriteItems;
   "library.removeItems": WriteItems;
   "lyrics.get": { readonly songId: string };
+  "subtitles.get": { readonly track: { readonly kind: "videoPart"; readonly bvid: string; readonly cid: string } };
   "playback.resolve": { readonly track: RawTrackRef; readonly preferredQuality: ProviderQuality };
 }
 export interface PrivatePage<T> { readonly page: number; readonly hasMore: boolean; readonly total: number | null; readonly items: readonly T[] }
@@ -101,6 +102,12 @@ export interface ResultMap {
   "library.addItems": ProviderWriteReceipt;
   "library.removeItems": ProviderWriteReceipt;
   "lyrics.get": { readonly songId: string; readonly original: string | null; readonly translation: string | null; readonly romanization: string | null };
+  "subtitles.get": {
+    readonly track: RawTrackRef;
+    readonly source: "none" | "manual" | "ai" | "unknown";
+    readonly lines: readonly { readonly atMs: number; readonly endMs: number; readonly text: string }[];
+    readonly timelineEndMs?: number;
+  };
   "playback.resolve": { readonly track: RawTrackRef; readonly quality: Exclude<ProviderQuality, "auto">; readonly codec: "flac" | "mp3" | "aac"; readonly bitrate: number; readonly url: string; readonly backupUrls?: readonly string[]; readonly dash?: { readonly initialization: string; readonly indexRange: string }; readonly headers: { readonly Referer?: string; readonly "User-Agent"?: string }; readonly expiresInSeconds: number; readonly durationMs: number };
 }
 export type Method = keyof RequestParams;

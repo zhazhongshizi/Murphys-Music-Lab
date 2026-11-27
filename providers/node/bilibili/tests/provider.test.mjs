@@ -9,6 +9,7 @@ import { methods, capabilities, plainTitle, videoCover } from '../provider.mjs';
 import { checkedData, API } from '../transport.mjs';
 import { resolveInput, publicShortAddress } from '../links.mjs';
 import { selectAacCandidates } from '../audio.mjs';
+import { classifySubtitleTrack, selectSubtitleTracks, normalizeSubtitleCues, normalizeSubtitleTimeline, boundSubtitleResult } from '../subtitles.mjs';
 const schema = JSON.parse(readFileSync(new URL('../../../../contracts/protocol-v2.schema.json', import.meta.url)));
 const constants = JSON.parse(readFileSync(new URL('../../../../contracts/protocol-v2.constants.json', import.meta.url)));
 const ajv = new Ajv({ strict: false }); ajv.addSchema(schema);
@@ -55,8 +56,9 @@ test('production write profile is explicit; cold process sends no requests', asy
   const f = fixture(); assert.equal(f.calls.length, 0);
   const h = await f.provider.handle('system.handshake');
   assert.deepEqual(h.implementedMethods, methods); assert.deepEqual(h.capabilities, capabilities);
-  assert.deepEqual(h.capabilities.writeActions, ['favorite.addVideos', 'favorite.removeVideos']); assert.equal(h.capabilities.lyrics, false);
+  assert.deepEqual(h.capabilities.writeActions, ['favorite.addVideos', 'favorite.removeVideos']); assert.equal(h.capabilities.lyrics, true);
   for (const m of ['lyrics.get', 'library.setLiked', 'auth.credential.refresh']) await assert.rejects(f.provider.handle(m), fault('unsupported_capability'));
+  await assert.rejects(f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }), fault('authentication_required'));
   await assert.rejects(f.provider.handle('library.addItems',{}),fault('authentication_required'));
   await assert.rejects(f.provider.handle('search.videos', { keyword: 'x' }), fault('authentication_required'));
   assert.equal(f.calls.length, 0);
@@ -120,6 +122,7 @@ test('all business results pass private strict schema, including part identities
     'search.videos': { keyword: '原题', page: 1, pageSize: 20 }, 'video.resolve': { input: BVID },
     'video.parts': { bvid: BVID, page: 1, pageSize: 20 }, 'library.containers': { kind: 'created', page: 1, pageSize: 20 },
     'library.videos': { containerId: '7', page: 1, pageSize: 20 },
+    'subtitles.get': { track: { kind: 'videoPart', bvid: BVID, cid: '123' } },
     'playback.resolve': { track: { kind: 'videoPart', bvid: BVID, cid: '124' }, preferredQuality: 'aac' },
   };
   for (const [method, params] of Object.entries(cases)) {
@@ -246,4 +249,468 @@ test('favorite contents translate logical pages to upstream pages of twenty with
   assert.deepEqual([...p1.items,...p2.items].map(x=>x.title),all.map(x=>x.title));
   const small=await f.provider.handle('library.videos',{containerId:'7',page:2,pageSize:7});
   assert.deepEqual(small.items.map(x=>x.title),all.slice(7,14).map(x=>x.title));
+});
+
+test('subtitles.get selects manual over AI, isolates P1/P2 CIDs, handles no-track, and never forwards cookies or leaks CDN URLs', async () => {
+  const f = await restored();
+  const p1 = await f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } });
+  assert.equal(p1.source, 'manual');
+  assert.equal('timelineEndMs' in p1, false);
+  assert.deepEqual(p1.track, { kind: 'videoPart', bvid: BVID, cid: '123' });
+  assert.deepEqual(p1.lines, [
+    { atMs: 500, endMs: 2250, text: '第一句上 第一句下' },
+    { atMs: 3000, endMs: 6000, text: '第二句重叠前' },
+    { atMs: 6000, endMs: 7500, text: '第三句接续' },
+    { atMs: 18000, endMs: 20000, text: '间奏后第四句' },
+  ]);
+  const cdnCall = f.calls.find(c => c.host === 'aisubtitle.hdslb.com');
+  assert.equal(cdnCall.path, '/bfs/subtitle/manual-zh-123.json');
+  assert.equal('Cookie' in cdnCall.headers, false);
+  assert.ok(!JSON.stringify(p1).includes('aisubtitle.hdslb.com'));
+
+  const p2 = await f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '124' } });
+  assert.equal(p2.source, 'ai');
+  assert.equal('timelineEndMs' in p2, false);
+  assert.deepEqual(p2.track, { kind: 'videoPart', bvid: BVID, cid: '124' });
+  assert.deepEqual(p2.lines, [
+    { atMs: 1200, endMs: 3400, text: '第二 P AI 字幕首句' },
+    { atMs: 5000, endMs: 7250, text: '第二 P AI 字幕末句' },
+  ]);
+
+  const empty = await f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: 'BV17x411w7KE', cid: '123' } });
+  assert.equal('timelineEndMs' in empty, false);
+  assert.deepEqual(empty, { track: { kind: 'videoPart', bvid: 'BV17x411w7KE', cid: '123' }, source: 'none', lines: [] });
+});
+
+test('subtitle track classification and priority selection avoid mislabeling missing metadata as AI', async () => {
+  assert.equal(classifySubtitleTrack({ lan: 'zh-CN', type: 0 }), 'manual');
+  assert.equal(classifySubtitleTrack({ lan: 'zh-CN' }), 'unknown');
+  assert.equal(classifySubtitleTrack({ lan: 'en-US', type: undefined, ai_type: 0, ai_status: 0 }), 'unknown');
+  assert.equal(classifySubtitleTrack({ lan: 'ai-zh' }), 'ai');
+  assert.equal(classifySubtitleTrack({ lan: 'zh-CN', type: 1 }), 'ai');
+  assert.equal(classifySubtitleTrack({ lan: 'zh-CN', ai_type: 1 }), 'ai');
+  assert.equal(classifySubtitleTrack({ lan: 'zh-CN', ai_status: 2 }), 'ai');
+
+  const ordered = selectSubtitleTracks([
+    { lan: 'en-US', type: 1, subtitle_url: '//aisubtitle.hdslb.com/ai-en.json' },
+    { lan: 'zh-CN', type: 1, subtitle_url: '//aisubtitle.hdslb.com/ai-zh.json' },
+    { lan: 'ja', subtitle_url: '//aisubtitle.hdslb.com/unk-ja.json' },
+    { lan: 'zh-Hant', subtitle_url: '//aisubtitle.hdslb.com/unk-zh.json' },
+    { lan: 'en-US', type: 0, subtitle_url: '//aisubtitle.hdslb.com/man-en.json' },
+    { lan: 'zh-CN', type: 0, subtitle_url: '' },
+    { lan: 'zh-Hans', type: 0, subtitle_url: '//aisubtitle.hdslb.com/man-zh-1.json' },
+    { lan: 'zh-CN', type: 0, subtitle_url: '//aisubtitle.hdslb.com/man-zh-2.json' },
+  ]);
+  assert.deepEqual(ordered.map(x => [x.source, x.rawUrl]), [
+    ['manual', '//aisubtitle.hdslb.com/man-zh-1.json'],
+    ['manual', '//aisubtitle.hdslb.com/man-zh-2.json'],
+    ['manual', '//aisubtitle.hdslb.com/man-en.json'],
+    ['unknown', '//aisubtitle.hdslb.com/unk-zh.json'],
+    ['unknown', '//aisubtitle.hdslb.com/unk-ja.json'],
+    ['ai', '//aisubtitle.hdslb.com/ai-zh.json'],
+    ['ai', '//aisubtitle.hdslb.com/ai-en.json'],
+  ]);
+
+  // Falls back to next track if first parses cleanly with 0 valid cues; preserves 'unknown' label.
+  const f = await restored({
+    hook: u => {
+      if (u.pathname === '/x/player/wbi/v2') {
+        return response({
+          bvid: BVID,
+          cid: 123,
+          need_login_subtitle: false,
+          subtitle: {
+            subtitles: [
+              { lan: 'zh-CN', type: 0, subtitle_url: 'https://aisubtitle.hdslb.com/empty.json' },
+              { lan: 'zh-CN', subtitle_url: 'https://aisubtitle.hdslb.com/unk.json' },
+            ],
+          },
+        });
+      }
+      if (u.pathname === '/empty.json') return new Response(JSON.stringify({ body: [{ from: 1, to: 1, content: '无效区间' }] }), { status: 200 });
+      if (u.pathname === '/unk.json') return new Response(JSON.stringify({ body: [{ from: 2.5, to: 4.0, content: '回退未知来源' }] }), { status: 200 });
+    },
+  });
+  const res = await f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } });
+  assert.equal(res.source, 'unknown');
+  assert.deepEqual(res.lines, [{ atMs: 2500, endMs: 4000, text: '回退未知来源' }]);
+});
+
+test('subtitle cue normalization handles edge intervals, ordering, same-start, overlap, UTF-8 CJK truncation, 5000-line cap, and nul rejection', () => {
+  const longCjk = '测试中文字幕'.repeat(40) + '🎵'; // > 512 UTF-8 bytes
+  const cues = normalizeSubtitleCues({
+    body: [
+      { from: -0.5, to: 1.0, content: '负起点丢弃' },
+      { from: 2.0, to: 2.0, content: '零长度丢弃' },
+      { from: 3.0001, to: 3.0004, content: '舍入归零丢弃' },
+      { from: 86400, to: 86405, content: '超上限丢弃' },
+      { from: 5.0, to: 6.0, content: '   \r\n  ' },
+      { from: 4.0, to: 5.2, content: '较短同起点' },
+      { from: 4.0, to: 8.5, content: '较长同起点\r\n换行合并' },
+      { from: 1.1236, to: 2.5, content: '首句小数' },
+      { from: 7.0, to: 9.0, content: longCjk },
+      { from: 86399.5, to: 86410, content: '末句钳制到上限' },
+    ],
+  });
+  assert.equal(cues[0].atMs, 1124);
+  assert.equal(cues[0].endMs, 2500);
+  assert.equal(cues[1].atMs, 4000);
+  assert.equal(cues[1].endMs, 7000); // clamped from 8500 due to overlap with 7000
+  assert.equal(cues[1].text, '较长同起点 换行合并');
+  assert.equal(cues[2].atMs, 7000);
+  assert.ok(Buffer.byteLength(cues[2].text, 'utf8') <= 512);
+  assert.ok(cues[2].text.length <= 512);
+  assert.ok(!/[\uD800-\uDFFF]/.test(cues[2].text));
+  assert.equal(cues[3].atMs, 86399500);
+  assert.equal(cues[3].endMs, 86400000);
+
+  const many = Array.from({ length: 5050 }, (_, i) => ({ from: i, to: i + 0.5, content: `行${i}` }));
+  const capped = normalizeSubtitleCues({ body: many });
+  assert.equal(capped.length, 5000);
+  assert.equal(capped[4999].atMs, 4999000);
+
+  assert.throws(() => normalizeSubtitleCues({ body: 'not-array' }), fault('upstream_schema_changed'));
+  assert.throws(() => normalizeSubtitleCues({ body: [{ from: 0, to: 1, content: 'bad\0text' }] }), fault('upstream_schema_changed'));
+});
+
+test('subtitles.get distinguishes login-required, -101, untrusted CDN URLs, redirects, malformed JSON, and network timeouts', async () => {
+  const loginReq = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2' ? response({ bvid: BVID, cid: 123, need_login_subtitle: true, subtitle: { subtitles: [] } }) : undefined,
+  });
+  await assert.rejects(
+    loginReq.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+    fault('authentication_required'),
+  );
+  // authentication_required must not poison subsequent calls on the session.
+  assert.equal((await loginReq.provider.handle('video.resolve', { input: BVID })).bvid, BVID);
+
+  const code101 = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2' ? response(null, { code: -101 }) : undefined,
+  });
+  await assert.rejects(
+    code101.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+    fault('credential_invalid'),
+  );
+
+  for (const badUrl of [
+    'http://aisubtitle.hdslb.com/sub.json',
+    'https://evil.test/sub.json',
+    'https://aisubtitle.hdslb.com.evil.test/sub.json',
+    'https://subtitle.bilibili.com/sub.json',
+    'https://user@aisubtitle.hdslb.com/sub.json',
+    'https://aisubtitle.hdslb.com:8443/sub.json',
+    'https://aisubtitle.hdslb.com/sub.json#hash',
+  ]) {
+    const f = await restored({
+      hook: u => u.pathname === '/x/player/wbi/v2'
+        ? response({ bvid: BVID, cid: 123, need_login_subtitle: false, subtitle: { subtitles: [{ lan: 'zh-CN', type: 0, subtitle_url: badUrl }] } })
+        : undefined,
+    });
+    await assert.rejects(
+      f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+      fault('upstream_schema_changed'),
+    );
+  }
+
+  for (const [mode, expected] of [['redirect', 'upstream_schema_changed'], ['bad-json', 'upstream_schema_changed'], ['timeout', 'network_unavailable']]) {
+    const f = await restored({
+      hook: u => {
+        if (u.hostname === 'aisubtitle.hdslb.com') {
+          if (mode === 'redirect') return new Response('', { status: 302, headers: { location: 'https://aisubtitle.hdslb.com/other.json' } });
+          if (mode === 'bad-json') return new Response('{invalid', { status: 200 });
+          if (mode === 'timeout') return Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+        }
+      },
+    });
+    await assert.rejects(
+      f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+      fault(expected),
+    );
+  }
+});
+
+test('subtitles.get passes NDJSON runProvider schema check without leaking secrets or subtitle_url', async () => {
+  const f = await restored();
+  const input = new PassThrough(), output = new PassThrough();
+  let bytes = '';
+  output.on('data', c => { bytes += c; });
+  const running = runProvider(f.provider, input, output);
+  const frame = (id, method, params) => JSON.stringify({ v: 2, id, method, params }) + '\n';
+  input.write(frame('h', 'system.handshake', { protocolVersion: 2, providerId: 'bilibili' }));
+  input.write(frame('s1', 'subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }));
+  input.end();
+  await running;
+  const frames = bytes.trim().split('\n').map(JSON.parse);
+  assert.equal(frames.length, 2);
+  assert.equal(frames[1].ok, true);
+  assert.equal(frames[1].result.source, 'manual');
+  assert.ok(!bytes.includes('aisubtitle.hdslb.com'));
+  assert.ok(!bytes.includes('SESSDATA'));
+});
+
+test('subtitles.get rejects mismatched/missing upstream cid or bvid with upstream_schema_changed', async () => {
+  const wrongCid = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2'
+      ? response({
+        bvid: BVID,
+        cid: 123,
+        need_login_subtitle: false,
+        subtitle: {
+          subtitles: [
+            { id: 102, lan: 'zh-CN', lan_doc: '中文（中国）', type: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/manual-zh-123.json' },
+          ],
+        },
+      })
+      : undefined,
+  });
+  await assert.rejects(
+    wrongCid.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '124' } }),
+    fault('upstream_schema_changed'),
+  );
+
+  for (const payload of [
+    { bvid: BVID, need_login_subtitle: false, subtitle: { subtitles: [] } },
+    { bvid: 'BV17x411w7KE', cid: 123, need_login_subtitle: false, subtitle: { subtitles: [] } },
+  ]) {
+    const f = await restored({
+      hook: u => u.pathname === '/x/player/wbi/v2' ? response(payload) : undefined,
+    });
+    await assert.rejects(
+      f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+      fault('upstream_schema_changed'),
+    );
+  }
+});
+
+test('subtitles.get rejects missing or malformed upstream subtitle structure instead of returning none', async () => {
+  for (const payload of [
+    {},
+    { bvid: BVID, cid: 123 },
+    { bvid: BVID, cid: 123, subtitle: null },
+    { bvid: BVID, cid: 123, subtitle: [] },
+    { bvid: BVID, cid: 123, subtitle: {} },
+    { bvid: BVID, cid: 123, need_login_subtitle: 'true', subtitle: { subtitles: [] } },
+  ]) {
+    const f = await restored({
+      hook: u => u.pathname === '/x/player/wbi/v2' ? response(payload) : undefined,
+    });
+    await assert.rejects(
+      f.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+      fault('upstream_schema_changed'),
+    );
+  }
+});
+
+test('subtitles.get bounds 3000x360-byte cue payload strictly under 1 MiB NDJSON frame limit without crashing runProvider', async () => {
+  const cueText = '中'.repeat(120); // 120 * 3 = 360 UTF-8 bytes
+  assert.equal(Buffer.byteLength(cueText, 'utf8'), 360);
+  const rawBody = JSON.stringify({
+    body: Array.from({ length: 3000 }, (_, i) => ({
+      from: i * 1.5,
+      to: i * 1.5 + 1.0,
+      content: cueText,
+    })),
+  });
+  assert.ok(Buffer.byteLength(rawBody, 'utf8') > 1_048_576, 'raw CDN JSON should exceed 1 MiB');
+  assert.ok(Buffer.byteLength(rawBody, 'utf8') < 2 * 1024 * 1024, 'raw CDN JSON should fit 2 MiB CDN cap');
+
+  const f = await restored({
+    hook: u => {
+      if (u.pathname === '/x/player/wbi/v2') {
+        return response({
+          bvid: BVID,
+          cid: 123,
+          need_login_subtitle: false,
+          subtitle: {
+            subtitles: [{ lan: 'zh-CN', type: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/large-3000.json' }],
+          },
+        });
+      }
+      if (u.pathname === '/bfs/subtitle/large-3000.json') {
+        return new Response(rawBody, { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    },
+  });
+
+  const input = new PassThrough(), output = new PassThrough();
+  let bytes = '';
+  output.on('data', c => { bytes += c; });
+  const running = runProvider(f.provider, input, output);
+  const frame = (id, method, params) => JSON.stringify({ v: 2, id, method, params }) + '\n';
+  input.write(frame('h', 'system.handshake', { protocolVersion: 2, providerId: 'bilibili' }));
+  input.write(frame('s-large', 'subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }));
+  input.write(frame('ping-after', 'system.ping', {}));
+  input.end();
+  await running;
+
+  const rawLines = bytes.trimEnd().split('\n');
+  assert.equal(rawLines.length, 3);
+  const frames = rawLines.map(JSON.parse);
+  const largeIdx = frames.findIndex(x => x.id === 's-large');
+  const pingIdx = frames.findIndex(x => x.id === 'ping-after');
+  assert.notEqual(largeIdx, -1);
+  assert.notEqual(pingIdx, -1);
+
+  const largeFrameBytes = Buffer.byteLength(rawLines[largeIdx] + '\n', 'utf8');
+  assert.ok(largeFrameBytes <= 1_048_576, `NDJSON frame ${largeFrameBytes} exceeded 1 MiB`);
+
+  const largeFrame = frames[largeIdx];
+  assert.equal(largeFrame.ok, true);
+  assert.equal(largeFrame.result.source, 'manual');
+  assert.ok(largeFrame.result.lines.length > 0 && largeFrame.result.lines.length < 3000);
+  assert.equal(largeFrame.result.timelineEndMs, 4_499_500);
+  assert.ok(largeFrame.result.lines.at(-1).endMs < 4_499_500);
+  for (let i = 0; i < largeFrame.result.lines.length; i++) {
+    const line = largeFrame.result.lines[i];
+    assert.ok(line.atMs >= 0 && line.endMs > line.atMs);
+    if (i > 0) assert.ok(largeFrame.result.lines[i - 1].endMs <= line.atMs);
+  }
+  assert.equal(frames[pingIdx].ok, true);
+  assert.deepEqual(frames[pingIdx].result, { alive: true });
+});
+
+test('subtitles.get 50-minute 3000x360 ASCII fixture (cid=127) emits timelineEndMs=3000000 within 1 MiB NDJSON frame', async () => {
+  const f = await restored();
+  const input = new PassThrough(), output = new PassThrough();
+  let bytes = '';
+  output.on('data', c => { bytes += c; });
+  const running = runProvider(f.provider, input, output);
+  const frame = (id, method, params) => JSON.stringify({ v: 2, id, method, params }) + '\n';
+  input.write(frame('h', 'system.handshake', { protocolVersion: 2, providerId: 'bilibili' }));
+  input.write(frame('s-127', 'subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '127' } }));
+  input.end();
+  await running;
+
+  const rawLines = bytes.trimEnd().split('\n');
+  assert.equal(rawLines.length, 2);
+  const frameBytes = Buffer.byteLength(rawLines[1] + '\n', 'utf8');
+  assert.ok(frameBytes <= 1_048_576, `NDJSON frame ${frameBytes} exceeded 1 MiB`);
+  const parsed = JSON.parse(rawLines[1]);
+  assert.equal(parsed.ok, true);
+  const result = parsed.result;
+  assert.equal(result.source, 'manual');
+  assert.ok(result.lines.length > 2000 && result.lines.length < 3000, `unexpected line count ${result.lines.length}`);
+  assert.equal(result.timelineEndMs, 3_000_000);
+  assert.ok(result.lines.at(-1).endMs < 3_000_000);
+  const valid = ajv.compile({ $ref: `${schema.$id}#/$defs/${constants.methods['subtitles.get'].result}` });
+  assert.ok(valid(result), JSON.stringify(valid.errors));
+});
+
+test('5005-line short cues and boundSubtitleResult tail trimming preserve timelineEndMs while untruncated omits it', async () => {
+  const shortBody = Array.from({ length: 5005 }, (_, i) => ({
+    from: i * 0.5,
+    to: i * 0.5 + 0.4,
+    content: `L${i}`,
+  }));
+  const timeline = normalizeSubtitleTimeline({ body: shortBody });
+  assert.equal(timeline.lines.length, 5000);
+  assert.equal(timeline.timelineEndMs, 2_502_400);
+
+  const untruncated = normalizeSubtitleTimeline({ body: shortBody.slice(0, 10) });
+  assert.equal(untruncated.lines.length, 10);
+  assert.equal(untruncated.timelineEndMs, undefined);
+
+  const track = { kind: 'videoPart', bvid: BVID, cid: '123' };
+  const untruncatedBounded = boundSubtitleResult(track, 'manual', untruncated.lines, untruncated.timelineEndMs);
+  assert.equal('timelineEndMs' in untruncatedBounded, false);
+
+  const tailTrimmed = boundSubtitleResult(track, 'manual', untruncated.lines, undefined, 320);
+  assert.ok(tailTrimmed.lines.length > 0 && tailTrimmed.lines.length < 10);
+  assert.equal(tailTrimmed.timelineEndMs, untruncated.lines.at(-1).endMs);
+  assert.ok(Buffer.byteLength(JSON.stringify(tailTrimmed), 'utf8') <= 320);
+
+  const f = await restored({
+    hook: u => {
+      if (u.pathname === '/x/player/wbi/v2') {
+        return response({
+          bvid: BVID,
+          cid: 123,
+          need_login_subtitle: false,
+          subtitle: {
+            subtitles: [{ lan: 'zh-CN', type: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/short-5005.json' }],
+          },
+        });
+      }
+      if (u.pathname === '/bfs/subtitle/short-5005.json') {
+        return new Response(JSON.stringify({ body: shortBody }), { status: 200 });
+      }
+    },
+  });
+  const res = await f.provider.handle('subtitles.get', { track });
+  assert.equal(res.lines.length, 5000);
+  assert.equal(res.timelineEndMs, 2_502_400);
+  const valid = ajv.compile({ $ref: `${schema.$id}#/$defs/${constants.methods['subtitles.get'].result}` });
+  assert.ok(valid(res), JSON.stringify(valid.errors));
+});
+
+test('subtitles.get handles empty, login-required, malformed non-empty, stateful cid=126 recovery, and mixed tracks', async () => {
+  // 1. Legal empty subtitles: [] (need_login_subtitle: false) -> source: 'none', lines: []
+  const legalEmpty = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2'
+      ? response({ bvid: BVID, cid: 123, need_login_subtitle: false, subtitle: { subtitles: [] } })
+      : undefined,
+  });
+  const emptyRes = await legalEmpty.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } });
+  assert.deepEqual(emptyRes, { track: { kind: 'videoPart', bvid: BVID, cid: '123' }, source: 'none', lines: [] });
+  assert.equal('timelineEndMs' in emptyRes, false);
+
+  // 2. Login required (need_login_subtitle: true with [] or [{}]) -> authentication_required
+  for (const subtitles of [[], [{}]]) {
+    const loginReq = await restored({
+      hook: u => u.pathname === '/x/player/wbi/v2'
+        ? response({ bvid: BVID, cid: 123, need_login_subtitle: true, subtitle: { subtitles } })
+        : undefined,
+    });
+    await assert.rejects(
+      loginReq.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+      fault('authentication_required'),
+    );
+  }
+
+  // 3. Malformed non-empty subtitles: [{}] (need_login_subtitle: false) -> upstream_schema_changed
+  const malformed = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2'
+      ? response({ bvid: BVID, cid: 123, need_login_subtitle: false, subtitle: { subtitles: [{}] } })
+      : undefined,
+  });
+  await assert.rejects(
+    malformed.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } }),
+    fault('upstream_schema_changed'),
+  );
+
+  // 3b. Stateful fixture cid=126: 1st call fails with upstream_schema_changed, 2nd call succeeds on same instance
+  const stateful = await restored();
+  await assert.rejects(
+    stateful.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '126' } }),
+    fault('upstream_schema_changed'),
+  );
+  const recovered = await stateful.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '126' } });
+  assert.equal(recovered.source, 'manual');
+  assert.equal('timelineEndMs' in recovered, false);
+  assert.deepEqual(recovered.lines, [
+    { atMs: 500, endMs: 2000, text: '恢复后第一句' },
+    { atMs: 3000, endMs: 5000, text: '恢复后第二句' },
+  ]);
+
+  // 4. Mixed [{}, null, validTrack] -> skips bad entries and uses validTrack
+  const mixed = await restored({
+    hook: u => u.pathname === '/x/player/wbi/v2'
+      ? response({
+        bvid: BVID,
+        cid: 123,
+        need_login_subtitle: false,
+        subtitle: {
+          subtitles: [
+            {},
+            null,
+            { id: 102, lan: 'zh-CN', type: 0, subtitle_url: '//aisubtitle.hdslb.com/bfs/subtitle/manual-zh-123.json' },
+          ],
+        },
+      })
+      : undefined,
+  });
+  const mixedRes = await mixed.provider.handle('subtitles.get', { track: { kind: 'videoPart', bvid: BVID, cid: '123' } });
+  assert.equal(mixedRes.source, 'manual');
+  assert.equal('timelineEndMs' in mixedRes, false);
+  assert.equal(mixedRes.lines.length, 4);
 });

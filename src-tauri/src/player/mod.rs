@@ -75,11 +75,24 @@ const MAX_SMTC_LYRIC_LINE_BYTES: usize = 512;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SmtcLyricLine {
     at_ms: u64,
+    pub end_ms: Option<u64>,
     text: String,
 }
 
 impl SmtcLyricLine {
+    #[cfg(test)]
     pub(crate) fn new(at_ms: u64, text: String) -> Result<Self, PlayerError> {
+        Self::with_end_ms(at_ms, None, text)
+    }
+
+    pub(crate) fn with_end_ms(
+        at_ms: u64,
+        end_ms: Option<u64>,
+        text: String,
+    ) -> Result<Self, PlayerError> {
+        if end_ms.is_some_and(|end| end <= at_ms) {
+            return Err(PlayerError::InvalidLyrics);
+        }
         let text = text.trim().to_owned();
         if text.is_empty()
             || text.len() > MAX_SMTC_LYRIC_LINE_BYTES
@@ -87,11 +100,19 @@ impl SmtcLyricLine {
         {
             return Err(PlayerError::InvalidLyrics);
         }
-        Ok(Self { at_ms, text })
+        Ok(Self {
+            at_ms,
+            end_ms,
+            text,
+        })
     }
 
     pub(crate) fn at_ms(&self) -> u64 {
         self.at_ms
+    }
+
+    pub(crate) fn end_ms(&self) -> Option<u64> {
+        self.end_ms
     }
 
     pub(crate) fn text(&self) -> &str {
@@ -108,7 +129,10 @@ impl SmtcLyricTimeline {
     pub(crate) fn new(lines: Vec<SmtcLyricLine>) -> Result<Self, PlayerError> {
         if lines.is_empty()
             || lines.len() > MAX_SMTC_LYRIC_LINES
-            || lines.windows(2).any(|pair| pair[0].at_ms >= pair[1].at_ms)
+            || lines.windows(2).any(|pair| {
+                pair[0].at_ms >= pair[1].at_ms
+                    || pair[0].end_ms.is_some_and(|end| end > pair[1].at_ms)
+            })
         {
             return Err(PlayerError::InvalidLyrics);
         }
@@ -638,6 +662,28 @@ mod tests {
             SmtcLyricLine::new(0, "\n".to_owned()),
             Err(PlayerError::InvalidLyrics)
         );
+        assert_eq!(
+            SmtcLyricLine::with_end_ms(1_000, Some(1_000), "equal end".to_owned()),
+            Err(PlayerError::InvalidLyrics)
+        );
+        assert_eq!(
+            SmtcLyricLine::with_end_ms(1_000, Some(900), "earlier end".to_owned()),
+            Err(PlayerError::InvalidLyrics)
+        );
+        assert_eq!(
+            SmtcLyricTimeline::new(vec![
+                SmtcLyricLine::with_end_ms(1_000, Some(2_500), "overlap".to_owned())
+                    .expect("first"),
+                SmtcLyricLine::with_end_ms(2_000, Some(3_000), "next".to_owned()).expect("second"),
+            ]),
+            Err(PlayerError::InvalidLyrics)
+        );
+        let bounded = SmtcLyricTimeline::new(vec![
+            SmtcLyricLine::with_end_ms(1_000, Some(2_000), "first".to_owned()).expect("first"),
+            SmtcLyricLine::with_end_ms(2_000, Some(3_000), "second".to_owned()).expect("second"),
+        ])
+        .expect("contiguous intervals are valid");
+        assert_eq!(bounded.lines()[0].end_ms, Some(2_000));
     }
 
     #[test]

@@ -411,6 +411,9 @@ impl AppState {
         if let Some(n) = &state.netease {
             lyrics = lyrics.with_netease(n.clone());
         }
+        if let Some(b) = &state.bilibili {
+            lyrics = lyrics.with_bilibili(b.clone());
+        }
         let lyrics = Arc::new(lyrics);
         state.lyrics = Some(lyrics.clone());
         state.playback = WindowsMediaPlayerEngine::new().ok().map(|player| {

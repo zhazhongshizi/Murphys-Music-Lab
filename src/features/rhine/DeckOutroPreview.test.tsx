@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { parseLyricTimeline } from "../../backend/lyricsAdapter";
 import { getCurrentTrack, playerActions, resetPlayerFixture } from "../player/playerStore";
 import { FIXTURE_TRACKS } from "../player/fixtures";
 import { TapeDeck } from "./TapeDeck";
@@ -135,4 +136,92 @@ it("随机播放使用原生预告结果，大队列仅渲染目标附近五行"
   expect(within(panel).getAllByRole("listitem")).toHaveLength(5);
   expect(panel.querySelector('[data-up-next="true"]')).toHaveTextContent("歌曲 230");
   expect(within(panel).queryByText("歌曲 1", { exact: true })).not.toBeInTheDocument();
+});
+
+it("截断的 Bilibili 长字幕不会提前触发磁带机尾奏预告，在 timelineEndMs + 3000 触发并支持回退取消", async () => {
+  const biliTrack = {
+    id: "bilibili:video:BV17x411w7KC:127",
+    title: "50分钟字幕视频",
+    artist: "UP 主",
+    album: "",
+    durationMs: 3_000_000,
+  };
+  const nextTrack = {
+    id: "bilibili:video:BV17x411w7KC:128",
+    title: "下一集",
+    artist: "UP 主",
+    album: "",
+    durationMs: 120_000,
+  };
+  const parsed = parseLyricTimeline({
+    generation: 1,
+    trackId: biliTrack.id,
+    source: "bilibiliSubtitle",
+    timelineEndMs: 3_000_000,
+    lines: [
+      { atMs: 0, endMs: 1_000, original: "第一句" },
+      { atMs: 2_361_000, endMs: 2_362_000, original: "截断末句" },
+    ],
+  });
+  previewNext.mockResolvedValue(nextTrack.id);
+
+  // 1. 50-minute sample (durationMs = 3_000_000) at 2_365_000 ms MUST NOT trigger
+  playerActions.applyAuthoritativeSession({
+    requestedQuality: "320k",
+    mode: "sequence",
+    queue: { generation: 1, selectedIndex: 0, items: [biliTrack, nextTrack] },
+    player: {
+      generation: 1,
+      state: "playing",
+      currentTrack: biliTrack,
+      positionMs: 2_365_000,
+      durationMs: 3_000_000,
+      volume: 0.5,
+      muted: false,
+      failure: null,
+    },
+  });
+  renderDeck();
+  act(() => playerActions.applyTimedLyrics(parsed.trackId, parsed.generation, parsed.lines, parsed.source, parsed.timelineEndMs));
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  expect(previewNext).not.toHaveBeenCalled();
+
+  // 2. Sample with outro tail (durationMs = 3_030_000)
+  const tailTrack = { ...biliTrack, durationMs: 3_030_000 };
+  const makeTailSession = (positionMs: number) => ({
+    requestedQuality: "320k" as const,
+    mode: "sequence" as const,
+    queue: { generation: 2, selectedIndex: 0, items: [tailTrack, nextTrack] },
+    player: {
+      generation: 2,
+      state: "playing" as const,
+      currentTrack: tailTrack,
+      positionMs,
+      durationMs: 3_030_000,
+      volume: 0.5,
+      muted: false,
+      failure: null,
+    },
+  });
+  act(() => {
+    playerActions.applyAuthoritativeSession(makeTailSession(2_365_000));
+    playerActions.applyTimedLyrics(parsed.trackId, 2, parsed.lines, parsed.source, parsed.timelineEndMs);
+  });
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+
+  act(() => playerActions.applyAuthoritativeSession(makeTailSession(3_002_999)));
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  expect(previewNext).not.toHaveBeenCalled();
+
+  act(() => playerActions.applyAuthoritativeSession(makeTailSession(3_003_000)));
+  const panel = await screen.findByRole("complementary", { name: "下一首预告" });
+  expect(within(panel).getByRole("heading", { name: "即将播放" })).toBeInTheDocument();
+  expect(panel.querySelector('[data-up-next="true"]')).toHaveTextContent(nextTrack.title);
+  expect(previewNext).toHaveBeenCalledOnce();
+
+  vi.useFakeTimers();
+  act(() => playerActions.applyAuthoritativeSession(makeTailSession(3_002_000)));
+  expect(panel).toHaveAttribute("data-exiting", "true");
+  act(() => vi.advanceTimersByTime(300));
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
 });

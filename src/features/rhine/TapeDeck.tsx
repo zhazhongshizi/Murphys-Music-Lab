@@ -7,6 +7,7 @@ import { Tooltip } from "../../components/Tooltip";
 import { DeckCaption } from "./DeckCaption";
 import { DeckOutroPreview } from "./DeckOutroPreview";
 import { DeckPlaylistAction } from "./DeckPlaylistAction";
+import { activeLyricIndexAt } from "../stage/lyricSelection";
 import { localMusicFormatFromId } from "../../contracts/localMusic";
 import { PlaybackQualitySelector } from "../player/PlaybackQualitySelector";
 import { MvLyricOffsetControl } from "../player/MvPlaybackSettings";
@@ -35,15 +36,16 @@ function DeckTimeline() {
 
 function DeckLyric({ onOpen }: { onOpen: () => void }) {
   const track = usePlayerSelector(getCurrentTrack);
-  const index = usePlayerSelector(s => {
-    const lines = getCurrentTrack(s)?.lyrics ?? [];
-    let i = lines.length - 1;
-    while (i >= 0 && (lines[i]?.atMs ?? Infinity) > s.positionMs) i--;
-    return i;
-  });
+  const lyricsStatus = usePlayerSelector((s) => s.lyricsStatus);
+  const index = usePlayerSelector(s => activeLyricIndexAt(s.positionMs, getCurrentTrack(s)?.lyrics ?? []));
   const lines = track?.lyrics ?? [];
-  const line = lines[index];
-  if (!line?.original.trim()) return null;
+  const line = index >= 0 ? lines[index] : undefined;
+  if (!line?.original.trim()) {
+    if (track?.id.startsWith("bilibili:") && lyricsStatus === "error") {
+      return <button className="rhine-deck-lyric" onClick={onOpen} aria-label="展开完整歌词" data-lyrics-status="error"><span>字幕加载失败</span></button>;
+    }
+    return null;
+  }
   const lineKey = `${track?.id ?? ""}:${index}`;
   return <button className="rhine-deck-lyric" onClick={onOpen} aria-label="展开完整歌词"><span key={lineKey}>{line.original}</span>{line.translation?.trim() && <small key={`${lineKey}:tr`}>{line.translation}</small>}</button>;
 }

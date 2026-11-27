@@ -214,7 +214,7 @@ impl ProviderCapabilities {
             search_kinds: vec![SearchKind::Videos],
             library_kinds: vec![LibraryKind::Created, LibraryKind::Favorite],
             write_actions: vec![WriteAction::AddVideos, WriteAction::RemoveVideos],
-            lyrics: false,
+            lyrics: true,
             qualities: vec![Quality::Auto, Quality::Aac],
         }
     }

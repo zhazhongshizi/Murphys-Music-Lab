@@ -930,5 +930,42 @@
       ],
       "warnings": []
     }
+  },
+  {
+    "name": "bilibili.subtitles.get",
+    "providerId": "bilibili",
+    "request": {
+      "v": 2,
+      "id": "bili-subtitles",
+      "method": "subtitles.get",
+      "params": {
+        "track": {
+          "kind": "videoPart",
+          "bvid": "BV17x411w7KC",
+          "cid": "123"
+        }
+      }
+    },
+    "response": {
+      "v": 2,
+      "id": "bili-subtitles",
+      "ok": true,
+      "result": {
+        "track": {
+          "kind": "videoPart",
+          "bvid": "BV17x411w7KC",
+          "cid": "123"
+        },
+        "source": "manual",
+        "lines": [
+          {
+            "atMs": 500,
+            "endMs": 2250,
+            "text": "Fixture subtitle line"
+          }
+        ]
+      },
+      "warnings": []
+    }
   }
 ]

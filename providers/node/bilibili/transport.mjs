@@ -5,14 +5,16 @@ import { fail, ProviderFault } from './fault.mjs';
 export const API = 'https://api.bilibili.com';
 export const PASSPORT = 'https://passport.bilibili.com';
 const MAX_RESPONSE_BYTES = 1024 * 1024;
+const MAX_SUBTITLE_RESPONSE_BYTES = 2 * 1024 * 1024;
 // Video details may embed a whole UGC collection even for a single-part video.
 const MAX_VIDEO_VIEW_RESPONSE_BYTES = 4 * MAX_RESPONSE_BYTES;
 const COOKIE_NAMES = new Set(['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid', 'buvid3', 'buvid4', 'b_nut']);
+const SUBTITLE_CDN_HOSTS = new Set(['aisubtitle.hdslb.com']);
 const PATHS = new Set([
   '/x/v3/fav/resource/ids',
   '/x/web-interface/nav', '/x/v3/fav/folder/created/list-all',
   '/x/v3/fav/folder/collected/list', '/x/v3/fav/resource/list',
-  '/x/web-interface/view', '/x/player/pagelist',
+  '/x/web-interface/view', '/x/player/pagelist', '/x/player/wbi/v2',
   '/x/web-interface/wbi/search/type', '/x/player/wbi/playurl',
   '/x/passport-login/web/qrcode/generate', '/x/passport-login/web/qrcode/poll',
 ]);
@@ -117,5 +119,57 @@ export class Transport {
   }
   async passport(path, params = {}) {
     return checkedData(await this.request(`${PASSPORT}${path}?${new URLSearchParams(params)}`));
+  }
+  async fetchSubtitleJson(rawUrl) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) fail('upstream_schema_changed');
+    const normalized = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+    let u;
+    try { u = new URL(normalized); } catch { fail('upstream_schema_changed'); }
+    if (u.protocol !== 'https:'
+      || (u.port && u.port !== '443')
+      || u.username
+      || u.password
+      || u.hash
+      || !SUBTITLE_CDN_HOSTS.has(u.hostname)) {
+      fail('upstream_schema_changed');
+    }
+    const headers = { 'User-Agent': USER_AGENT, Referer: 'https://www.bilibili.com/' };
+    let response;
+    try {
+      response = await this.fetcher(u.href, {
+        headers,
+        redirect: 'error',
+        credentials: 'omit',
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      fail('network_unavailable', true);
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      if (response.status >= 300 && response.status < 400) fail('upstream_schema_changed');
+      if (response.status === 429 || response.status === 412) {
+        const s = response.headers.get('retry-after');
+        const ms = s && /^\d+$/.test(s) ? Number(s) * 1000 : undefined;
+        throw new ProviderFault('rate_limited', true, ms > 0 && ms <= 86400000 ? ms : undefined);
+      }
+      if (response.status === 404 || response.status === 410) fail('media_unavailable');
+      if (response.status === 403) fail('verification_required');
+      fail('network_unavailable', true);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) fail('upstream_schema_changed');
+    const chunks = []; let length = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break;
+        length += value.length;
+        if (length > MAX_SUBTITLE_RESPONSE_BYTES) fail('upstream_schema_changed');
+        chunks.push(value);
+      }
+    } catch (e) { if (e instanceof ProviderFault) throw e; fail('network_unavailable', true); }
+    finally { await reader.cancel().catch(() => {}); }
+    try { return JSON.parse(Buffer.concat(chunks, length).toString('utf8')); }
+    catch { fail('upstream_schema_changed'); }
   }
 }

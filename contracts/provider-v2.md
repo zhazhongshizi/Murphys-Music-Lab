@@ -67,6 +67,7 @@ schema 为载荷形状的真相源，constants 为方法和平台 profile 的真
 | 喜欢/订阅 | `library.setLiked/setSubscribed` | 仅网易；boolean 表达目标状态 |
 | 容器写入 | `library.addItems/removeItems` | 网易 songId 或 B 站 bvid，不可混合来源或资源种类；每次 1–100 个唯一项目 |
 | 歌词 | `lyrics.get` | 仅网易；原文/翻译/罗马音 LRC，缺失用 null |
+| 字幕 | `subtitles.get` | 仅 B 站；按 `videoPart` (`bvid`, `cid`) 读取单轨规范化结构化字幕 |
 | 播放 | `playback.resolve` | raw song 或 videoPart；B 站只接受 auto/aac，网易只接受 auto/flac/320k/128k |
 
 私有 payload 的原始数字 ID 一律为十进制字符串，1–20 位，不为 0，不带前导零；不得转换为 JS Number。BVID 保持规范大小写及 Base58 字符集。与平台来源、请求对象相关的响应字段必须逐项核对，不能接受别的 songId/bvid/cid/containerId。
@@ -80,6 +81,8 @@ B 站可播放 track 的 `video` 保留原始 `title`（投稿标题）、`partT
 `library.addItems/removeItems` 完成后读回核对：确认全部应用返回 applied；读回不确定返回 verificationPending。请求可能已提交但无法收到结果，返回 outcome_unknown，retryable=false。不能在 SDK 内重新发送写入；只有用户核对后重新操作。
 
 媒体解析结果含 raw track、实际 quality/codec/bitrate、HTTPS URL、允许的 Referer/User-Agent、有效期秒数及媒体时长。B 站必须是 AAC；没有可用音轨返回 unsupported_media。不在解析结果发送 Cookie、Authorization 或任意请求头。域名/DNS/重定向/请求头值的完整安全校验归后续 Rust 媒体桥，schema 的 HTTPS 前缀检查不代表已可信。
+
+B 站字幕增量：`capabilities.bilibili.lyrics=true` 对应私有只读方法 `subtitles.get({track: {kind:"videoPart", bvid, cid}})`（保持网易 `lyrics.get({songId})` 不变）。Provider 通过已签名的 `/x/player/wbi/v2` 获取分 P 字幕列表：当轨道列表为空且 `need_login_subtitle=true` 时返回 `authentication_required`，当轨道列表为空且无需登录时返回 `{track, source:"none", lines:[]}`；若上游返回非空 `subtitle.subtitles` 数组但所有条目均缺少必要字段（如 `[{}]`），则视为 `upstream_schema_changed`（若 `need_login_subtitle=true` 则返回 `authentication_required`），不得伪报为 `source:"none"`。选中单轨后通过不带账号 Cookie 的白名单 HTTPS CDN（仅 `https://aisubtitle.hdslb.com`，禁止重定向，超时与响应体有界）读取正文，原始 CDN 地址留在 Provider 内不返回给宿主。返回 `source` 严格区分 `"none" | "manual" | "ai" | "unknown"`（仅在元数据明确标示时标记 `"ai"` 或 `"manual"`，元数据缺失时用 `"unknown"`，不把缺字段误标为 AI），`lines` 每项为 `{atMs, endMs, text}`（整数毫秒且严格递增、`endMs > atMs`、`text` 非空且 UTF-8 字节及字符均不超过 512，最多 5000 行）。当规范化后的字幕行因 5000 行上限或帧字节预算被截断时，响应额外提供可选整数 `timelineEndMs`（1–86400000），记录截断前完整规范化字幕列表的最后一句 `endMs`；未发生截断时省略该字段。
 
 3c 审阅 F1：B站 `expiresInSeconds=0` 明确表示**没有适配器验证过的硬期限**，宿主不为它建立过期计时器；不能把建议缓存时长或未经核实的 URL 查询参数当作资源失效。当前 B站适配器只返回 0。正数仍代表已确认的硬期限，保留原有一次恢复上限；未知期限的资源只在真实播放失败后消耗同一意图的一次恢复预算。网易既有正数有效期行为不变。公开播放结果允许此 0，但不公开媒体 URL。
 

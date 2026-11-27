@@ -122,3 +122,42 @@ it.each([
   renderLyrics(lyrics);
   expect(screen.queryByRole("button", { name: "展开完整歌词" })).not.toBeInTheDocument();
 });
+
+it("在字幕 endMs 间奏空档隐藏当前歌词，并在下一句恢复", () => {
+  const track = { id: "bili-deck-test", title: "测试视频", artist: "UP", album: "", durationMs: 20_000 };
+  const sessionAt = (positionMs: number) => ({
+    requestedQuality: "320k" as const,
+    mode: "sequence" as const,
+    queue: { generation: 1, selectedIndex: 0, items: [track] },
+    player: {
+      state: "playing" as const,
+      generation: 1,
+      currentTrack: track,
+      positionMs,
+      durationMs: 20_000,
+      volume: 0.5,
+      muted: false,
+      failure: null,
+    },
+  });
+  playerActions.applyAuthoritativeSession(sessionAt(1500));
+  playerActions.applyTimedLyrics(
+    track.id,
+    1,
+    [
+      { atMs: 1000, endMs: 2000, original: "第一句字幕" },
+      { atMs: 6000, endMs: 8000, original: "第二句字幕" },
+    ],
+    "bilibiliSubtitle",
+  );
+  render(<TapeDeck onBack={() => {}} onQueue={() => {}} onLyrics={() => {}} />);
+  const button = screen.getByRole("button", { name: "展开完整歌词" });
+  expect(button).toHaveTextContent("第一句字幕");
+  expect(button.querySelector("small")).toBeNull();
+
+  act(() => playerActions.applyAuthoritativeSession(sessionAt(2000)));
+  expect(screen.queryByRole("button", { name: "展开完整歌词" })).not.toBeInTheDocument();
+
+  act(() => playerActions.applyAuthoritativeSession(sessionAt(6500)));
+  expect(screen.getByRole("button", { name: "展开完整歌词" })).toHaveTextContent("第二句字幕");
+});

@@ -126,4 +126,145 @@ describe("ListeningStage 播放音质选择", () => {
     expect(seekSpy).toHaveBeenCalledWith(161_000);
     expect(options[3]).not.toHaveClass("lyrics-scroll__line--keyboard-active");
   });
+
+  it("在间奏空档保持已过字幕为 past、取消高亮、恢复滚动并展示来源标签", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const bilibiliTrack = {
+      id: "bilibili:video:BV1zQ4y127rF:389067834",
+      title: "B站测试曲",
+      artist: "UP 主",
+      album: "",
+      durationMs: 60_000,
+    };
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 1, selectedIndex: 0, items: [bilibiliTrack] },
+      player: {
+        state: "playing",
+        generation: 1,
+        currentTrack: bilibiliTrack,
+        positionMs: 1_500,
+        durationMs: 60_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+    playerActions.applyTimedLyrics(
+      bilibiliTrack.id,
+      1,
+      [
+        { atMs: 1_000, endMs: 2_000, original: "第一句" },
+        { atMs: 10_000, endMs: 12_000, original: "第二句" },
+      ],
+      "bilibiliSubtitle",
+    );
+
+    render(<ListeningStage />);
+    expect(screen.getByText("正在播放 · 歌词 · B站字幕")).toBeInTheDocument();
+    const first = screen.getByRole("option", { name: /第一句/ });
+    const second = screen.getByRole("option", { name: /第二句/ });
+    expect(first).toHaveClass("lyrics-scroll__line--active");
+    expect(second).toHaveClass("lyrics-scroll__line--upcoming");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // Enter interlude gap [2_000, 10_000): neither active, first stays --past
+    act(() => playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 1, selectedIndex: 0, items: [bilibiliTrack] },
+      player: {
+        state: "playing",
+        generation: 1,
+        currentTrack: bilibiliTrack,
+        positionMs: 5_000,
+        durationMs: 60_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    }));
+    expect(first).toHaveClass("lyrics-scroll__line--past");
+    expect(first).not.toHaveClass("lyrics-scroll__line--active");
+    expect(first).not.toHaveClass("lyrics-scroll__line--upcoming");
+    expect(second).toHaveClass("lyrics-scroll__line--upcoming");
+
+    // Reverse seek back into first line re-triggers scroll cleanly because lastActiveIndex reset on gap
+    scrollIntoView.mockClear();
+    act(() => playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 1, selectedIndex: 0, items: [bilibiliTrack] },
+      player: {
+        state: "playing",
+        generation: 1,
+        currentTrack: bilibiliTrack,
+        positionMs: 1_200,
+        durationMs: 60_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    }));
+    expect(first).toHaveClass("lyrics-scroll__line--active");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("B站字幕请求失败显示字幕加载失败且不固定队列，确认无字幕显示暂无歌词，非B站保持暂无歌词", () => {
+    const biliTrack = {
+      id: "bilibili:video:BV17x411w7KC:125",
+      title: "B站异常字幕",
+      artist: "UP 主",
+      album: "",
+      durationMs: 60_000,
+    };
+    const qqTrack = {
+      id: "0039MnYb0qxYhV",
+      title: "QQ 无歌词",
+      artist: "歌手",
+      album: "专辑",
+      durationMs: 60_000,
+    };
+    const setTrack = (track: typeof biliTrack, generation: number) => {
+      playerActions.applyAuthoritativeSession({
+        requestedQuality: "320k",
+        mode: "sequence",
+        queue: { generation, selectedIndex: 0, items: [track] },
+        player: {
+          state: "playing",
+          generation,
+          currentTrack: track,
+          positionMs: 1_000,
+          durationMs: 60_000,
+          volume: 0.7,
+          muted: false,
+          failure: null,
+        },
+      });
+    };
+
+    setTrack(biliTrack, 1);
+    act(() => playerActions.failTimedLyrics(biliTrack.id, 1));
+    render(<ListeningStage />);
+
+    const errorRegion = screen.getByRole("region", { name: "同步歌词" });
+    expect(errorRegion).toHaveAttribute("data-lyrics-status", "error");
+    expect(screen.getByText("字幕加载失败")).toBeVisible();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+
+    act(() => playerActions.applyTimedLyrics(biliTrack.id, 1, []));
+    expect(screen.getByRole("region", { name: "同步歌词", hidden: true })).toHaveAttribute("data-lyrics-status", "empty");
+    expect(screen.getByText("暂无歌词")).toBeInTheDocument();
+    expect(screen.getByRole("list")).toBeInTheDocument();
+
+    act(() => {
+      setTrack(qqTrack, 2);
+      playerActions.failTimedLyrics(qqTrack.id, 2);
+    });
+    expect(screen.getByRole("region", { name: "同步歌词", hidden: true })).toHaveAttribute("data-lyrics-status", "error");
+    expect(screen.getByText("暂无歌词")).toBeInTheDocument();
+    expect(screen.queryByText("字幕加载失败")).not.toBeInTheDocument();
+  });
 });

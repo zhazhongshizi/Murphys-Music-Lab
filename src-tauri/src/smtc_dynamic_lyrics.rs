@@ -250,9 +250,18 @@ fn lyrics_loop(
                     request.lyrics_epoch,
                     lines.len()
                 );
+                if lines.is_empty() {
+                    return Err(crate::lyrics::LyricError::Unavailable);
+                }
                 let lines = lines
                     .iter()
-                    .map(|line| SmtcLyricLine::new(line.at_ms, line.original.clone()))
+                    .map(|line| {
+                        SmtcLyricLine::with_end_ms(
+                            line.at_ms,
+                            line.end_ms,
+                            line.original.clone(),
+                        )
+                    })
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|_| crate::lyrics::LyricError::UpstreamSchemaChanged)?;
                 SmtcLyricTimeline::new(lines)

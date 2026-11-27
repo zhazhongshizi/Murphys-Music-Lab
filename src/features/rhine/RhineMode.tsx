@@ -13,6 +13,7 @@ import { enqueueCatalogTrack, enqueueNextCatalogTrack } from "../player/catalogQ
 import { getCurrentTrack, playerActions, usePlayerSelector } from "../player/playerStore";
 import { usePlaylistPlayback } from "../library/usePlaylistPlayback";
 import { ScrollingLyrics } from "../stage/ScrollingLyrics";
+import { activeLyricIndexAt, formatLyricSourceLabel, pastLyricCountAt } from "../stage/lyricSelection";
 import { ArchiveCanvas } from "./ArchiveCanvas";
 import { ArchivePageTransitionContext, type ArchivePageTransition } from "./ArchivePageTransition";
 import type { DiscoveryHandle } from "./ArchiveDiscovery";
@@ -55,13 +56,23 @@ const seekLyricLine = (atMs: number) => {
 
 function Lyrics() {
   const track = usePlayerSelector(getCurrentTrack);
-  const position = usePlayerSelector(s => {
-    const lyrics = getCurrentTrack(s)?.lyrics ?? [];
-    let index = lyrics.length - 1;
-    while (index >= 0 && (lyrics[index]?.atMs ?? Infinity) > s.positionMs) index--;
-    return index;
-  });
-  return track?.lyrics.length ? <ScrollingLyrics lyrics={track.lyrics} activeIndex={position} onSeek={seekLyricLine} /> : <p>当前歌曲暂无歌词</p>;
+  const lyricsStatus = usePlayerSelector((s) => s.lyricsStatus);
+  const activeIndex = usePlayerSelector((s) => activeLyricIndexAt(s.positionMs, getCurrentTrack(s)?.lyrics ?? []));
+  const pastCount = usePlayerSelector((s) => pastLyricCountAt(s.positionMs, getCurrentTrack(s)?.lyrics ?? []));
+  const emptyMessage = track?.id.startsWith("bilibili:") && lyricsStatus === "error"
+    ? "字幕加载失败"
+    : undefined;
+  return (
+    <ScrollingLyrics
+      lyrics={track?.lyrics ?? []}
+      activeIndex={activeIndex}
+      pastCount={pastCount}
+      sourceLabel={formatLyricSourceLabel(track?.lyricSource)}
+      lyricsStatus={lyricsStatus}
+      emptyMessage={emptyMessage}
+      onSeek={seekLyricLine}
+    />
+  );
 }
 
 function PlaylistDetail({ playlist, onBack, onPlayback, allowRemoval, accountKey, onSongsRemoved }: {

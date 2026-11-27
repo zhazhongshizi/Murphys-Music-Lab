@@ -1600,6 +1600,7 @@ rl.on('line', async line => {
             "auth.logout",
             "playback.resolve",
             "lyrics.get",
+            "subtitles.get",
         ] {
             let res = post_lib(json!({
                 "command": "provider_read",
@@ -1892,6 +1893,210 @@ rl.on('line', async line => {
         drop(gating_reg);
         drop(session);
         drop(queue);
+        let _ = std::fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn remote_lyrics_serves_bilibili_end_ms_source_empty_lines_and_blocks_subtitles_get() {
+        let _lock = HTTP_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        use crate::{
+            playback::PlaybackController,
+            player::{PlayerCommand, PlayerEngine, PlayerError, PlayerSnapshot, PlayerState},
+            provider::ProviderRequestPort,
+            queue::QueueService,
+        };
+        use serde_json::json;
+
+        struct RejectProvider;
+        impl ProviderRequestPort for RejectProvider {
+            fn request(
+                &self,
+                _: crate::provider::ProviderRequest,
+            ) -> Result<crate::provider::ProviderReply, crate::provider::ProviderError> {
+                panic!("Remote Bilibili lyrics must not call QQ provider")
+            }
+        }
+        struct StaticPlayer(Arc<Mutex<PlayerSnapshot>>);
+        impl PlayerEngine for StaticPlayer {
+            fn snapshot(&self) -> PlayerSnapshot {
+                self.0.lock().unwrap().clone()
+            }
+            fn handle(&mut self, _: PlayerCommand) -> Result<(), PlayerError> {
+                Ok(())
+            }
+        }
+
+        let temp_root =
+            std::env::temp_dir().join(format!("qmg-remote-bili-lyrics-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let bili = crate::multi_provider::bilibili::tests::service();
+        let lyrics = Arc::new(
+            LyricService::new(Arc::new(RejectProvider)).with_bilibili(bili.clone()),
+        );
+        let queue = Arc::new(QueueService::open(&temp_root.join("state.sqlite3")).unwrap());
+        let snapshot = Arc::new(Mutex::new(PlayerSnapshot {
+            state: PlayerState::Playing,
+            generation: 11,
+            position_ms: 500,
+            duration_ms: Some(20_000),
+            volume: 1.0,
+            muted: false,
+            current_track: Some(crate::player::TrackSummary {
+                id: "bilibili:video:BV17x411w7KC:123".into(),
+                title: "第一 P 原题".into(),
+                artist: "测试 UP".into(),
+                source: None,
+            }),
+            failure: None,
+        }));
+        let session = Arc::new(PlaybackSession::new(
+            queue.clone(),
+            Arc::new(PlaybackController::new(
+                Arc::new(RejectProvider),
+                Box::new(StaticPlayer(snapshot.clone())),
+            )),
+        ));
+        let remote_lib = Arc::new(RemoteLibrary {
+            local: None,
+            catalog: None,
+            library: None,
+            queue: Some(queue.clone()),
+            auth: Arc::new(std::sync::RwLock::new(crate::AuthSnapshot::signed_out())),
+            tracks: Mutex::new(std::collections::HashMap::new()),
+            covers: Mutex::new(std::collections::HashSet::new()),
+            registry: Some(bili.registry.clone()),
+            netease: None,
+            bilibili: Some(bili.clone()),
+            provider_tracks: Mutex::new(std::collections::HashMap::new()),
+            provider_permits: default_provider_permits(),
+        });
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let alive = Arc::new(AtomicBool::new(true));
+        let data = Arc::new(RemoteState {
+            session,
+            cover: None,
+            lyrics: Some(lyrics),
+            library: Some(remote_lib),
+            code: "bili-lyrics-secret".into(),
+            alive,
+            permits: Arc::new(Semaphore::new(4)),
+            port,
+        });
+        let (stop, stopped) = oneshot::channel();
+        let task = tauri::async_runtime::spawn(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            axum::serve(
+                listener,
+                router(data).into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+            .unwrap();
+        });
+
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let url = format!("http://127.0.0.1:{port}");
+
+        // Direct provider_read("subtitles.get") on Bilibili is rejected on Remote.
+        let forbidden = client
+            .post(format!("{url}/api/library"))
+            .bearer_auth("bili-lyrics-secret")
+            .header("Content-Type", "application/json")
+            .body(
+                json!({
+                    "command": "provider_read",
+                    "providerId": "bilibili",
+                    "method": "subtitles.get",
+                    "params": {"track": {"kind": "videoPart", "bvid": "BV17x411w7KC", "cid": "123"}}
+                })
+                .to_string(),
+            )
+            .send()
+            .unwrap();
+        assert_eq!(forbidden.status(), 400);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&forbidden.text().unwrap()).unwrap()["code"],
+            "unsupported_capability"
+        );
+
+        // Positive manual subtitle timeline over /api/lyrics includes endMs and source.
+        let manual_res = client
+            .get(format!(
+                "{url}/api/lyrics?track=bilibili:video:BV17x411w7KC:123&generation=11"
+            ))
+            .bearer_auth("bili-lyrics-secret")
+            .send()
+            .unwrap();
+        assert_eq!(manual_res.status(), 200);
+        let manual_json: serde_json::Value =
+            serde_json::from_str(&manual_res.text().unwrap()).unwrap();
+        assert_eq!(manual_json["generation"], 11);
+        assert_eq!(manual_json["source"], "bilibiliSubtitle");
+        assert!(manual_json.get("timelineEndMs").is_none());
+        assert_eq!(manual_json["lines"][0]["atMs"], 500);
+        assert_eq!(manual_json["lines"][0]["endMs"], 2250);
+        assert_eq!(manual_json["lines"][0]["original"], "第一句上 第一句下");
+
+        // Confirmed empty subtitle timeline over /api/lyrics returns 200 with lines: [] and no source.
+        {
+            let mut snap = snapshot.lock().unwrap();
+            snap.generation = 12;
+            snap.current_track.as_mut().unwrap().id = "bilibili:video:BV17x411w7KE:123".into();
+        }
+        let empty_res = client
+            .get(format!(
+                "{url}/api/lyrics?track=bilibili:video:BV17x411w7KE:123&generation=12"
+            ))
+            .bearer_auth("bili-lyrics-secret")
+            .send()
+            .unwrap();
+        assert_eq!(empty_res.status(), 200);
+        let empty_json: serde_json::Value =
+            serde_json::from_str(&empty_res.text().unwrap()).unwrap();
+        assert_eq!(empty_json["generation"], 12);
+        assert!(empty_json.get("source").is_none());
+        assert!(empty_json.get("timelineEndMs").is_none());
+        assert_eq!(empty_json["lines"], json!([]));
+
+        // Truncated 50-minute Bilibili subtitle timeline over /api/lyrics includes timelineEndMs.
+        {
+            let mut snap = snapshot.lock().unwrap();
+            snap.generation = 13;
+            snap.current_track.as_mut().unwrap().id = "bilibili:video:BV17x411w7KC:127".into();
+        }
+        let truncated_res = client
+            .get(format!(
+                "{url}/api/lyrics?track=bilibili:video:BV17x411w7KC:127&generation=13"
+            ))
+            .bearer_auth("bili-lyrics-secret")
+            .send()
+            .unwrap();
+        assert_eq!(truncated_res.status(), 200);
+        let truncated_json: serde_json::Value =
+            serde_json::from_str(&truncated_res.text().unwrap()).unwrap();
+        assert_eq!(truncated_json["generation"], 13);
+        assert_eq!(truncated_json["source"], "bilibiliSubtitle");
+        assert_eq!(truncated_json["timelineEndMs"], 3_000_000);
+        let truncated_lines = truncated_json["lines"].as_array().unwrap();
+        assert!(!truncated_lines.is_empty());
+        assert!(truncated_lines.len() < 3000);
+        assert!(truncated_lines.last().unwrap()["endMs"].as_u64().unwrap() < 3_000_000);
+
+        let _ = stop.send(());
+        drop(client);
+        tauri::async_runtime::block_on(task).unwrap();
+        bili.registry.shutdown().unwrap();
         let _ = std::fs::remove_dir_all(temp_root);
     }
 }

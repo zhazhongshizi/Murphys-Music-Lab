@@ -7,6 +7,7 @@ import { AlbumArtwork } from "./AlbumArtwork";
 import { NeedleScale } from "./NeedleScale";
 import { StageLyricsPanel } from "./StageLyricsPanel";
 import { ScrollingLyrics } from "./ScrollingLyrics";
+import { activeLyricIndexAt, formatLyricSourceLabel, pastLyricCountAt } from "./lyricSelection";
 import {
   getCurrentTrack,
   playerActions,
@@ -27,16 +28,11 @@ import { SongArtistLinks } from "../artist/SongArtistLinks";
 const selectNativeMode = (snapshot: PlayerSnapshot) => snapshot.nativeMode;
 const selectPosition = (snapshot: PlayerSnapshot) => snapshot.positionMs;
 const selectRequestedQuality = (snapshot: PlayerSnapshot) => snapshot.requestedQuality;
+const selectLyricsStatus = (snapshot: PlayerSnapshot) => snapshot.lyricsStatus;
 const selectStagePlaying = (snapshot: PlayerSnapshot) => snapshot.isPlaying && !snapshot.playbackError;
 
-export function lyricIndexAt(positionMs: number, timings: readonly { atMs: number }[]) {
-  let index = 0;
-  for (let candidate = 0; candidate < timings.length; candidate += 1) {
-    const line = timings[candidate];
-    if (!line || line.atMs > positionMs) break;
-    index = candidate;
-  }
-  return index;
+export function lyricIndexAt(positionMs: number, timings: readonly { atMs: number; endMs?: number }[]) {
+  return activeLyricIndexAt(positionMs, timings);
 }
 
 function StageNeedleScale({ track }: { track: NonNullable<ReturnType<typeof getCurrentTrack>> }) {
@@ -50,11 +46,20 @@ const seekLyricLine = (atMs: number) => {
 };
 
 function StageScrollingLyrics({ track }: { track: NonNullable<ReturnType<typeof getCurrentTrack>> }) {
-  const activeIndex = usePlayerSelector((snapshot) => lyricIndexAt(snapshot.positionMs, track.lyrics));
+  const activeIndex = usePlayerSelector((snapshot) => activeLyricIndexAt(snapshot.positionMs, track.lyrics));
+  const pastCount = usePlayerSelector((snapshot) => pastLyricCountAt(snapshot.positionMs, track.lyrics));
+  const lyricsStatus = usePlayerSelector(selectLyricsStatus);
+  const emptyMessage = track.id.startsWith("bilibili:") && lyricsStatus === "error"
+    ? "字幕加载失败"
+    : undefined;
   return (
     <ScrollingLyrics
       lyrics={track.lyrics}
       activeIndex={activeIndex}
+      pastCount={pastCount}
+      sourceLabel={formatLyricSourceLabel(track.lyricSource)}
+      lyricsStatus={lyricsStatus}
+      emptyMessage={emptyMessage}
       onSeek={seekLyricLine}
     />
   );

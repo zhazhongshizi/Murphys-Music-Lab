@@ -468,7 +468,7 @@ impl ProviderRegistry {
     pub(crate) fn request_speculative(
         &self, id: OnlineProviderId, generation: u64, method: &str, params: Value,
     ) -> Result<Value, Error> {
-        if !matches!(method, "playback.resolve" | "video.resolve") {
+        if !matches!(method, "playback.resolve" | "video.resolve" | "subtitles.get") {
             return Err(Error::Context);
         }
         self.request_inner(id, generation, method, params, true)

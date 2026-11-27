@@ -1,8 +1,15 @@
 import { act, fireEvent, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { parseLyricTimeline } from "../../backend/lyricsAdapter";
 import { getCurrentTrack, playerActions, resetPlayerFixture } from "../player/playerStore";
 import { StageLyricsPanel } from "./StageLyricsPanel";
+
+const { previewNext } = vi.hoisted(() => ({ previewNext: vi.fn() }));
+vi.mock("../../backend/nativeQueueAdapter", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../backend/nativeQueueAdapter")>(),
+  nativeQueuePreviewNext: previewNext,
+}));
 
 beforeEach(() => resetPlayerFixture());
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -132,4 +139,155 @@ it("keeps settings above the outro and pinned queue until explicitly closed", ()
   expect(screen.queryByRole("list")).not.toBeInTheDocument();
   view.rerender(<StageLyricsPanel hasLyrics={false}><p>歌词内容</p></StageLyricsPanel>);
   expect(screen.getByRole("list")).toBeInTheDocument();
+});
+
+it("keeps lyrics panel visible on Bilibili subtitle error and allows closing a manually opened queue with Escape", async () => {
+  const user = userEvent.setup();
+  const biliTrack = { id: "bilibili:video:BV17x411w7KC:125", title: "B站测试", artist: "UP", album: "", durationMs: 60_000 };
+  playerActions.applyAuthoritativeSession({
+    requestedQuality: "320k",
+    mode: "sequence",
+    queue: { generation: 1, selectedIndex: 0, items: [biliTrack] },
+    player: {
+      state: "playing",
+      generation: 1,
+      currentTrack: biliTrack,
+      positionMs: 1_000,
+      durationMs: 60_000,
+      volume: 0.7,
+      muted: false,
+      failure: null,
+    },
+  });
+  playerActions.failTimedLyrics(biliTrack.id, 1);
+
+  render(<StageLyricsPanel hasLyrics={false}><p>字幕加载失败</p></StageLyricsPanel>);
+  expect(screen.getByText("字幕加载失败")).toBeVisible();
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "展开歌曲列表" }));
+  expect(screen.getByRole("list")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  expect(screen.getByText("字幕加载失败")).toBeVisible();
+});
+
+it("suppresses premature outro on truncated Bilibili timelines, triggers at timelineEndMs + 3000, and exits on reverse seek", async () => {
+  const biliTrack = { id: "bilibili:video:BV17x411w7KC:127", title: "50分钟字幕视频", artist: "UP", album: "", durationMs: 3_000_000 };
+  const nextTrack = { id: "bilibili:video:BV17x411w7KC:128", title: "下一P", artist: "UP", album: "", durationMs: 60_000 };
+  previewNext.mockResolvedValue(nextTrack.id);
+  const parsed = parseLyricTimeline({
+    generation: 1,
+    trackId: biliTrack.id,
+    source: "bilibiliSubtitle",
+    timelineEndMs: 3_000_000,
+    lines: [
+      { atMs: 0, endMs: 1_000, original: "第一句" },
+      { atMs: 2_361_000, endMs: 2_362_000, original: "截断末句" },
+    ],
+  });
+
+  // 1. 50-minute sample (durationMs = 3_000_000) at 2_365_000 ms MUST NOT trigger outro
+  playerActions.applyAuthoritativeSession({
+    requestedQuality: "320k",
+    mode: "sequence",
+    queue: { generation: 1, selectedIndex: 0, items: [biliTrack, nextTrack] },
+    player: {
+      state: "playing",
+      generation: 1,
+      currentTrack: biliTrack,
+      positionMs: 2_365_000,
+      durationMs: 3_000_000,
+      volume: 0.7,
+      muted: false,
+      failure: null,
+    },
+  });
+  act(() => {
+    playerActions.applyTimedLyrics(parsed.trackId, parsed.generation, parsed.lines, parsed.source, parsed.timelineEndMs);
+  });
+
+  render(<StageLyricsPanel><p>歌词内容</p></StageLyricsPanel>);
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+
+  // 2. Sample with outro tail (durationMs = 3_030_000)
+  const tailTrack = { ...biliTrack, durationMs: 3_030_000 };
+  act(() => {
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 2, selectedIndex: 0, items: [tailTrack, nextTrack] },
+      player: {
+        state: "playing",
+        generation: 2,
+        currentTrack: tailTrack,
+        positionMs: 2_365_000,
+        durationMs: 3_030_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+    playerActions.applyTimedLyrics(parsed.trackId, 2, parsed.lines, parsed.source, parsed.timelineEndMs);
+  });
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+
+  act(() => {
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 2, selectedIndex: 0, items: [tailTrack, nextTrack] },
+      player: {
+        state: "playing",
+        generation: 2,
+        currentTrack: tailTrack,
+        positionMs: 3_002_999,
+        durationMs: 3_030_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+  });
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+
+  act(() => {
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 2, selectedIndex: 0, items: [tailTrack, nextTrack] },
+      player: {
+        state: "playing",
+        generation: 2,
+        currentTrack: tailTrack,
+        positionMs: 3_003_000,
+        durationMs: 3_030_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+  });
+  expect(await screen.findByRole("heading", { name: "即将播放" })).toBeInTheDocument();
+  expect(within(screen.getByRole("list")).getAllByRole("button")[1]).toHaveAttribute("data-up-next", "true");
+
+  // Reverse seek exits outro cleanly
+  act(() => {
+    playerActions.applyAuthoritativeSession({
+      requestedQuality: "320k",
+      mode: "sequence",
+      queue: { generation: 2, selectedIndex: 0, items: [tailTrack, nextTrack] },
+      player: {
+        state: "playing",
+        generation: 2,
+        currentTrack: tailTrack,
+        positionMs: 3_002_000,
+        durationMs: 3_030_000,
+        volume: 0.7,
+        muted: false,
+        failure: null,
+      },
+    });
+  });
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
 });

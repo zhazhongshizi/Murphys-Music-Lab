@@ -7,13 +7,14 @@ import { Transport } from './transport.mjs';
 import { fail, ProviderFault } from './fault.mjs';
 import { BV, DIGITS, resolveInput } from './links.mjs';
 import { imageKey, signWbi, selectAacCandidates, USER_AGENT } from './audio.mjs';
+import { selectSubtitleTracks, normalizeSubtitleTimeline, boundSubtitleResult } from './subtitles.mjs';
 import { writeContext, pendingWrite, verifiedWrite } from '../shared/write.mjs';
 
 const constants = JSON.parse(readFileSync(new URL('../../../contracts/protocol-v2.constants.json', import.meta.url)));
 export const capabilities = { ...constants.capabilities.bilibili };
 export const methods = ['system.handshake', 'system.ping', 'auth.qr.start', 'auth.qr.poll', 'auth.qr.cancel',
   'auth.credential.restore', 'auth.credential.check', 'auth.logout', 'search.videos', 'video.resolve',
-  'video.parts', 'library.containers', 'library.videos', 'playback.resolve', 'library.container', 'library.verify', 'library.addItems', 'library.removeItems'];
+  'video.parts', 'library.containers', 'library.videos', 'subtitles.get', 'playback.resolve', 'library.container', 'library.verify', 'library.addItems', 'library.removeItems'];
 export const version = '0.1.0';
 function id(v) {
   if (typeof v === 'number' && !Number.isSafeInteger(v)) fail('upstream_schema_changed');
@@ -222,6 +223,42 @@ export class BilibiliProvider {
     }
     const { page = 1, pageSize = 20 } = p;
     if (method === 'video.resolve') return video(await this.view(await resolveInput(p.input, this.linkFetch)));
+    if (method === 'subtitles.get') {
+      const track = p.track;
+      if (track?.kind !== 'videoPart' || !BV.test(track.bvid) || !DIGITS.test(track.cid)) fail('invalid_params');
+      const d = await this.signed('/x/player/wbi/v2', { bvid: track.bvid, cid: track.cid }, 'video');
+      if (!d || typeof d !== 'object' || Array.isArray(d)) fail('upstream_schema_changed');
+      if (d.bvid !== track.bvid || id(d.cid) !== track.cid) fail('upstream_schema_changed');
+      if (d.need_login_subtitle !== undefined && typeof d.need_login_subtitle !== 'boolean') fail('upstream_schema_changed');
+      const subtitleObj = d.subtitle;
+      if (!subtitleObj || typeof subtitleObj !== 'object' || Array.isArray(subtitleObj) || !Array.isArray(subtitleObj.subtitles)) {
+        fail('upstream_schema_changed');
+      }
+      const rawTracks = subtitleObj.subtitles;
+      if (!rawTracks.length) {
+        if (d.need_login_subtitle === true) fail('authentication_required');
+        return { track, source: 'none', lines: [] };
+      }
+      const candidates = selectSubtitleTracks(rawTracks);
+      if (!candidates.length) {
+        if (d.need_login_subtitle === true) fail('authentication_required');
+        fail('upstream_schema_changed');
+      }
+      for (const candidate of candidates) {
+        const payload = await this.transport.fetchSubtitleJson(candidate.rawUrl);
+        const normalized = normalizeSubtitleTimeline(payload);
+        if (normalized.lines.length > 0) {
+          const bounded = boundSubtitleResult(
+            track,
+            candidate.source,
+            normalized.lines,
+            normalized.timelineEndMs,
+          );
+          if (bounded.lines.length > 0) return bounded;
+        }
+      }
+      return { track, source: 'none', lines: [] };
+    }
     if (method === 'video.parts' || method === 'playback.resolve') {
       const b = method === 'video.parts' ? p.bvid : p.track?.bvid;
       if (!BV.test(b) || (method === 'playback.resolve' && p.track?.kind !== 'videoPart')) fail('invalid_params');

@@ -15,7 +15,8 @@ export function isOutroPosition(s: PlayerSnapshot): boolean {
   if (!track || track.durationMs <= 0 || s.positionMs >= track.durationMs || s.playbackError) return false;
   // Wait for the current lyric request before treating an empty timeline as instrumental.
   if (!last && s.nativeMode && s.lyricsReady === false) return false;
-  const triggerMs = last ? last.atMs + 3000 : Math.max(0, track.durationMs - 3000);
+  const lastEndMs = last ? Math.max(last.endMs ?? last.atMs, track.lyricTimelineEndMs ?? 0) : undefined;
+  const triggerMs = lastEndMs !== undefined ? lastEndMs + 3000 : Math.max(0, track.durationMs - 3000);
   return s.positionMs >= triggerMs;
 }
 
